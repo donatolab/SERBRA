@@ -383,13 +383,6 @@ def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
     return array1, array2
 
 
-def split_data(data, test_ratio):
-    split_idx = int(len(data) * (1 - test_ratio))
-    train = data[:split_idx]
-    test = data[split_idx:]
-    return np.array(train), np.array(test)
-
-
 # strings
 def filter_strings_by_properties(
     strings, include_properties=None, exclude_properties=None
@@ -478,6 +471,22 @@ def num_to_date(date_string):
         date_string = str(date_string)
     date = datetime.strptime(date_string, "%Y%m%d")
     return date
+
+
+# array
+def fill_continuous_array(data_array, fps, time_gap):
+    frame_gap = fps * time_gap
+    # Find indices where values change
+    value_changes = np.where(np.abs(np.diff(data_array)) > np.finfo(float).eps)[0] + 1
+
+    # Fill gaps after continuous 2 seconds of the same value
+    for i in range(len(value_changes) - 1):
+        start = value_changes[i]
+        end = value_changes[i + 1] - 1
+        if end - start <= frame_gap and data_array[start - 1] == data_array[end + 1]:
+            data_array[start:end] = [data_array[start - 1]] * (end - start)
+
+    return data_array
 
 
 # dict
@@ -616,7 +625,7 @@ class Dataset:
         self.key = key
         self.raw_data_object = raw_data_object
         self.metadata = metadata
-        self.fps = None
+        self.fps = metadata["fps"] if "fps" in metadata.keys() else None
         self.title = None
         self.ylable = None
         self.xlable = None
@@ -634,19 +643,24 @@ class Dataset:
         self,
         path=None,
         save=True,
-        regenerate=False,
+        regenerate=True,
         plot=True,
         regenerate_plot=False,
     ):
         if not type(self.data) == np.ndarray:
             self.path = path if path else self.path
+            if not self.raw_data_object and regenerate:
+                print(
+                    f"No raw data given. Regeneration not possible. Loading old data."
+                )
+                regenerate = False
             if path.exists() and not regenerate:
                 print(f"Loading {self.path}")
                 # ... and similarly load the .h5 file, providing the columns to keep
                 # continuous_label = cebra.load_data(file="auxiliary_behavior_data.h5", key="auxiliary_variables", columns=["continuous1", "continuous2", "continuous3"])
                 # discrete_label = cebra.load_data(file="auxiliary_behavior_data.h5", key="auxiliary_variables", columns=["discrete"]).flatten()
                 self.data = cebra.load_data(file=self.path)
-                data_dimensions = self.data.shape  # TODO: maybe transpose also 1D data?
+                data_dimensions = self.data.shape
                 if len(data_dimensions) == 2:
                     num_time_points, num_cells = self.data.shape
                     if num_cells > num_time_points:
@@ -669,10 +683,9 @@ class Dataset:
         if self.raw_data_object:
             print(f"Creating {self.key} dataset...")
             data = self.process_raw_data()
+            return data
         else:
             print(f"No raw data given. Creation not possible. Skipping.")
-        data = self.correct_data(data)
-        return data
 
     def process_raw_data(self):
         raise NotImplementedError(
@@ -681,6 +694,25 @@ class Dataset:
 
     def correct_data(self, data):
         return data
+
+    def split(self, split_ratio=0.8):
+        data = self.data
+        split_index = int(len(data) * split_ratio)
+        data_train = data[:split_index]
+        data_test = data[split_index:]
+        return data_train, data_test
+
+    def shuffle(self):
+        # TODO: test this
+        """
+        def shuffle_data(data: np.ndarray):
+            shuffled_data = []
+            data = force_1_dim_larger(data)
+            for data_type in data.transpose():
+                shuffled_data.append(np.random.permutation(data_type))
+            return np.array(shuffled_data).transpose()
+        """
+        return sklearn.utils.shuffle(self.data)
 
     def set_plot_parameter(
         self,
@@ -697,7 +729,12 @@ class Dataset:
         self.fps = self.fps or fps or 30
         self.title = self.title or title or f"{self.path.stem} data"
         self.title = self.title if self.title[-4:] == "data" else self.title + " data"
-        descriptive_metadata_keys = ["stimulus_type", "method", "processing_software"]
+        descriptive_metadata_keys = [
+            "area",
+            "stimulus_type",
+            "method",
+            "processing_software",
+        ]
         self.title += get_str_from_dict(
             dictionary=self.metadata, keys=descriptive_metadata_keys
         )
@@ -806,7 +843,8 @@ class Data_Stimulus(Dataset):
         super().__init__(
             key="stimulus", raw_data_object=raw_data_object, metadata=metadata
         )
-        # TODO: only working for steffens treadmil introduce into yaml file no handling other types of stimuly besides track stimulus
+        # TODO: only working for steffens treadmil introduce into yaml
+        # file no handling other types of stimuly besides track stimulus
         self.stimulus_sequence = self.metadata["stimulus_sequence"]
         self.simulus_length = self.metadata["stimulus_length"]
         self.stimulus_type = self.metadata["stimulus_type"]
@@ -848,11 +886,6 @@ class Data_Velocity(Dataset):
         self.raw_velocitys = None
         self.ylable = "velocity cm/s"
 
-    def set_data_plot(self):
-        # change value/frame to value/second
-        data_per_second = self.data * self.fps
-        plt.plot(data_per_second)
-
     def process_raw_data(self):
         """
         calculating velocity based on velocity data in raw_data_object
@@ -868,13 +901,14 @@ class Data_Velocity(Dataset):
             raise ValueError(f"Raw data type {raw_data_type} not supported.")
         self.raw_velocitys = calculate_derivative(walked_distances)
         smoothed_velocity = butter_lowpass_filter(
-            self.raw_velocitys, cutoff=2, fs=30, order=2
+            self.raw_velocitys, cutoff=2, fs=self.fps, order=2
         )
         # smoothed_velocity = moving_average(self.raw_velocitys)
         print(
-            f"Calculating smooth velocity based on butter_lowpass_filter 2Hz, 30fps, 2nd order."
+            f"Calculating smooth velocity based on butter_lowpass_filter 2Hz, {self.fps}fps, 2nd order."
         )
-        self.data = smoothed_velocity
+        # change value/frame to value/second
+        self.data = smoothed_velocity * self.fps
         return self.data
 
 
@@ -884,12 +918,7 @@ class Data_Acceleration(Dataset):
             key="acceleration", raw_data_object=raw_data_object, metadata=metadata
         )
         self.raw_acceleration = None
-        self.xlable = "acceleration cm/s^2"
-
-    def set_data_plot(self):
-        # change value/frame to value/second
-        data_per_second = self.data * self.fps
-        plt.plot(data_per_second)
+        self.ylable = "acceleration cm/s^2"
 
     def process_raw_data(self):
         """
@@ -898,13 +927,47 @@ class Data_Acceleration(Dataset):
         velocity = self.raw_data_object.data
         self.raw_acceleration = calculate_derivative(velocity)
         smoothed_acceleration = butter_lowpass_filter(
-            self.raw_acceleration, cutoff=2, fs=30, order=2
+            self.raw_acceleration, cutoff=2, fs=self.fps, order=2
         )
         print(
-            f"Calculating smooth acceleration based on butter_lowpass_filter 2Hz, 30fps, 2nd order."
+            f"Calculating smooth acceleration based on butter_lowpass_filter 2Hz, {self.fps}fps, 2nd order."
         )
         self.data = smoothed_acceleration
         return self.data
+
+
+class Data_Moving(Dataset):
+    def __init__(self, raw_data_object=None, metadata=None):
+        super().__init__(
+            key="moving", raw_data_object=raw_data_object, metadata=metadata
+        )
+        self.ylable = "moving"
+        self.velocity_threshold = 2  # cm/s
+        self.brain_processing_delay = {
+            "CA1": 2,  # seconds
+            "CA3": 2,
+            "M1": None,
+            "S1": None,
+            "V1": None,
+        }
+
+    def process_raw_data(self):
+        velocities = self.raw_data_object.data
+        moving_frames = velocities > self.velocity_threshold
+        self.data = self.fit_moving_to_brainarea(moving_frames, self.metadata["area"])
+        return self.data
+
+    def fit_moving_to_brainarea(self, data, area):
+        processing_movement_lag = self.brain_processing_delay[area]  # seconds
+        if not processing_movement_lag:
+            raise NotImplementedError(f"{area} processing lag not implemented.")
+        processing_movement_frames = fill_continuous_array(
+            data, fps=self.fps, time_gap=processing_movement_lag
+        )
+        return processing_movement_frames
+
+    def correct_data(self, data):
+        return self.fit_moving_to_brainarea(data, self.metadata["area"])
 
 
 class Data_CA(Dataset):
@@ -931,8 +994,8 @@ class Data_CA(Dataset):
 
 
 class Data_CAM(Dataset):
-    def __init__(self):
-        super().__init__(key="cam")
+    def __init__(self, raw_data_object=None, metadata=None):
+        super().__init__(key="cam", raw_data_object=raw_data_object, metadata=metadata)
         # TODO: implement cam data loading
 
 
@@ -950,12 +1013,13 @@ class Datasets:
         data = data_object.load(fpath, regenerate_plot=regenerate_plot)
         return data
 
-    def get_multi_data(self, sources):
+    def get_multi_data(self, sources, shuffle=False, idx_to_keep=None, split_ratio=1):
         # FIXME: is this correct?
         sources = make_list_ifnot(sources)
         concatenated_data = None
         for source in sources:
-            data = getattr(self, source).data
+            dataset_object = getattr(self, source)
+            data = dataset_object.data
             data = np.array([data]).transpose() if len(data.shape) == 1 else data
             if type(concatenated_data) != np.ndarray:
                 concatenated_data = data
@@ -964,10 +1028,40 @@ class Datasets:
                     concatenated_data, data
                 )
                 concatenated_data = np.concatenate([concatenated_data, data], axis=1)
-        return concatenated_data
+        concatenated_data_filtered = self.filter_by_idx(idx_to_keep=idx_to_keep)
+        concatenated_data_shuffled = (
+            self.shuffle(concatenated_data_filtered)
+            if shuffle
+            else concatenated_data_filtered
+        )
+        concatenated_data_tain, concatenated_data_test = self.split(
+            concatenated_data_shuffled, split_ratio
+        )
+        return concatenated_data_tain, concatenated_data_test
+
+    def split(self, data, split_ratio=0.8):
+        split_index = int(len(data) * split_ratio)
+        data_train = data[:split_index]
+        data_test = data[split_index:]
+        return data_train, data_test
+
+    def shuffle(self, data):
+        """
+        def shuffle_data(data: np.ndarray):
+            shuffled_data = []
+            data = force_1_dim_larger(data)
+            for data_type in data.transpose():
+                shuffled_data.append(np.random.permutation(data_type))
+            return np.array(shuffled_data).transpose()
+        """
+        return sklearn.utils.shuffle(data)  # TODO: Test this
+
+    def filter_by_idx(self, data, idx_to_keep=None):
+        if idx_to_keep:
+            data = data[idx_to_keep]
+        return data
 
 
-# TODO: use __subclass__?
 class Datasets_neural(Datasets):
     def __init__(self, data_dir, metadata={}):
         super().__init__(data_dir, metadata=metadata)
@@ -992,16 +1086,15 @@ class Datasets_behavior(Datasets):
         self.acceleration = Data_Acceleration(
             raw_data_object=self.velocity, metadata=self.metadata
         )
-        ......
-        self.moving = Data_Moving(metadata=self.metadata) #TODO: Create moving frames
-        self.stationary = Data_stationary(metadata=self.metadata) #TODO: Create stationary frames
-        self.cam = Data_CAM()
+        self.moving = Data_Moving(raw_data_object=self.velocity, metadata=self.metadata)
+        self.cam = Data_CAM(metadata=self.metadata)
         self.data_sources = {
             "position": "pos_track",
             "distance": "distance_track",
             "velocity": "velocity_track",
             "acceleration": "acceleration_track",
             "stimulus": "stimulus_track",
+            "moving": "moving_track",
             "cam": "???",
         }
 
@@ -1262,9 +1355,10 @@ class Task:
 
         self.load_metadata(metadata)
         self.data_dir = data_dir or session_dir
-        self.neural = Datasets_neural(
-            self.data_dir, self.neural_metadata
-        )  # TODO: change neural_metadata to dict of dicts
+        self.neural = Datasets_neural(self.data_dir, self.neural_metadata)
+        self.behavior_metadata["area"] = self.neural_metadata[
+            "area"
+        ]  # TODO: ok like this?
         self.behavior = Datasets_behavior(self.data_dir, self.behavior_metadata)
 
         self.model_dir = model_dir or self.data_dir.joinpath("models")
@@ -1281,7 +1375,7 @@ class Task:
         )
 
     def load_data(self, data_source, data="neural", regenerate_plot=False):
-        source = "TRD-2P"  # TODO: not implemented to handle multiple sources, maybe not needed?
+        source = "TRD-2P"
         task_source_id = (
             f"{self.session_id}_{source}_{self.task}-ACQ_eval_session_{self.task_num}"
         )
@@ -1301,9 +1395,9 @@ class Task:
         for mouse_data in ["neural", "behavior"]:
             if mouse_data == "neural":
                 # TODO: not sure if this is enough, maybe path set in yaml
+                # TODO: currently only suite2p loading is done, add inscopix
                 data_to_load = self.neural_metadata["preprocessing_software"]
             else:
-                # TODO: add behavior types to yaml+task attribute?
                 data_to_load = behavior_datas
             data_to_load = make_list_ifnot(data_to_load)
             for data_source in data_to_load:
@@ -1319,42 +1413,19 @@ class Task:
             self.model_dir, model_id=self.task, model_settings=model_settings
         )
 
-    def split_train_test_model(
-        self,
-        model_type,
-        model_name: str = None,
-        neural_data: np.ndarray = None,
-        behavior_data: np.ndarray = None,
-        behavior_data_types: [str] = ["position"],
-        split_moving: bool = None,
-        split_training: float = None,
-    ):
-        ......continue..........
-        train_models = {}
-        if split_moving==True:
-            moving_frames = self.behavior.moving.data #TODO: Create moving frames
-            moving_frames = self.behavior.stationary.data #TODO: Create stationary frames
-            raise NotImplementedError("Splitting into moving and not moving is not implemented yet.")
-        elif split_moving==False:
-            raise NotImplementedError("Splitting into moving and not moving is not implemented yet.")
-
-        for train_model_name, train_model in train_models.items():                
-        if split_training:
-            neural_data, behavior_data = split_data(.....................
-                neural_data, behavior_data, split_training
-            )
-            behavior_data = split_data(..............
-                behavior_data, split_training
-            )
-        model_train = self.train_model()
-        model_test = self.train_model()
-        return model_train, model_test
+    def set_model_name(self, model_type, name, shuffled):
+        model_name = model_type
+        model_name = model_name if name == model_type else f"{model_name}_{name}"
+        model_name = f"{model_name}_shuffled" if shuffled else model_name
+        return model_name
 
     def train_model(
         self,
         model_type,
         regenerate: bool = False,
         shuffled: bool = False,
+        only_moving: bool = False,
+        split_ratio: float = None,
         model_name: str = None,
         neural_data: np.ndarray = None,
         behavior_data: np.ndarray = None,
@@ -1375,27 +1446,62 @@ class Task:
                 model = cebras_class.models[model_name_id_shuffled]
             else:
                 model_creation_function = getattr(cebras_class, model_type)
+
                 model = model_creation_function(shuffled=shuffled, name=model_name)
 
             if not model.fitted or regenerate:
+                idx_to_keep = self.behavior.moving.data if only_moving else None
                 if not isinstance(neural_data, np.ndarray):
-                    neural_data = self.neural.get_multi_data(
-                        self.neural_metadata[
-                            "preprocessing_software"
-                        ]  # TODO: maybe change how to get this information
+                    neural_data, _ = self.neural.get_multi_data(
+                        self.neural_metadata["preprocessing_software"],
+                        idx_to_keep=idx_to_keep,
                     )
+                    # shuffle=shuffled,
+                    # split_ratio=split_ratio)
                 if not isinstance(behavior_data, np.ndarray):
-                    behavior_data = self.behavior.get_multi_data(behavior_data_types)
+                    behavior_data, _ = self.behavior.get_multi_data(
+                        behavior_data_types,
+                        idx_to_keep=idx_to_keep,
+                    )
+                    # shuffle=shuffled,
+                    # split_ratio=split_ratio)
 
-                # TODO: insert splitting into moving and not moving here
+                neural_data_filtered = self.neural.filter(
+                    neural_data, idx_to_keep=idx_to_keep
+                )
+                neural_data_shuffled = (
+                    self.neural.shuffle(neural_data_filtered)
+                    if shuffled
+                    else neural_data_filtered
+                )
+                neural_data_train, neural_data_test = self.neural.split(
+                    neural_data_shuffled, split_ratio
+                )
+
+                behavior_data_filtered = self.behavior.filter(
+                    behavior_data, idx_to_keep=idx_to_keep
+                )
+                behavior_data_shuffled = (
+                    self.behavior.shuffle(behavior_data_filtered)
+                    if shuffled
+                    else behavior_data_filtered
+                )
+                behavior_data_train, behavior_data_test = self.behavior.split(
+                    behavior_data_shuffled, split_ratio
+                )
+
                 neural_data = force_2d(neural_data)
                 behavior_data = force_2d(behavior_data)
                 neural_data = force_1_dim_larger(neural_data)
                 behavior_data = force_1_dim_larger(behavior_data)
 
+                #####################################################
+                # delete
+                print(asdf)
                 behavior_data = (
                     shuffle_data(behavior_data) if shuffled else behavior_data
                 )
+                #####################################################
 
                 print(f"{self.id}: Training  {model.name} model.")
                 if model_type == "time":
@@ -1598,6 +1704,14 @@ class Models:
             model_settings = kwargs
         self.cebras = Cebras(model_dir, model_id, model_settings)
 
+    def train(self):
+        # TODO: move train_model function from task class
+        pass
+
+    def set_model_name(self):
+        # TODO: move set_model_name function from task class
+        pass
+
 
 class Cebras:
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
@@ -1651,7 +1765,7 @@ class Cebras:
         )
         return default_model
 
-    def init_model(self, shuffled, settings_dict):
+    def init_model(self, settings_dict):
         default_model = self.create_defaul_model()
         if len(settings_dict) == 0:
             settings_dict = self.model_settings
@@ -1659,14 +1773,7 @@ class Cebras:
             default_model, settings_dict, override=True
         )
         initial_model.fitted = False
-        initial_model.shuffled = shuffled
         return initial_model
-
-    def set_model_name(self, model_type, name, shuffled):
-        model_name = model_type
-        model_name = model_name if name == model_type else f"{model_name}_{name}"
-        model_name = f"{model_name}_shuffled" if shuffled else model_name
-        return model_name
 
     def load_fitted_model(self, model):
         fitted_model_path = model.save_path
@@ -1683,30 +1790,30 @@ class Cebras:
         model.fitted = self.fitted(model)
         return model
 
-    def time(self, shuffled=False, name="time", **kwargs):
-        model = self.init_model(shuffled, kwargs)
+    def time(self, name="time", **kwargs):
+        model = self.init_model(kwargs)
         model.temperature = (
             1.12 if kwargs.get("temperature") is None else model.temperature
         )
         model.conditional = "time" if kwargs.get("time") is None else model.conditional
-        model.name = self.set_model_name("time", name, shuffled)
+        model.name = name
 
         model.save_path = self.define_parameter_save_path(model)
         model = self.load_fitted_model(model)
         self.models[model.name] = model
         return model
 
-    def behavior(self, shuffled=False, name="behavior", **kwargs):
-        model = self.init_model(shuffled, kwargs)
-        model.name = self.set_model_name("behavior", name, shuffled)
+    def behavior(self, name="behavior", **kwargs):
+        model = self.init_model(kwargs)
+        model.name = name
         model.save_path = self.define_parameter_save_path(model)
         model = self.load_fitted_model(model)
         self.models[model.name] = model
         return model
 
-    def hybrid(self, shuffled=False, name="hybrid", **kwargs):
-        model = self.init_model(shuffled, kwargs)
-        model.name = self.set_model_name("hybrid", name, shuffled)
+    def hybrid(self, name="hybrid", **kwargs):
+        model = self.init_model(kwargs)
+        model.name = name
         model.hybrid = True if kwargs.get("hybrid") is None else model.hybrid
         model.save_path = self.define_parameter_save_path(model)
         model = self.load_fitted_model(model)
