@@ -45,10 +45,10 @@ def decode(
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
     decoder = cebra.KNNDecoder(n_neighbors=n_neighbors, metric=metric)
     label_train = force_2d(label_train)
-    label_train = force_1_dim_larger(label_train)
+    # label_train = force_1_dim_larger(label_train)
 
     label_test = force_2d(label_test)
-    label_test = force_1_dim_larger(label_test)
+    # label_test = force_1_dim_larger(label_test)
 
     embedding_train, label_train = force_equal_dimensions(embedding_train, label_train)
 
@@ -291,14 +291,6 @@ def moving_average(data, window_size=30):
     return np.convolve(data, weights, "valid")
 
 
-def shuffle_data(data: np.ndarray):
-    shuffled_data = []
-    data = force_1_dim_larger(data)
-    for data_type in data.transpose():
-        shuffled_data.append(np.random.permutation(data_type))
-    return np.array(shuffled_data).transpose()
-
-
 def continuouse_to_discrete(continuouse_array, lengths: list):
     """
     Converts continuouse data into discrete values based on track lengths using NumPy.
@@ -371,6 +363,7 @@ def force_2d(arr: np.ndarray):
     arr_2d = arr
     if len(arr.shape) == 1:
         arr_2d = np.array([arr])
+        arr_2d = arr_2d.T
     return arr_2d
 
 
@@ -403,7 +396,7 @@ def filter_strings_by_properties(
     filtered_strings = []
 
     if include_properties:
-        if isinstance(include_properties, str):
+        if not isinstance(include_properties, list):
             include_properties = [include_properties]
         elif isinstance(include_properties, list) and all(
             isinstance(prop, str) for prop in include_properties
@@ -478,15 +471,17 @@ def fill_continuous_array(data_array, fps, time_gap):
     frame_gap = fps * time_gap
     # Find indices where values change
     value_changes = np.where(np.abs(np.diff(data_array)) > np.finfo(float).eps)[0] + 1
-
+    filled_array = data_array.copy()
     # Fill gaps after continuous 2 seconds of the same value
     for i in range(len(value_changes) - 1):
         start = value_changes[i]
-        end = value_changes[i + 1] - 1
-        if end - start <= frame_gap and data_array[start - 1] == data_array[end + 1]:
-            data_array[start:end] = [data_array[start - 1]] * (end - start)
-
-    return data_array
+        end = value_changes[i + 1]
+        if (
+            end - start <= frame_gap
+            and filled_array[start - 1] == filled_array[end + 1]
+        ):
+            filled_array[start:end] = [filled_array[start - 1]] * (end - start)
+    return filled_array
 
 
 # dict
@@ -628,8 +623,11 @@ class Dataset:
         self.fps = metadata["fps"] if "fps" in metadata.keys() else None
         self.title = None
         self.ylable = None
+        self.ylimits = None
+        self.yticks = None
         self.xlable = None
         self.xlimits = None
+        self.xticks = None
         self.num_ticks = None
         self.figsize = None
         self.save_path = None
@@ -643,7 +641,7 @@ class Dataset:
         self,
         path=None,
         save=True,
-        regenerate=True,
+        regenerate=False,
         plot=True,
         regenerate_plot=False,
     ):
@@ -719,7 +717,10 @@ class Dataset:
         fps=None,
         title=None,
         ylable=None,
+        ylimits=None,
+        yticks=None,
         xlable=None,
+        xticks=None,
         num_ticks=None,
         xlimits=None,
         figsize=None,
@@ -738,10 +739,13 @@ class Dataset:
         self.title += get_str_from_dict(
             dictionary=self.metadata, keys=descriptive_metadata_keys
         )
-        self.num_ticks = self.num_ticks or num_ticks or 50
         self.ylable = self.ylable or ylable or self.key
+        self.ylimits = self.ylimits or ylimits or None
+        self.yticks = self.yticks or yticks or None
         self.xlable = self.xlable or xlable or "seconds"
         self.xlimits = self.xlimits or xlimits or (0, len(self.data))
+        self.xticks = self.xticks or xticks or None
+        self.num_ticks = self.num_ticks or num_ticks or 50
         self.figsize = self.figsize or figsize or (20, 3)
         self.regenerate_plot = regenerate_plot or False
         self.save_path = (
@@ -782,7 +786,10 @@ class Dataset:
         title=None,
         xlable=None,
         xlimits=None,
+        xticks=None,
         ylable=None,
+        ylimits=None,
+        yticks=None,
         seconds_interval=5,
         fps=None,
         num_ticks=50,
@@ -794,10 +801,13 @@ class Dataset:
     ):
         self.set_plot_parameter(
             fps=fps,
+            ylimits=ylimits,
+            yticks=yticks,
+            ylable=ylable,
             xlable=xlable,
             xlimits=xlimits,
+            xticks=xticks,
             num_ticks=num_ticks,
-            ylable=ylable,
             title=title,
             figsize=figsize,
             regenerate_plot=regenerate_plot,
@@ -808,15 +818,23 @@ class Dataset:
         if regenerate_plot or not save_file_present(self.save_path):
             plt.title(self.title)
             plt.ylabel(self.ylable)
+            if self.ylimits:
+                plt.ylim(self.ylimits)
+            if self.yticks:
+                plt.yticks(self.yticks[0], self.yticks[1])
             plt.xlabel(self.xlable)
-            plt.xlim(self.xlimits)
             plt.tight_layout()
+            plt.xlim(self.xlimits)
 
             self.set_data_plot()
-            self.set_xticks_plot(
-                seconds_interval=seconds_interval,
-                written_label_steps=written_label_steps,
-            )
+
+            if self.xticks:
+                plt.xticks(self.xticks)
+            else:
+                self.set_xticks_plot(
+                    seconds_interval=seconds_interval,
+                    written_label_steps=written_label_steps,
+                )
             plt.savefig(self.save_path, dpi=dpi)
         else:
             # Load the image
@@ -826,6 +844,7 @@ class Dataset:
 
         if show:
             plt.show()
+            plt.close()
 
 
 class Data_Position(Dataset):
@@ -941,7 +960,9 @@ class Data_Moving(Dataset):
         super().__init__(
             key="moving", raw_data_object=raw_data_object, metadata=metadata
         )
-        self.ylable = "moving"
+        self.ylable = "Movement State"
+        self.ylimits = (-0.1, 1.1)
+        self.yticks = [[0, 1], ["Stationary", "Moving"]]
         self.velocity_threshold = 2  # cm/s
         self.brain_processing_delay = {
             "CA1": 2,  # seconds
@@ -1028,7 +1049,9 @@ class Datasets:
                     concatenated_data, data
                 )
                 concatenated_data = np.concatenate([concatenated_data, data], axis=1)
-        concatenated_data_filtered = self.filter_by_idx(idx_to_keep=idx_to_keep)
+        concatenated_data_filtered = self.filter_by_idx(
+            concatenated_data, idx_to_keep=idx_to_keep
+        )
         concatenated_data_shuffled = (
             self.shuffle(concatenated_data_filtered)
             if shuffle
@@ -1046,20 +1069,16 @@ class Datasets:
         return data_train, data_test
 
     def shuffle(self, data):
-        """
-        def shuffle_data(data: np.ndarray):
-            shuffled_data = []
-            data = force_1_dim_larger(data)
-            for data_type in data.transpose():
-                shuffled_data.append(np.random.permutation(data_type))
-            return np.array(shuffled_data).transpose()
-        """
-        return sklearn.utils.shuffle(data)  # TODO: Test this
+        return sklearn.utils.shuffle(data)
 
     def filter_by_idx(self, data, idx_to_keep=None):
-        if idx_to_keep:
-            data = data[idx_to_keep]
-        return data
+        if isinstance(idx_to_keep, np.ndarray) or isinstance(idx_to_keep, list):
+            data_unfiltered, idx_to_keep = force_equal_dimensions(data, idx_to_keep)
+            data_filtered = data_unfiltered[idx_to_keep]
+            return data_filtered
+        else:
+            print(f"No idx_to_keep given. Returning unfiltered data.")
+            return data
 
 
 class Datasets_neural(Datasets):
@@ -1262,7 +1281,7 @@ class Session:
         self.model_dir = Path(model_dir or self.dir.joinpath("models"))
         self.model_settings = model_settings
         self.yaml_path = self.dir.joinpath(f"{self.date}.yaml")
-        self.tasks_infos = None
+        self.tasks_infos = None  # loaded from yaml
         self.tasks = {}
         success = self.load_metadata()
         if not success:
@@ -1315,7 +1334,7 @@ class Session:
         for task, metadata in self.tasks_infos.items():
             if not model_settings:
                 model_settings = kwargs if len(kwargs) > 0 else self.model_settings
-            self.add_task(task, metadata)
+            self.add_task(task, metadata=metadata, model_settings=model_settings)
         return self.tasks[task]
 
     def load_all_data(self, behavior_datas=["position"], regenerate_plots=False):
@@ -1413,108 +1432,164 @@ class Task:
             self.model_dir, model_id=self.task, model_settings=model_settings
         )
 
-    def set_model_name(self, model_type, name, shuffled):
-        model_name = model_type
-        model_name = model_name if name == model_type else f"{model_name}_{name}"
-        model_name = f"{model_name}_shuffled" if shuffled else model_name
+    def get_training_data(
+        self,
+        datasets_object: Datasets,
+        data_types,
+        data=None,
+        movement_state="all",
+        shuffled=False,
+        split_ratio=1,
+    ):
+        # get movement state data
+        if movement_state == "all":
+            idx_to_keep = None
+        elif movement_state == "moving":
+            idx_to_keep = self.behavior.moving.data
+        elif movement_state == "stationary":
+            idx_to_keep = self.behavior.moving.data == False
+
+        # get data
+        if not isinstance(data, np.ndarray):
+            data, _ = datasets_object.get_multi_data(
+                data_types,
+                idx_to_keep=idx_to_keep,
+                # shuffle=shuffled,
+                # split_ratio=split_ratio
+            )
+        data_filtered = datasets_object.filter_by_idx(data, idx_to_keep=idx_to_keep)
+        data_shuffled = (
+            datasets_object.shuffle(data_filtered) if shuffled else data_filtered
+        )
+        data_train, data_test = datasets_object.split(data_shuffled, split_ratio)
+        data_train = force_2d(data_train)
+        # data_train = force_1_dim_larger(data_train)
+        return data_train, data_test
+
+    def set_model_name(
+        self, model_type, model_name=None, shuffled=False, movement_state="all"
+    ):
+        if model_name:
+            if model_type not in model_name:
+                model_name = f"{model_type}_{model_name}"
+            if shuffled and "shuffled" not in model_name:
+                model_name = f"{model_name}_shuffled"
+        else:
+            model_name = model_type
+            model_name = f"{model_name}_shuffled" if shuffled else model_name
+
+        if movement_state != "all":
+            model_name = f"{model_name}_{movement_state}"
         return model_name
+
+    def get_model(self, models_class, model_name, model_type, model_settings=None):
+        # check if model with given model_settings is available
+        model_available = False
+        if model_name in models_class.models.keys():
+            model_available = True
+            model = models_class.models[model_name]
+            model_parameter = model.get_params()
+            if model_settings:
+                for (
+                    model_setting_name,
+                    model_setting_value,
+                ) in model_settings.items():
+                    if model_parameter[model_setting_name] != model_setting_value:
+                        model_available = False
+                        break
+
+        if not model_available:
+            model_creation_function = getattr(models_class, model_type)
+            model = model_creation_function(
+                name=model_name, model_settings=model_settings
+            )
+        return model
 
     def train_model(
         self,
-        model_type,
+        model_type: str,  # types: time, behavior, hybrid
         regenerate: bool = False,
         shuffled: bool = False,
-        only_moving: bool = False,
-        split_ratio: float = None,
+        movement_state: str = "all",
+        split_ratio: float = 1,
         model_name: str = None,
         neural_data: np.ndarray = None,
         behavior_data: np.ndarray = None,
-        behavior_data_types: [str] = ["position"],
+        neural_data_types: [str] = None,  # ["suite2p"],
+        behavior_data_types: [str] = None,  # ["position"],
         manifolds_pipeline: str = "cebra",
+        model_settings: dict = None,
     ):
         """
         available model_types are: time, behavior, hybrid
         """
-        model_name_id = f"{model_type}_{model_name}" if model_name else model_type
-        model_name = model_name or model_type
-        model_name_id_shuffled = (
-            f"{model_name_id}_shuffled" if shuffled else model_name_id
+        model_name = self.set_model_name(
+            model_type, model_name, shuffled, movement_state
         )
+
+        # TODO: add other manifolds pipelines
         if manifolds_pipeline == "cebra":
-            cebras_class = self.models.cebras
-            if model_name_id_shuffled in cebras_class.models.keys():
-                model = cebras_class.models[model_name_id_shuffled]
+            models_class = self.models.cebras
+        else:
+            raise ValueError(f"Manifolds pipeline {manifolds_pipeline} not supported.")
+
+        model = self.get_model(
+            models_class=models_class,
+            model_name=model_name,
+            model_type=model_type,
+            model_settings=model_settings,
+        )
+
+        if not model.fitted or regenerate:
+            # get neural data
+            neural_data_types = (
+                neural_data_types or self.neural_metadata["preprocessing_software"]
+            )
+            neural_data_train, neural_data_test = self.get_training_data(
+                datasets_object=self.neural,
+                data_types=self.neural_metadata[
+                    "preprocessing_software"
+                ],  # e.g. ["suite2p"], iscopix
+                data=neural_data,
+                movement_state=movement_state,
+                shuffled=shuffled,
+                split_ratio=split_ratio,
+            )
+
+            # get behavior data
+            if behavior_data_types:
+                behavior_data_train, behavior_data_test = self.get_training_data(
+                    datasets_object=self.behavior,
+                    data_types=behavior_data_types,  # e.g. ["position", "cam"]
+                    data=behavior_data,
+                    movement_state=movement_state,
+                    shuffled=shuffled,
+                    split_ratio=split_ratio,
+                )
+
+            # print(neural_data_train.shape)
+            # print(behavior_data_train.shape)
+            if neural_data_train.shape[0] == 0:
+                print(f"Skipping {self.id}: No neural data given.")
             else:
-                model_creation_function = getattr(cebras_class, model_type)
-
-                model = model_creation_function(shuffled=shuffled, name=model_name)
-
-            if not model.fitted or regenerate:
-                idx_to_keep = self.behavior.moving.data if only_moving else None
-                if not isinstance(neural_data, np.ndarray):
-                    neural_data, _ = self.neural.get_multi_data(
-                        self.neural_metadata["preprocessing_software"],
-                        idx_to_keep=idx_to_keep,
-                    )
-                    # shuffle=shuffled,
-                    # split_ratio=split_ratio)
-                if not isinstance(behavior_data, np.ndarray):
-                    behavior_data, _ = self.behavior.get_multi_data(
-                        behavior_data_types,
-                        idx_to_keep=idx_to_keep,
-                    )
-                    # shuffle=shuffled,
-                    # split_ratio=split_ratio)
-
-                neural_data_filtered = self.neural.filter(
-                    neural_data, idx_to_keep=idx_to_keep
-                )
-                neural_data_shuffled = (
-                    self.neural.shuffle(neural_data_filtered)
-                    if shuffled
-                    else neural_data_filtered
-                )
-                neural_data_train, neural_data_test = self.neural.split(
-                    neural_data_shuffled, split_ratio
-                )
-
-                behavior_data_filtered = self.behavior.filter(
-                    behavior_data, idx_to_keep=idx_to_keep
-                )
-                behavior_data_shuffled = (
-                    self.behavior.shuffle(behavior_data_filtered)
-                    if shuffled
-                    else behavior_data_filtered
-                )
-                behavior_data_train, behavior_data_test = self.behavior.split(
-                    behavior_data_shuffled, split_ratio
-                )
-
-                neural_data = force_2d(neural_data)
-                behavior_data = force_2d(behavior_data)
-                neural_data = force_1_dim_larger(neural_data)
-                behavior_data = force_1_dim_larger(behavior_data)
-
-                #####################################################
-                # delete
-                print(asdf)
-                behavior_data = (
-                    shuffle_data(behavior_data) if shuffled else behavior_data
-                )
-                #####################################################
-
                 print(f"{self.id}: Training  {model.name} model.")
                 if model_type == "time":
-                    model.fit(neural_data)
+                    model.fit(neural_data_train)
                 else:
-                    neural_data, behavior_data = force_equal_dimensions(
-                        neural_data, behavior_data
+                    .....check dimesions..... of neural data and behavior data. I could be transposed but cutted would be really bad...
+                    .....add saving test dataset somewhere and maybe provide decoded results or decode directly.....
+                    if not behavior_data_types:
+                        raise ValueError(
+                            f"No behavior data types given for {model_type} model."
+                        )
+                    neural_data_train, behavior_data_train = force_equal_dimensions(
+                        neural_data_train, behavior_data_train
                     )
-                    model.fit(neural_data, behavior_data)
-                model.fitted = cebras_class.fitted(model)
+                    model.fit(neural_data_train, behavior_data_train)
+                model.fitted = models_class.fitted(model)
                 model.save(model.save_path)
-            else:
-                print(f"{self.id}: {model.name} model already trained. Skipping.")
+        else:
+            print(f"{self.id}: {model.name} model already trained. Skipping.")
         return model
 
     def create_embeddings(
@@ -1533,12 +1608,18 @@ class Task:
         filtered_models = models or self.get_pipeline_models(
             manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude
         )
-
+        embeddings = {}
         for model_name, model in filtered_models.items():
             embedding_title = f"{model_name} - {model.max_iterations}"
-            embedding = model.transform(to_transform_data)
-            self.embeddings[embedding_title] = embedding
-        return self.embeddings
+            if model.fitted:
+                embedding = model.transform(to_transform_data)
+                self.embeddings[embedding_title] = embedding
+                embeddings[embedding_title] = embedding
+            else:
+                print(
+                    f"Skipping {model_name} model. Not fitted. May because of no statioary frames"
+                )
+        return embeddings
 
     def plot_model_embeddings(
         self,
@@ -1549,6 +1630,7 @@ class Task:
         behavior_data_types=["position"],
         manifolds_pipeline="cebra",
         set_title=None,
+        title_comment=None,
     ):
         embeddings = self.create_embeddings(
             to_transform_data=to_transform_data,
@@ -1564,7 +1646,7 @@ class Task:
             print(
                 f"No embedding labels given. Using behavior_data_types: {behavior_data_types}"
             )
-            behavior_datas = self.behavior.get_multi_data(behavior_data_types)
+            behavior_datas, _ = self.behavior.get_multi_data(behavior_data_types)
             embedding_labels
             embedding_labels_dict = {}
             for behavior_data_type, behavior_data in zip(
@@ -1594,7 +1676,7 @@ class Task:
                         dictionary=self.behavior_metadata,
                         keys=descriptive_metadata_keys,
                     )
-                    + f" - {embedding_title}"
+                    + f" - {embedding_title}{' '+str(title_comment) if title_comment else ''}"
                 )
             labels_dict = {"name": embedding_title, "labels": embedding_labels}
             viz.plot_multiple_embeddings(embeddings, labels=labels_dict, title=title)
@@ -1712,6 +1794,10 @@ class Models:
         # TODO: move set_model_name function from task class
         pass
 
+    def get_model(self):
+        # TODO: move get_model function from task class
+        pass
+
 
 class Cebras:
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
@@ -1765,12 +1851,12 @@ class Cebras:
         )
         return default_model
 
-    def init_model(self, settings_dict):
+    def init_model(self, model_settings_dict):
         default_model = self.create_defaul_model()
-        if len(settings_dict) == 0:
-            settings_dict = self.model_settings
+        if len(model_settings_dict) == 0:
+            model_settings_dict = self.model_settings
         initial_model = define_cls_attributes(
-            default_model, settings_dict, override=True
+            default_model, model_settings_dict, override=True
         )
         initial_model.fitted = False
         return initial_model
@@ -1790,34 +1876,38 @@ class Cebras:
         model.fitted = self.fitted(model)
         return model
 
-    def time(self, name="time", **kwargs):
-        model = self.init_model(kwargs)
+    def model_settings_start(self, name, model_settings_dict):
+        model = self.init_model(model_settings_dict)
+        model.name = name
+        return model
+
+    def model_settings_end(self, model):
+        model.save_path = self.define_parameter_save_path(model)
+        model = self.load_fitted_model(model)
+        self.models[model.name] = model
+        return model
+
+    def time(self, name="time", model_settings=None, **kwargs):
+        model_settings = model_settings or kwargs
+        model = self.model_settings_start(name, model_settings)
         model.temperature = (
             1.12 if kwargs.get("temperature") is None else model.temperature
         )
         model.conditional = "time" if kwargs.get("time") is None else model.conditional
-        model.name = name
-
-        model.save_path = self.define_parameter_save_path(model)
-        model = self.load_fitted_model(model)
-        self.models[model.name] = model
+        model = self.model_settings_end(model)
         return model
 
-    def behavior(self, name="behavior", **kwargs):
-        model = self.init_model(kwargs)
-        model.name = name
-        model.save_path = self.define_parameter_save_path(model)
-        model = self.load_fitted_model(model)
-        self.models[model.name] = model
+    def behavior(self, name="behavior", model_settings=None, **kwargs):
+        model_settings = model_settings or kwargs
+        model = self.model_settings_start(name, model_settings)
+        model = self.model_settings_end(model)
         return model
 
-    def hybrid(self, name="hybrid", **kwargs):
-        model = self.init_model(kwargs)
-        model.name = name
+    def hybrid(self, name="hybrid", model_settings=None, **kwargs):
+        model_settings = model_settings or kwargs
+        model = self.model_settings_start(name, model_settings)
         model.hybrid = True if kwargs.get("hybrid") is None else model.hybrid
-        model.save_path = self.define_parameter_save_path(model)
-        model = self.load_fitted_model(model)
-        self.models[model.name] = model
+        model = self.model_settings_end(model)
         return model
 
 
