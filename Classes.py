@@ -23,6 +23,9 @@ import cebra.integrations.sklearn.utils as sklearn_utils
 from datetime import datetime
 import torch
 
+# pip install binarize2pcalcium
+# from binarize2pcalcium import binarize2pcalcium as binca
+
 plt.style.use("dark_background")
 
 # set seeds for reproducibility
@@ -233,13 +236,13 @@ def save_file_present(file_path, show_print=False):
 
 
 # Math
-def calc_cumsum_distances(positions, track_length, distance_threshold=30):
+def calc_cumsum_distances(positions, length, distance_threshold=30):
     """
     Calculates the cumulative sum of distances between positions along a track.
 
     Args:
     - positions (array-like): List or array of positions along the track.
-    - track_length (numeric): Length of the track.
+    - length (numeric): Length of the track.
     - distance_threshold (numeric, optional): Threshold for considering a frame's distance change.
                                             Defaults to 30.
 
@@ -256,10 +259,10 @@ def calc_cumsum_distances(positions, track_length, distance_threshold=30):
         else:
             # check if mouse moves from end to start of the track
             if frame_distance < 0:
-                cumsum_distance += frame_distance + track_length
+                cumsum_distance += frame_distance + length
             # check if mouse moves from start to end of the track
             else:
-                cumsum_distance += frame_distance - track_length
+                cumsum_distance += frame_distance - length
         old_position = position
         cumsum_distances.append(cumsum_distance)
     return np.array(cumsum_distances)
@@ -297,7 +300,7 @@ def continuouse_to_discrete(continuouse_array, lengths: list):
 
     Parameters:
     - continuouse_array: array of continuouse data.
-    - track_lengths:  containing lengths of track parts.
+    - lengths:  containing lengths of track parts.
 
     Returns:
     - discrete_values: NumPy array of discrete values corresponding to continuouse data.
@@ -613,14 +616,9 @@ def set_attributes_check_presents(
             )
 
 
-class Dataset:
-    def __init__(self, key, path=None, data=None, raw_data_object=None, metadata=None):
-        self.path: Path = path
-        self.data: np.ndarray = data
-        self.key = key
-        self.raw_data_object = raw_data_object
-        self.metadata = metadata
-        self.fps = metadata["fps"] if "fps" in metadata.keys() else None
+class DataPlotterInterface:
+    def __init__(self):
+        self.data = None
         self.title = None
         self.ylable = None
         self.ylimits = None
@@ -631,86 +629,6 @@ class Dataset:
         self.num_ticks = None
         self.figsize = None
         self.save_path = None
-
-    # TODO: use __subclass__?
-    # def __init_subclass__(cls, key: str, **kwargs):
-    #    cls.key = key
-    #    super().__init_subclass__(**kwargs)
-
-    def load(
-        self,
-        path=None,
-        save=True,
-        regenerate=False,
-        plot=True,
-        regenerate_plot=False,
-    ):
-        if not type(self.data) == np.ndarray:
-            self.path = path if path else self.path
-            if not self.raw_data_object and regenerate:
-                print(
-                    f"No raw data given. Regeneration not possible. Loading old data."
-                )
-                regenerate = False
-            if path.exists() and not regenerate:
-                print(f"Loading {self.path}")
-                # ... and similarly load the .h5 file, providing the columns to keep
-                # continuous_label = cebra.load_data(file="auxiliary_behavior_data.h5", key="auxiliary_variables", columns=["continuous1", "continuous2", "continuous3"])
-                # discrete_label = cebra.load_data(file="auxiliary_behavior_data.h5", key="auxiliary_variables", columns=["discrete"]).flatten()
-                self.data = cebra.load_data(file=self.path)
-                data_dimensions = self.data.shape
-                if len(data_dimensions) == 2:
-                    num_time_points, num_cells = self.data.shape
-                    if num_cells > num_time_points:
-                        print(
-                            "Data is probably transposed. Needed Shape [Time, cells] Transposing..."
-                        )
-                        self.data = self.data.transpose()
-            else:
-                self.create_dataset(self.raw_data_object)
-                if save:
-                    np.save(self.path, self.data)
-        self.data = self.correct_data(self.data)
-        if plot:
-            self.plot(regenerate_plot=regenerate_plot)
-        return self.data
-
-    def create_dataset(self, raw_data_object=None):
-        print(f"No {self.key} data found at {self.path}. Creation not possible.")
-        raw_data_object = raw_data_object or self.raw_data_object
-        if self.raw_data_object:
-            print(f"Creating {self.key} dataset...")
-            data = self.process_raw_data()
-            return data
-        else:
-            print(f"No raw data given. Creation not possible. Skipping.")
-
-    def process_raw_data(self):
-        raise NotImplementedError(
-            f"ERROR: Function for creating {self.key} dataset from raw data is not defined."
-        )
-
-    def correct_data(self, data):
-        return data
-
-    def split(self, split_ratio=0.8):
-        data = self.data
-        split_index = int(len(data) * split_ratio)
-        data_train = data[:split_index]
-        data_test = data[split_index:]
-        return data_train, data_test
-
-    def shuffle(self):
-        # TODO: test this
-        """
-        def shuffle_data(data: np.ndarray):
-            shuffled_data = []
-            data = force_1_dim_larger(data)
-            for data_type in data.transpose():
-                shuffled_data.append(np.random.permutation(data_type))
-            return np.array(shuffled_data).transpose()
-        """
-        return sklearn.utils.shuffle(self.data)
 
     def set_plot_parameter(
         self,
@@ -755,6 +673,9 @@ class Dataset:
                 "figures", self.path.stem + ".png"
             )
         )
+        # create plot dir if missing
+        if not self.save_path.parent.exists():
+            self.save_path.parent.mkdir(parents=True, exist_ok=True)
 
     def set_data_plot(self):
         plt.plot(self.data)
@@ -847,12 +768,104 @@ class Dataset:
             plt.close()
 
 
+class Dataset(DataPlotterInterface):
+    def __init__(self, key, path=None, data=None, raw_data_object=None, metadata=None):
+        # initialize plotting parameters
+        super().__init__()
+        self.path: Path = path
+        self.data: np.ndarray = data
+        self.key = key
+        self.raw_data_object = raw_data_object
+        self.metadata = metadata
+        self.fps = metadata["fps"] if "fps" in metadata.keys() else None
+
+    # TODO: use __subclass__?
+    # def __init_subclass__(cls, key: str, **kwargs):
+    #    cls.key = key
+    #    super().__init_subclass__(**kwargs)
+
+    def load(
+        self,
+        path=None,
+        save=True,
+        regenerate=False,
+        plot=True,
+        regenerate_plot=False,
+    ):
+        if not type(self.data) == np.ndarray:
+            self.path = path if path else self.path
+            if not self.raw_data_object and regenerate:
+                print(
+                    f"No raw data given. Regeneration not possible. Loading old data."
+                )
+                regenerate = False
+            if path.exists() and not regenerate:
+                print(f"Loading {self.path}")
+                # ... and similarly load the .h5 file, providing the columns to keep
+                # continuous_label = cebra.load_data(file="auxiliary_behavior_data.h5", key="auxiliary_variables", columns=["continuous1", "continuous2", "continuous3"])
+                # discrete_label = cebra.load_data(file="auxiliary_behavior_data.h5", key="auxiliary_variables", columns=["discrete"]).flatten()
+                self.data = cebra.load_data(file=self.path)
+                data_dimensions = self.data.shape
+                if len(data_dimensions) == 2:
+                    num_time_points, num_cells = self.data.shape
+                    if num_cells > num_time_points:
+                        print(
+                            "Data is probably transposed. Needed Shape [Time, cells] Transposing..."
+                        )
+                        self.data = self.data.transpose()
+            else:
+                self.create_dataset(self.raw_data_object)
+                if save:
+                    np.save(self.path, self.data)
+        self.data = self.correct_data(self.data)
+        if plot:
+            self.plot(regenerate_plot=regenerate_plot)
+        return self.data
+
+    def create_dataset(self, raw_data_object=None):
+        print(f"No {self.key} data found at {self.path}. Creation not possible.")
+        raw_data_object = raw_data_object or self.raw_data_object
+        if self.raw_data_object:
+            print(f"Creating {self.key} dataset...")
+            data = self.process_raw_data()
+            return data
+        else:
+            print(f"No raw data given. Creation not possible. Skipping.")
+
+    def process_raw_data(self):
+        raise NotImplementedError(
+            f"ERROR: Function for creating {self.key} dataset from raw data is not defined."
+        )
+
+    def correct_data(self, data):
+        return data
+
+    def split(self, split_ratio=0.8):
+        data = self.data
+        split_index = int(len(data) * split_ratio)
+        data_train = data[:split_index]
+        data_test = data[split_index:]
+        return data_train, data_test
+
+    def shuffle(self):
+        # TODO: test this
+        """
+        def shuffle_data(data: np.ndarray):
+            shuffled_data = []
+            data = force_1_dim_larger(data)
+            for data_type in data.transpose():
+                shuffled_data.append(np.random.permutation(data_type))
+            return np.array(shuffled_data).transpose()
+        """
+        return sklearn.utils.shuffle(self.data)
+
+
 class Data_Position(Dataset):
     def __init__(self, raw_data_object=None, metadata=None):
         super().__init__(
             key="position", raw_data_object=raw_data_object, metadata=metadata
         )
-        self.track_length = self.metadata["track_length"]
+        self.environment_dimensions = self.metadata["environment_dimensions"]
 
     # FIXME: why is this data 1 datapoint smaller than neural data?
 
@@ -867,6 +880,8 @@ class Data_Stimulus(Dataset):
         self.stimulus_sequence = self.metadata["stimulus_sequence"]
         self.simulus_length = self.metadata["stimulus_length"]
         self.stimulus_type = self.metadata["stimulus_type"]
+        self.stimulus_by = self.metadata["stimulus_by"]
+        self.fps = self.metadata["fps"] if "fps" in self.metadata.keys() else None
 
     def process_raw_data(self):
         """ "
@@ -874,14 +889,44 @@ class Data_Stimulus(Dataset):
             - data: Numpy array composed of stimulus type at frames.
         """
         stimulus_raw_data = self.raw_data_object.data  # e.g. Position on a track/time
+        if self.stimulus_by == "location":
+            stimulus_type_at_frame = self.stimulus_by_location(stimulus_raw_data)
+        elif self.stimulus_by == "frames":
+            stimulus_type_at_frame = self.stimulus_by_time(stimulus_raw_data)
+        elif self.stimulus_by == "seconds":
+            stimulus_type_at_frame = self.stimulus_by_time(
+                stimulus_raw_data, time_to_frame_multiplier=self.fps
+            )
+        elif self.stimulus_by == "minutes":
+            stimulus_type_at_frame = self.stimulus_by_time(
+                stimulus_raw_data, time_to_frame_multiplier=60 * self.fps
+            )
+        self.data = stimulus_type_at_frame
+        return self.data
+
+    def stimulus_by_location(self, stimulus_raw_data):
+        """
+        location on a treadmill
+        """
+        # TODO: implement stimulus by location in 2D and 3D
         stimulus_type_indexes = continuouse_to_discrete(
             stimulus_raw_data, self.simulus_length
         )
         stimulus_type_at_frame = np.array(self.stimulus_sequence)[
             stimulus_type_indexes % len(self.stimulus_sequence)
         ]
-        self.data = stimulus_type_at_frame
-        return self.data
+        return stimulus_type_at_frame
+
+    def stimulus_by_time(self, stimulus_raw_data, time_to_frame_multiplier=1):
+        """
+        time in frames in an experiment
+        """
+        stimulus_type_at_frame = []
+        for stimulus, duration in zip(self.stimulus_sequence, self.simulus_length):
+            stimulus_type_at_frame += [stimulus] * int(
+                duration * time_to_frame_multiplier
+            )
+        return np.array(stimulus_type_at_frame)
 
 
 class Data_Distance(Dataset):
@@ -889,12 +934,41 @@ class Data_Distance(Dataset):
         super().__init__(
             key="distance", raw_data_object=raw_data_object, metadata=metadata
         )
-        self.track_length = self.metadata["track_length"]
+        self.environment_dimensions = make_list_ifnot(
+            self.metadata["environment_dimensions"]
+        )
 
     def process_raw_data(self):
         track_positions = self.raw_data_object.data
-        self.data = calc_cumsum_distances(track_positions, self.track_length)
+        if len(self.environment_dimensions) == 1:
+            self.data = self.process_1D_data(track_positions)
+        elif len(self.environment_dimensions) == 2:
+            self.data = self.process_2D_data(track_positions)
+        elif len(self.environment_dimensions) == 3:
+            self.data = self.process_3D_data(track_positions)
         return self.data
+
+    def process_1D_data(self, track_positions):
+        """
+        calculating velocity based on velocity data in raw_data_object
+        """
+        return calc_cumsum_distances(track_positions, self.environment_dimensions)
+
+    def process_2D_data(self, track_positions):
+        """
+        calculating velocity based on velocity data in raw_data_object
+        """
+        # TODO: implement 2D distance calculation
+        raise NotImplementedError("2D distance calculation not implemented.")
+        return calc_cumsum_distances(track_positions, self.environment_dimensions)
+
+    def process_3D_data(self, track_positions):
+        """
+        calculating velocity based on velocity data in raw_data_object
+        """
+        # TODO: implement 3D distance calculation
+        raise NotImplementedError("3D distance calculation not implemented.")
+        return calc_cumsum_distances(track_positions, self.environment_dimensions)
 
 
 class Data_Velocity(Dataset):
@@ -910,11 +984,7 @@ class Data_Velocity(Dataset):
         calculating velocity based on velocity data in raw_data_object
         """
         raw_data_type = self.raw_data_object.key
-        if raw_data_type == "position":
-            track_positions = self.raw_data_object.data
-            track_length = self.raw_data_object.track_length
-            walked_distances = calc_cumsum_distances(track_positions, track_length)
-        elif raw_data_type == "distance":
+        if raw_data_type == "distance":
             walked_distances = self.raw_data_object.data
         else:
             raise ValueError(f"Raw data type {raw_data_type} not supported.")
@@ -1086,7 +1156,8 @@ class Datasets_neural(Datasets):
         super().__init__(data_dir, metadata=metadata)
         self.suite2p = Data_CA(metadata=self.metadata)
         self.inscopix = Data_CA(metadata=self.metadata)
-        self.data_sources = {"suite2p": "ca_data", "inscopix": "???"}
+        # TODO: split into different datasets if needed
+        self.data_sources = {"suite2p": "ca_data", "inscopix": "ca_data"}
 
 
 class Datasets_behavior(Datasets):
@@ -1576,8 +1647,6 @@ class Task:
                 if model_type == "time":
                     model.fit(neural_data_train)
                 else:
-                    .....check dimesions..... of neural data and behavior data. I could be transposed but cutted would be really bad...
-                    .....add saving test dataset somewhere and maybe provide decoded results or decode directly.....
                     if not behavior_data_types:
                         raise ValueError(
                             f"No behavior data types given for {model_type} model."
@@ -1590,6 +1659,8 @@ class Task:
                 model.save(model.save_path)
         else:
             print(f"{self.id}: {model.name} model already trained. Skipping.")
+
+        # TODO: add saving test dataset somewhere and maybe provide decoded results or decode directly.....
         return model
 
     def create_embeddings(
@@ -1604,6 +1675,9 @@ class Task:
         if not type(to_transform_data) == np.ndarray:
             print(f"No neural data given. Using default labels. suite2p")
             to_transform_data = self.neural.suite2p.data
+            if not isinstance(to_transform_data, np.ndarray):
+                print(f"No neural data from suite2p found. Checking for inscopix")
+                to_transform_data = self.neural.inscopix.data
 
         filtered_models = models or self.get_pipeline_models(
             manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude
@@ -2085,7 +2159,12 @@ class Vizualizer:
         for color, model in zip(colors_to_use, models_to_plot):
             label = model.name.split("behavior_")[-1]
             label += f" - {model.max_iterations} Iter" if plot_model_iterations else ""
-            ax = cebra.plot_loss(model, color=color, alpha=alpha, label=label, ax=ax)
+            if model.fitted:
+                ax = cebra.plot_loss(
+                    model, color=color, alpha=alpha, label=label, ax=ax
+                )
+            else:
+                print(f"Skipping model {label}. Not fitted.")
 
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
