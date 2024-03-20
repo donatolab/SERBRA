@@ -2,6 +2,9 @@
 import os
 from pathlib import Path
 
+# type hints
+from typing import List, Union, Dict, Any, Tuple, Optional
+
 # calculations
 import numpy as np
 from scipy.signal import butter, filtfilt  # , lfilter, freqz
@@ -170,6 +173,7 @@ def get_directories(directory, regex_search=""):
             and len(re.findall(regex_search, name)) > 0
         ]
     else:
+        global_logger.warning(f"Directory does not exist: {directory}")
         print(f"Directory does not exist: {directory}")
     return directories
 
@@ -197,6 +201,7 @@ def get_files(directory, ending="", regex_search=""):
             and name.endswith(ending)
         ]
     else:
+        global_logger.warning(f"Directory does not exist: {directory}")
         print(f"Directory does not exist: {directory}")
     return files_list
 
@@ -227,10 +232,12 @@ def save_file_present(file_path, show_print=False):
     file_present = False
     if file_path.exists():
         if show_print:
+            global_logger.warning(f"File already present {file_path}")
             print(f"File already present {file_path}")
         file_present = True
     else:
         if show_print:
+            global_logger.info(f"Saving {file_path.name} to {file_path}")
             print(f"Saving {file_path.name} to {file_path}")
     return file_present
 
@@ -356,6 +363,9 @@ def butter_lowpass_filter(data, cutoff, fs, order=5):
 
 def force_1_dim_larger(arr: np.ndarray):
     if len(arr.shape) == 1 or arr.shape[0] < arr.shape[1]:
+        global_logger.warning(
+            f"Data is probably transposed. Needed Shape [Time, cells] Transposing..."
+        )
         print("Data is probably transposed. Needed Shape [Time, cells] Transposing...")
         return arr.T  # Transpose the array if the condition is met
     else:
@@ -377,6 +387,41 @@ def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
     elif shape_0_diff < 0:
         array2 = array2[:shape_0_diff]
     return array1, array2
+
+
+def cosine_similarity(v1, v2):
+    """
+    A cosine similarity can be seen as the correlation between two vectors.
+    Returns:
+        float: The cosine similarity between the two vectors.
+    """
+    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
+
+def correlate_vectors(vectors: np.ndarray):
+    """
+    Matrix Multiplikation is used to calculate the correlation matrix.
+
+    Equivalent to cosine measure for normalized vectors. Example code:
+        similarity_matrix = np.zeros((vectors.shape[0], vectors.shape[0]))
+        for i, v1 in enumerate(vectors):
+            for j, v2 in enumerate(vectors):
+                similarity_matrix[i, j] = cosine_similarity(v1, v2)
+
+    Returns:
+        np.ndarray: A matrix of correlations/cosine similarities between each pair of vectors.
+
+    Example:
+        vectors = np.array([[1, 2, 3],
+                            [4, 5, 6],
+                            [7, 8, 9]])
+        correlation_matrix = correlation_matrix(vectors)
+        print(correlation_matrix)
+    """
+    normalized_vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+    correlation_matrix = normalized_vectors @ normalized_vectors.T
+
+    return correlation_matrix
 
 
 # strings
@@ -446,6 +491,7 @@ def check_correct_metadata(string_or_list, name_parts):
     if isinstance(string_or_list, Path):
         if not string_or_list.exists():
             success = False
+            global_logger.error(f"No matching file found")
             print(f"No matching file found")
         else:
             string_or_list = string_or_list.name
@@ -455,6 +501,9 @@ def check_correct_metadata(string_or_list, name_parts):
             if not name_part in string_or_list:
                 success = False
             if not success:
+                global_logger.error(
+                    f"Metadata naming does not match Object Metadata: {string_or_list} != {name_parts}"
+                )
                 print(
                     f"Metadata naming does not match Object Metadata: {string_or_list} != {name_parts}"
                 )
@@ -490,8 +539,8 @@ def fill_continuous_array(data_array, fps, time_gap):
 # dict
 def filter_dict_by_properties(
     dictionary,
-    include_properties: [[str]] = None,  # or [str] or str
-    exclude_properties: [[str]] = None,  # or [str] or str):
+    include_properties: List[List[str]] = None,  # or [str] or str
+    exclude_properties: List[List[str]] = None,  # or [str] or str):
 ):
     dict_keys = dictionary.keys()
     if include_properties or exclude_properties:
@@ -795,11 +844,14 @@ class Dataset(DataPlotterInterface):
         if not type(self.data) == np.ndarray:
             self.path = path if path else self.path
             if not self.raw_data_object and regenerate:
+                global_logger.warning(f"No raw data given. Regeneration not possible.")
+                global_logger.info(f"Loading old data.")
                 print(
                     f"No raw data given. Regeneration not possible. Loading old data."
                 )
                 regenerate = False
             if path.exists() and not regenerate:
+                global_logger.info(f"Loading {self.path}")
                 print(f"Loading {self.path}")
                 # ... and similarly load the .h5 file, providing the columns to keep
                 # continuous_label = cebra.load_data(file="auxiliary_behavior_data.h5", key="auxiliary_variables", columns=["continuous1", "continuous2", "continuous3"])
@@ -807,13 +859,11 @@ class Dataset(DataPlotterInterface):
                 self.data = cebra.load_data(file=self.path)
                 data_dimensions = self.data.shape
                 if len(data_dimensions) == 2:
-                    num_time_points, num_cells = self.data.shape
-                    if num_cells > num_time_points:
-                        print(
-                            "Data is probably transposed. Needed Shape [Time, cells] Transposing..."
-                        )
-                        self.data = self.data.transpose()
+                    # format of data should be [num_time_points, num_cells]
+                    self.data = force_1_dim_larger(arr=self.data)
             else:
+                global_logger.warning(f"No {self.key} data found at {self.path}.")
+                print(f"No {self.key} data found at {self.path}.")
                 self.create_dataset(self.raw_data_object)
                 if save:
                     np.save(self.path, self.data)
@@ -823,16 +873,26 @@ class Dataset(DataPlotterInterface):
         return self.data
 
     def create_dataset(self, raw_data_object=None):
-        print(f"No {self.key} data found at {self.path}. Creation not possible.")
         raw_data_object = raw_data_object or self.raw_data_object
         if self.raw_data_object:
-            print(f"Creating {self.key} dataset...")
+            global_logger.info(
+                f"Creating {self.key} dataset based on raw data from {raw_data_object.key}."
+            )
+            print(
+                f"Creating {self.key} dataset based on raw data from {raw_data_object.key}."
+            )
             data = self.process_raw_data()
             return data
         else:
+            global_logger.warning(
+                f"No raw data given. Creation not possible. Skipping."
+            )
             print(f"No raw data given. Creation not possible. Skipping.")
 
     def process_raw_data(self):
+        global_logger.critical(
+            f"Function for creating {self.key} dataset from raw data is not defined."
+        )
         raise NotImplementedError(
             f"ERROR: Function for creating {self.key} dataset from raw data is not defined."
         )
@@ -848,15 +908,6 @@ class Dataset(DataPlotterInterface):
         return data_train, data_test
 
     def shuffle(self):
-        # TODO: test this
-        """
-        def shuffle_data(data: np.ndarray):
-            shuffled_data = []
-            data = force_1_dim_larger(data)
-            for data_type in data.transpose():
-                shuffled_data.append(np.random.permutation(data_type))
-            return np.array(shuffled_data).transpose()
-        """
         return sklearn.utils.shuffle(self.data)
 
 
@@ -993,6 +1044,7 @@ class Data_Velocity(Dataset):
             self.raw_velocitys, cutoff=2, fs=self.fps, order=2
         )
         # smoothed_velocity = moving_average(self.raw_velocitys)
+        global_logger
         print(
             f"Calculating smooth velocity based on butter_lowpass_filter 2Hz, {self.fps}fps, 2nd order."
         )
@@ -1018,6 +1070,7 @@ class Data_Acceleration(Dataset):
         smoothed_acceleration = butter_lowpass_filter(
             self.raw_acceleration, cutoff=2, fs=self.fps, order=2
         )
+        global_logger
         print(
             f"Calculating smooth acceleration based on butter_lowpass_filter 2Hz, {self.fps}fps, 2nd order."
         )
@@ -1147,6 +1200,7 @@ class Datasets:
             data_filtered = data_unfiltered[idx_to_keep]
             return data_filtered
         else:
+            global_logger
             print(f"No idx_to_keep given. Returning unfiltered data.")
             return data
 
@@ -1251,6 +1305,7 @@ class Animal:
             self.sessions = sort_dict(self.sessions)
             return self.sessions[date]
         else:
+            global_logger
             print(f"Skipping {self.animal_id} {date}")
         return
 
@@ -1399,6 +1454,7 @@ class Session:
             task_object.init_models(model_settings)
             self.tasks[task] = task_object
         else:
+            global_logger
             print(f"Skipping Task {task}")
 
     def add_all_tasks(self, model_settings=None, **kwargs):
@@ -1439,9 +1495,8 @@ class Task:
         metadata: dict = {},
     ):
         self.session_id = session_id
-        self.id = f"{session_id}-{task}"
-        self.task = task
-        self.task_num = int(task[1:]) - 1
+        self.id = f"{session_id}_{task}"
+        self.name = task
 
         self.load_metadata(metadata)
         self.data_dir = data_dir or session_dir
@@ -1465,14 +1520,10 @@ class Task:
         )
 
     def load_data(self, data_source, data="neural", regenerate_plot=False):
-        source = "TRD-2P"
-        task_source_id = (
-            f"{self.session_id}_{source}_{self.task}-ACQ_eval_session_{self.task_num}"
-        )
         # loads neural or behaviour data
         data_object = getattr(self, data)
         data = data_object.load(
-            task_source_id, data_source=data_source, regenerate_plot=regenerate_plot
+            self.id, data_source=data_source, regenerate_plot=regenerate_plot
         )
         return data
 
@@ -1500,7 +1551,7 @@ class Task:
         if not model_settings:
             model_settings = kwargs
         self.models = Models(
-            self.model_dir, model_id=self.task, model_settings=model_settings
+            self.model_dir, model_id=self.name, model_settings=model_settings
         )
 
     def get_training_data(
@@ -1586,8 +1637,8 @@ class Task:
         model_name: str = None,
         neural_data: np.ndarray = None,
         behavior_data: np.ndarray = None,
-        neural_data_types: [str] = None,  # ["suite2p"],
-        behavior_data_types: [str] = None,  # ["position"],
+        neural_data_types: List[str] = None,  # ["suite2p"],
+        behavior_data_types: List[str] = None,  # ["position"],
         manifolds_pipeline: str = "cebra",
         model_settings: dict = None,
     ):
@@ -1638,11 +1689,13 @@ class Task:
                     split_ratio=split_ratio,
                 )
 
-            # print(neural_data_train.shape)
-            # print(behavior_data_train.shape)
+            # skip if no neural data available
             if neural_data_train.shape[0] == 0:
+                global_logger.error(f"No neural data to use. Skipping {self.id}")
                 print(f"Skipping {self.id}: No neural data given.")
             else:
+                # train model
+                global_logger.info(f"{self.id}: Training  {model.name} model.")
                 print(f"{self.id}: Training  {model.name} model.")
                 if model_type == "time":
                     model.fit(neural_data_train)
@@ -1658,6 +1711,10 @@ class Task:
                 model.fitted = models_class.fitted(model)
                 model.save(model.save_path)
         else:
+
+            global_logger.info(
+                f"{self.id}: {model.name} model already trained. Skipping."
+            )
             print(f"{self.id}: {model.name} model already trained. Skipping.")
 
         # TODO: add saving test dataset somewhere and maybe provide decoded results or decode directly.....
@@ -1667,15 +1724,17 @@ class Task:
         self,
         models=None,
         to_transform_data=None,
-        model_naming_filter_include: [[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: [[str]] = None,  # or [str] or str
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         manifolds_pipeline="cebra",
     ):
         # TODO: create function to integrate train and test embeddings into models
         if not type(to_transform_data) == np.ndarray:
+            global_logger.warning(f"No data to transform given. Using default labels.")
             print(f"No neural data given. Using default labels. suite2p")
             to_transform_data = self.neural.suite2p.data
             if not isinstance(to_transform_data, np.ndarray):
+                global_logger.warning(f"No suite2p data found. Checking for inscopix.")
                 print(f"No neural data from suite2p found. Checking for inscopix")
                 to_transform_data = self.neural.inscopix.data
 
@@ -1690,36 +1749,45 @@ class Task:
                 self.embeddings[embedding_title] = embedding
                 embeddings[embedding_title] = embedding
             else:
+                global_logger.error(f"{model_name} model. Not fitted.")
+                global_logger.warning(
+                    f"Skipping {model_name} model. May because of no statioary frames"
+                )
                 print(
-                    f"Skipping {model_name} model. Not fitted. May because of no statioary frames"
+                    f"Skipping {model_name} model. May because of no statioary frames"
                 )
         return embeddings
 
     def plot_model_embeddings(
         self,
-        model_naming_filter_include: [[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: [[str]] = None,  # or [str] or str
-        to_transform_data=None,
-        embedding_labels: dict = None,
-        behavior_data_types=["position"],
-        manifolds_pipeline="cebra",
-        set_title=None,
-        title_comment=None,
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        embeddings: Optional[Dict[str, np.ndarray]] = None,
+        to_transform_data: Optional[np.ndarray] = None,
+        embedding_labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
+        behavior_data_types: List[str] = ["position"],
+        manifolds_pipeline: str = "cebra",
+        set_title: Optional[str] = None,
+        title_comment: Optional[str] = None,
+        markersize: float = 0.05,
+        alpha: float = 0.4,
+        dpi: int = 300,
     ):
-        embeddings = self.create_embeddings(
-            to_transform_data=to_transform_data,
-            model_naming_filter_include=model_naming_filter_include,
-            model_naming_filter_exclude=model_naming_filter_exclude,
-            manifolds_pipeline="cebra",
-        )
+        if not embeddings:
+            embeddings = self.create_embeddings(
+                to_transform_data=to_transform_data,
+                model_naming_filter_include=model_naming_filter_include,
+                model_naming_filter_exclude=model_naming_filter_exclude,
+                manifolds_pipeline="cebra",
+            )
 
         # get embedding lables
         if not isinstance(embedding_labels, np.ndarray) and not isinstance(
             embedding_labels, dict
         ):
-            print(
-                f"No embedding labels given. Using behavior_data_types: {behavior_data_types}"
-            )
+            global_logger.error("No embedding labels given.")
+            global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
+            print(f"Using behavior_data_types: {behavior_data_types}")
             behavior_datas, _ = self.behavior.get_multi_data(behavior_data_types)
             embedding_labels
             embedding_labels_dict = {}
@@ -1753,14 +1821,21 @@ class Task:
                     + f" - {embedding_title}{' '+str(title_comment) if title_comment else ''}"
                 )
             labels_dict = {"name": embedding_title, "labels": embedding_labels}
-            viz.plot_multiple_embeddings(embeddings, labels=labels_dict, title=title)
+            viz.plot_multiple_embeddings(
+                embeddings,
+                labels=labels_dict,
+                title=title,
+                markersize=markersize,
+                alpha=alpha,
+                dpi=dpi,
+            )
         return embeddings
 
     def get_pipeline_models(
         self,
         manifolds_pipeline="cebra",
-        model_naming_filter_include: [[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: [[str]] = None,  # or [str] or str
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
     ):
         if manifolds_pipeline == "cebra":
             models = self.models.cebras.get_models(
@@ -1777,8 +1852,8 @@ class Task:
         self,
         models=None,
         manifolds_pipeline="cebra",
-        model_naming_filter_include: [[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: [[str]] = None,  # or [str] or str
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
     ):
         models_original = []
         models_shuffled = []
@@ -1808,9 +1883,10 @@ class Task:
         coloring_type="rainbow",
         plot_original=True,
         plot_shuffled=True,
+        num_iterations=None,
         plot_model_iterations=False,
-        model_naming_filter_include: [[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: [[str]] = None,  # or [str] or str
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         alpha=0.8,
         figsize=(10, 10),
     ):
@@ -1821,13 +1897,11 @@ class Task:
             model_naming_filter_exclude=model_naming_filter_exclude,
         )
         stimulus_type = self.behavior_metadata["stimulus_type"]
-
-        title = title or f"Losses {self.session_id} {stimulus_type}"
-        title += (
-            f" - {models_original[0].max_iterations} Iterartions"
-            if not plot_model_iterations
-            else ""
+        num_iterations = (
+            models_original[0].max_iterations if not num_iterations else num_iterations
         )
+        title = title or f"Losses {self.session_id} {stimulus_type}"
+        title += f" - {num_iterations} Iterartions" if not plot_model_iterations else ""
 
         viz = Vizualizer(self.data_dir.parent.parent)
         viz.plot_losses(
@@ -1887,8 +1961,8 @@ class Cebras:
 
     def get_models(
         self,
-        model_naming_filter_include: [[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: [[str]] = None,  # or [str] or str):
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str):
     ):
         filtered_models = filter_dict_by_properties(
             self.models, model_naming_filter_include, model_naming_filter_exclude
@@ -1942,9 +2016,10 @@ class Cebras:
             if fitted_model.get_params() == model.get_params():
                 fitted_full_model = define_cls_attributes(fitted_model, model.__dict__)
                 model = fitted_full_model
+                global_logger.info(f"Loaded matching model {fitted_model_path}")
                 print(f"Loaded matching model {fitted_model_path}")
             else:
-                print(
+                global_logger.error(
                     f"Loaded model parameters do not match to initialized model. Not loading {fitted_model_path}"
                 )
         model.fitted = self.fitted(model)
@@ -2004,6 +2079,10 @@ class Vizualizer:
         cmap="rainbow",
         plot_legend=True,
         colorbar_ticks=None,
+        markersize=0.05,
+        alpha=0.4,
+        figsize=(10, 10),
+        dpi=300,
     ):
         embedding, labels = force_equal_dimensions(
             embedding, embedding_labels["labels"]
@@ -2013,8 +2092,11 @@ class Vizualizer:
             ax=ax,
             embedding=embedding,
             embedding_labels=labels,
+            markersize=markersize,
+            alpha=alpha,
+            dpi=dpi,
             title=title,
-            figsize=(10, 10),
+            figsize=figsize,
             cmap=cmap,
         )
         if plot_legend:
@@ -2046,6 +2128,9 @@ class Vizualizer:
         projection="3d",
         figsize=(20, 4),
         plot_legend=True,
+        markersize=0.05,
+        alpha=0.4,
+        dpi=300,
     ):
         figsize_x, figsize_y = figsize
         fig = plt.figure(figsize=figsize)
@@ -2068,7 +2153,15 @@ class Vizualizer:
         for i, (subplot_title, embedding) in enumerate(embeddings.items()):
             ax = axes[i]
             ax = self.plot_embedding(
-                ax, embedding, labels, subplot_title, cmap, plot_legend=False
+                ax,
+                embedding,
+                labels,
+                subplot_title,
+                cmap,
+                plot_legend=False,
+                markersize=markersize,
+                alpha=alpha,
+                dpi=dpi,
             )
 
         for ax in axes[num_subplots:]:
@@ -2164,7 +2257,9 @@ class Vizualizer:
                     model, color=color, alpha=alpha, label=label, ax=ax
                 )
             else:
-                print(f"Skipping model {label}. Not fitted.")
+                global_logger.error(f"{label} Not fitted.")
+                global_logger.warning(f"Skipping model {label}.")
+                print(f"Skipping model {label}.")
 
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
@@ -2302,3 +2397,59 @@ class Vizualizer:
         ax2.set_ylabel(ylabel)
         plt.legend(bbox_to_anchor=(1, 1), frameon=False)
         plt.show()
+
+
+import logging
+
+
+class GlobalLogger:
+    def __init__(self, save_dir=""):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.configure_logger(save_dir=save_dir)
+
+    def configure_logger(self, save_dir=""):
+        self.logger.setLevel(logging.DEBUG)  # Set the desired level here
+
+        # Create a file handler which logs even debug messages.
+        log_file_path = os.path.join(save_dir, "Global_log.log")
+        fh = logging.FileHandler(log_file_path)
+        fh.setLevel(logging.DEBUG)
+
+        # Create a console handler with a higher log level.
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.ERROR)
+
+        # Create a formatter and add it to the handlers.
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        fh.setFormatter(formatter)
+        ch.setFormatter(formatter)
+
+        # Add the handlers to the logger.
+        self.logger.addHandler(fh)
+        self.logger.addHandler(ch)
+
+    def set_save_dir(self, save_dir):
+        # Get the old handler
+        old_handler = self.logger.handlers[0]
+
+        # Create a new handler with the updated filename
+        new_handler = logging.FileHandler(save_dir + "/Global_log.log")
+        new_handler.setLevel(old_handler.level)
+        new_handler.setFormatter(old_handler.formatter)
+
+        # Remove the old handler and add the new one
+        self.logger.removeHandler(old_handler)
+        self.logger.addHandler(new_handler)
+
+
+global_logger_object = GlobalLogger()
+global_logger = global_logger_object.logger
+
+# global_logger_object.set_save_dir(os.path.join(os.getcwd(), "logs"))
+# global_logger = global_logger_object.logger
+# global_logger.info('check if log file is created in new working directory')
+# global_logger
+# print(global_logger_object.logger.handlers)
+# global_logger_object.logger.handlers[0].baseFilename

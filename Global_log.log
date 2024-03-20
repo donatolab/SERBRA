@@ -1,0 +1,158 @@
+2024-01-31 13:08:00,108 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Nathalie\box\DON-016234\20231106\models\cebra_time_iter-5000_dim-3_model-S1.pt
+2024-01-31 13:08:00,112 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Nathalie\box\DON-016234\20231106\models\cebra_behavior_iter-5000_dim-3_model-S1.pt
+2024-01-31 13:08:00,112 - GlobalLogger - INFO - Loading D:\Experiments\Nathalie\box\DON-016234\20231106\DON-016234_20231106_TRD-2P_S1-ACQ_eval_session_0_ca_data.npy
+2024-01-31 13:08:00,190 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-01-31 13:08:03,776 - GlobalLogger - INFO - Loading D:\Experiments\Nathalie\box\DON-016234\20231106\DON-016234_20231106_TRD-2P_S1-ACQ_eval_session_0_stimulus_track.npy
+2024-01-31 13:08:14,066 - GlobalLogger - INFO - DON-016234_20231106-S1: Training  time model.
+2024-01-31 15:01:42,156 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Nathalie\box\DON-016234\20231106\models\cebra_behavior_iter-800001_dim-3_model-S1.pt
+2024-01-31 15:01:42,157 - GlobalLogger - INFO - DON-016234_20231106-S1: behavior model already trained. Skipping.
+2024-01-31 15:01:42,706 - GlobalLogger - ERROR - No embedding labels given.
+2024-01-31 15:01:42,706 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-01 09:07:53,652 - GlobalLogger - INFO - Loading D:\Experiments\Nathalie\box\DON-013199\20230112\DON-013199_20230112_TRD-2P_S1-ACQ_eval_session_0_ca_data.npy
+2024-02-01 09:07:53,728 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-02-01 09:07:57,490 - GlobalLogger - WARNING - No stimulus data found at D:\Experiments\Nathalie\box\DON-013199\20230112\DON-013199_20230112_TRD-2P_S1-ACQ_eval_session_0_stimulus_track.npy.
+2024-02-01 09:07:57,490 - GlobalLogger - INFO - Creating stimulus dataset based on raw data from position.
+2024-02-01 09:07:59,463 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Nathalie\box\DON-016234\20231106\models\cebra_time_iter-5000_dim-3_model-S1.pt
+2024-02-01 09:07:59,481 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Nathalie\box\DON-016234\20231106\models\cebra_behavior_iter-5000_dim-3_model-S1.pt
+2024-02-01 09:07:59,481 - GlobalLogger - INFO - Loading D:\Experiments\Nathalie\box\DON-016234\20231106\DON-016234_20231106_TRD-2P_S1-ACQ_eval_session_0_ca_data.npy
+2024-02-01 09:08:00,393 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-02-01 09:08:03,825 - GlobalLogger - INFO - Loading D:\Experiments\Nathalie\box\DON-016234\20231106\DON-016234_20231106_TRD-2P_S1-ACQ_eval_session_0_stimulus_track.npy
+2024-02-01 09:10:46,626 - GlobalLogger - INFO - Loading D:\Experiments\Nathalie\box\DON-013199\20230112\DON-013199_20230112_TRD-2P_S1-ACQ_eval_session_0_ca_data.npy
+2024-02-01 09:10:46,701 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-02-01 09:10:50,431 - GlobalLogger - INFO - Loading D:\Experiments\Nathalie\box\DON-013199\20230112\DON-013199_20230112_TRD-2P_S1-ACQ_eval_session_0_stimulus_track.npy
+2024-02-01 09:10:51,524 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Nathalie\box\DON-016234\20231106\models\cebra_time_iter-5000_dim-3_model-S1.pt
+2024-02-01 09:10:51,528 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Nathalie\box\DON-016234\20231106\models\cebra_behavior_iter-5000_dim-3_model-S1.pt
+2024-02-01 09:10:51,529 - GlobalLogger - INFO - Loading D:\Experiments\Nathalie\box\DON-016234\20231106\DON-016234_20231106_TRD-2P_S1-ACQ_eval_session_0_ca_data.npy
+2024-02-01 09:10:51,596 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-02-01 09:10:54,975 - GlobalLogger - INFO - Loading D:\Experiments\Nathalie\box\DON-016234\20231106\DON-016234_20231106_TRD-2P_S1-ACQ_eval_session_0_stimulus_track.npy
+2024-02-01 09:11:33,526 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-01 12:32:30,027 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-01 15:05:02,172 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-01 15:05:02,173 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-01 15:05:30,511 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Nathalie\box\DON-016234\20231106\models\cebra_time_iter-800001_dim-3_model-S1.pt
+2024-02-01 15:05:30,511 - GlobalLogger - INFO - DON-016234_20231106-S1: time model already trained. Skipping.
+2024-02-01 15:05:30,822 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Nathalie\box\DON-016234\20231106\models\cebra_behavior_iter-800001_dim-3_model-S1.pt
+2024-02-01 15:05:30,822 - GlobalLogger - INFO - DON-016234_20231106-S1: behavior model already trained. Skipping.
+2024-02-01 15:05:31,592 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-01 15:05:31,592 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:35:27,592 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:35:27,592 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:35:29,279 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:35:29,279 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:35:30,978 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:35:30,978 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:35:30,980 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:35:30,980 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:35:33,288 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:35:33,288 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:35:36,670 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:35:36,670 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:35:39,583 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:35:39,583 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:35:39,583 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:35:39,583 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:35:41,852 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:35:41,852 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:35:48,166 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:35:48,166 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:35:53,424 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:35:53,424 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:35:53,425 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:35:53,425 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:35:55,730 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:35:55,730 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:36:08,545 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:36:08,545 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:36:18,757 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:36:18,757 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:36:18,758 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:36:18,758 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:36:21,043 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:36:21,043 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:36:46,334 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:36:46,334 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:37:06,091 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:37:06,091 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:37:06,092 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:37:06,092 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:37:08,433 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:37:08,433 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:37:57,943 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:37:57,943 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:38:36,643 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:38:36,643 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:38:36,644 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:38:36,644 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:38:38,980 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:38:38,980 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  time model.
+2024-02-02 08:40:17,101 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:40:17,101 - GlobalLogger - INFO - DON-013199_20230112-S1: Training  behavior model.
+2024-02-02 08:41:34,954 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:41:34,954 - GlobalLogger - ERROR - No embedding labels given.
+2024-02-02 08:41:34,955 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-02-02 08:41:34,955 - GlobalLogger - WARNING - Using behavior_data_types: ['stimulus']
+2024-03-20 11:01:32,271 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_iter-20000_dim-3_model-S1.pt
+2024-03-20 11:01:32,271 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_iter-20000_dim-3_model-S1.pt
+2024-03-20 11:01:32,272 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:01:32,272 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:02:12,192 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:02:12,192 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:11:27,079 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:11:27,079 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:11:27,079 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:11:44,561 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:11:44,561 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:11:44,561 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:11:51,226 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:11:51,226 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:11:51,226 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior model already trained. Skipping.
+2024-03-20 11:24:01,824 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance model.
+2024-03-20 11:24:01,824 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance model.
+2024-03-20 11:24:01,824 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance model.
+2024-03-20 11:24:01,824 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance model.
+2024-03-20 11:24:01,824 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance model.
+2024-03-20 11:33:36,380 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:33:36,380 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:33:36,380 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:33:36,380 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:33:36,380 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:33:36,609 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:33:36,609 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:33:36,609 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:33:36,609 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:33:36,609 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:33:36,612 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-20 11:33:36,612 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-20 11:33:36,612 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-20 11:33:36,612 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-20 11:33:36,612 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-20 11:43:12,844 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_distance model already trained. Skipping.
+2024-03-20 11:43:12,844 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_distance model already trained. Skipping.
+2024-03-20 11:43:12,844 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_distance model already trained. Skipping.
+2024-03-20 11:43:12,844 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_distance model already trained. Skipping.
+2024-03-20 11:43:12,844 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_distance model already trained. Skipping.
+2024-03-20 11:43:12,844 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_distance model already trained. Skipping.
+2024-03-20 11:43:12,845 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus model.
+2024-03-20 11:43:12,845 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus model.
+2024-03-20 11:43:12,845 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus model.
+2024-03-20 11:43:12,845 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus model.
+2024-03-20 11:43:12,845 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus model.
+2024-03-20 11:43:12,845 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus model.
+2024-03-20 11:47:02,296 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:47:02,296 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:47:02,296 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:47:02,296 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:47:02,296 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:47:02,296 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-20 11:47:02,459 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:47:02,459 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:47:02,459 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:47:02,459 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:47:02,459 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:47:02,459 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-20 11:47:02,462 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-20 11:47:02,462 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-20 11:47:02,462 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-20 11:47:02,462 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-20 11:47:02,462 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-20 11:47:02,462 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
