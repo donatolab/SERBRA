@@ -66,7 +66,11 @@ def decode(
 
     test_score = 0  # sklearn.metrics.r2_score(label_test, prediction)
     # test_score = sklearn.metrics.r2_score(label_test[:,:2], prediction)
-    pos_test_err = np.median(abs(prediction - label_test))
+
+    # pos_test_err = np.median(abs(prediction - label_test))
+    ########################################################
+    pos_test_err = np.mean(abs(prediction - label_test))
+    ########################################################
     pos_test_score = sklearn.metrics.r2_score(label_test[:, 0], prediction[:, 0])
 
     return test_score, pos_test_err, pos_test_score
@@ -422,6 +426,20 @@ def correlate_vectors(vectors: np.ndarray):
     correlation_matrix = normalized_vectors @ normalized_vectors.T
 
     return correlation_matrix
+
+
+## normalization
+def normalize_vector_01(vector):
+    normalized_vector = vector - np.min(vector)
+    normalized_vector = normalized_vector / np.max(normalized_vector)
+    return normalized_vector
+
+
+def normalize_matrix_01(matrix):
+    new_matrix = np.zeros(matrix.shape)
+    for i in range(matrix.shape[1]):
+        new_matrix[:, i] = normalize_vector_01(matrix[:, i])
+    return new_matrix
 
 
 # strings
@@ -1570,6 +1588,8 @@ class Task:
             idx_to_keep = self.behavior.moving.data
         elif movement_state == "stationary":
             idx_to_keep = self.behavior.moving.data == False
+        else:
+            raise ValueError(f"Movement state {movement_state} not supported.")
 
         # get data
         if not isinstance(data, np.ndarray):
@@ -1589,7 +1609,12 @@ class Task:
         return data_train, data_test
 
     def set_model_name(
-        self, model_type, model_name=None, shuffled=False, movement_state="all"
+        self,
+        model_type,
+        model_name=None,
+        shuffled=False,
+        movement_state="all",
+        split_ratio=1,
     ):
         if model_name:
             if model_type not in model_name:
@@ -1602,6 +1627,9 @@ class Task:
 
         if movement_state != "all":
             model_name = f"{model_name}_{movement_state}"
+
+        if split_ratio != 1:
+            model_name = f"{model_name}_{split_ratio}"
         return model_name
 
     def get_model(self, models_class, model_name, model_type, model_settings=None):
@@ -1646,7 +1674,7 @@ class Task:
         available model_types are: time, behavior, hybrid
         """
         model_name = self.set_model_name(
-            model_type, model_name, shuffled, movement_state
+            model_type, model_name, shuffled, movement_state, split_ratio
         )
 
         # TODO: add other manifolds pipelines
@@ -1662,33 +1690,33 @@ class Task:
             model_settings=model_settings,
         )
 
-        if not model.fitted or regenerate:
-            # get neural data
-            neural_data_types = (
-                neural_data_types or self.neural_metadata["preprocessing_software"]
-            )
-            neural_data_train, neural_data_test = self.get_training_data(
-                datasets_object=self.neural,
-                data_types=self.neural_metadata[
-                    "preprocessing_software"
-                ],  # e.g. ["suite2p"], iscopix
-                data=neural_data,
+        # get neural data
+        neural_data_types = (
+            neural_data_types or self.neural_metadata["preprocessing_software"]
+        )
+        neural_data_train, neural_data_test = self.get_training_data(
+            datasets_object=self.neural,
+            data_types=self.neural_metadata[
+                "preprocessing_software"
+            ],  # e.g. ["suite2p"], iscopix
+            data=neural_data,
+            movement_state=movement_state,
+            shuffled=shuffled,
+            split_ratio=split_ratio,
+        )
+
+        # get behavior data
+        if behavior_data_types:
+            behavior_data_train, behavior_data_test = self.get_training_data(
+                datasets_object=self.behavior,
+                data_types=behavior_data_types,  # e.g. ["position", "cam"]
+                data=behavior_data,
                 movement_state=movement_state,
                 shuffled=shuffled,
                 split_ratio=split_ratio,
             )
 
-            # get behavior data
-            if behavior_data_types:
-                behavior_data_train, behavior_data_test = self.get_training_data(
-                    datasets_object=self.behavior,
-                    data_types=behavior_data_types,  # e.g. ["position", "cam"]
-                    data=behavior_data,
-                    movement_state=movement_state,
-                    shuffled=shuffled,
-                    split_ratio=split_ratio,
-                )
-
+        if not model.fitted or regenerate:
             # skip if no neural data available
             if neural_data_train.shape[0] == 0:
                 global_logger.error(f"No neural data to use. Skipping {self.id}")
@@ -1718,6 +1746,15 @@ class Task:
             print(f"{self.id}: {model.name} model already trained. Skipping.")
 
         # TODO: add saving test dataset somewhere and maybe provide decoded results or decode directly.....
+
+        if split_ratio != 1:
+            return (
+                model,
+                neural_data_train,
+                neural_data_test,
+                behavior_data_train,
+                behavior_data_test,
+            )
         return model
 
     def create_embeddings(
@@ -2271,7 +2308,11 @@ class Vizualizer:
     def plot_ending(self, title):
         plt.suptitle(title)
         plt.tight_layout()  # Ensure subplots fit within figure area
-        plot_save_path = self.save_dir.joinpath(title + ".png")
+        plot_save_path = (
+            str(self.save_dir.joinpath(title + ".png"))
+            .replace(">", "bigger")
+            .replace("<", "smaller")
+        )
         plt.savefig(plot_save_path, dpi=300)
         plt.show()
 

@@ -156,3 +156,361 @@
 2024-03-20 11:47:02,462 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
 2024-03-20 11:47:02,462 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
 2024-03-20 11:47:02,462 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'distance', 'stimulus']
+2024-03-22 10:01:45,024 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving_0.8 model.
+2024-03-22 10:01:45,024 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving_0.8 model.
+2024-03-22 10:01:45,024 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving_0.8 model.
+2024-03-22 10:01:45,024 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving_0.8 model.
+2024-03-22 10:01:45,024 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving_0.8 model.
+2024-03-22 10:01:45,024 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving_0.8 model.
+2024-03-22 10:01:45,024 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving_0.8 model.
+2024-03-22 10:01:45,024 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving_0.8 model.
+2024-03-22 11:49:06,450 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:49:06,450 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:49:06,450 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:49:06,450 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:49:06,450 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:49:06,450 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:49:06,450 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:49:06,450 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:49:06,450 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:49:06,450 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:50:41,277 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:50:41,277 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:50:41,277 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:50:41,277 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:50:41,277 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:50:41,277 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:50:41,277 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:50:41,277 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:50:41,277 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 11:50:41,277 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:00:40,011 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:00:40,011 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:00:40,011 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:00:40,011 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:00:40,011 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:00:40,011 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:00:40,011 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:00:40,011 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:00:40,011 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:00:40,011 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 12:09:53,969 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving_0.8 model.
+2024-03-22 12:09:53,969 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving_0.8 model.
+2024-03-22 12:09:53,969 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving_0.8 model.
+2024-03-22 12:09:53,969 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving_0.8 model.
+2024-03-22 12:09:53,969 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving_0.8 model.
+2024-03-22 12:09:53,969 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving_0.8 model.
+2024-03-22 12:09:53,969 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving_0.8 model.
+2024-03-22 12:09:53,969 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving_0.8 model.
+2024-03-22 12:09:53,969 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving_0.8 model.
+2024-03-22 12:09:53,969 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving_0.8 model.
+2024-03-22 12:17:01,588 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 12:17:01,588 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 12:17:01,588 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 12:17:01,588 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 12:17:01,588 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 12:17:01,588 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 12:17:01,588 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 12:17:01,588 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 12:17:01,588 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 12:17:01,588 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:16,871 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:16,871 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:16,871 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:16,871 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:16,871 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:16,871 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:16,871 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:16,871 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:16,871 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:16,871 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:49,634 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:49,634 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:49,634 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:49,634 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:49,634 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:49,634 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:49,634 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:49,634 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:49,634 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:04:49,634 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:09:04,036 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:09:04,036 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:09:04,036 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:09:04,036 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:09:04,036 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:09:04,036 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:09:04,036 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:09:04,036 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:09:04,036 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:09:04,036 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:10:00,381 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:10:00,381 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:10:00,381 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:10:00,381 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:10:00,381 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:10:00,381 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:10:00,381 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:10:00,381 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:10:00,381 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:10:00,381 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:18:20,274 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:18:20,274 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:18:20,274 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:18:20,274 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:18:20,274 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:18:20,274 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:18:20,274 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:18:20,274 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:18:20,274 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:18:20,274 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:20:50,493 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:20:50,493 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:20:50,493 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:20:50,493 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:20:50,493 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:20:50,493 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:20:50,493 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:20:50,493 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:20:50,493 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:20:50,493 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:24:48,181 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:24:48,181 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:24:48,181 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:24:48,181 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:24:48,181 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:24:48,181 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:24:48,181 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:24:48,181 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:24:48,181 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:24:48,181 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:25:32,633 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:25:32,633 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:25:32,633 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:25:32,633 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:25:32,633 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:25:32,633 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:25:32,633 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:25:32,633 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:25:32,633 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:25:32,633 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:29:29,357 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:29:29,357 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:29:29,357 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:29:29,357 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:29:29,357 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:29:29,357 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:29:29,357 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:29:29,357 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:29:29,357 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:29:29,357 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:34:09,087 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:34:09,087 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:34:09,087 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:34:09,087 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:34:09,087 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:34:09,087 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:34:09,087 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:34:09,087 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:34:09,087 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:34:09,087 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:21,811 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:21,811 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:21,811 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:21,811 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:21,811 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:21,811 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:21,811 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:21,811 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:21,811 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:21,811 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:53,264 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:53,264 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:53,264 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:53,264 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:53,264 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:53,264 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:53,264 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:53,264 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:53,264 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:35:53,264 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:36:40,202 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:36:40,202 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:36:40,202 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:36:40,202 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:36:40,202 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:36:40,202 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:36:40,202 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:36:40,202 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:36:40,202 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:36:40,202 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:38:26,804 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:38:26,804 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:38:26,804 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:38:26,804 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:38:26,804 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:38:26,804 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:38:26,804 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:38:26,804 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:38:26,804 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:38:26,804 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:39:24,031 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:39:24,031 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:39:24,031 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:39:24,031 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:39:24,031 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:39:24,031 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:39:24,031 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:39:24,031 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:39:24,031 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:39:24,031 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:43:47,510 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:43:47,510 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:43:47,510 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:43:47,510 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:43:47,510 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:43:47,510 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:43:47,510 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:43:47,510 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:43:47,510 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 13:43:47,510 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-22 16:08:23,105 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position model.
+2024-03-22 16:08:23,105 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position model.
+2024-03-22 16:08:23,105 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position model.
+2024-03-22 16:08:23,105 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position model.
+2024-03-22 16:08:23,105 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position model.
+2024-03-22 16:08:23,105 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position model.
+2024-03-22 16:08:23,105 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position model.
+2024-03-22 16:08:23,105 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position model.
+2024-03-22 16:08:23,105 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position model.
+2024-03-22 16:08:23,105 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position model.
+2024-03-22 16:09:36,023 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving model.
+2024-03-22 16:09:36,023 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving model.
+2024-03-22 16:09:36,023 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving model.
+2024-03-22 16:09:36,023 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving model.
+2024-03-22 16:09:36,023 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving model.
+2024-03-22 16:09:36,023 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving model.
+2024-03-22 16:09:36,023 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving model.
+2024-03-22 16:09:36,023 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving model.
+2024-03-22 16:09:36,023 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving model.
+2024-03-22 16:09:36,023 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_position_moving model.
+2024-03-22 16:13:37,718 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving model.
+2024-03-22 16:13:37,718 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving model.
+2024-03-22 16:13:37,718 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving model.
+2024-03-22 16:13:37,718 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving model.
+2024-03-22 16:13:37,718 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving model.
+2024-03-22 16:13:37,718 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving model.
+2024-03-22 16:13:37,718 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving model.
+2024-03-22 16:13:37,718 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving model.
+2024-03-22 16:13:37,718 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving model.
+2024-03-22 16:13:37,718 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_stimulus_moving model.
+2024-03-22 16:17:23,519 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:17:23,519 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:17:23,519 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:17:23,519 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:17:23,519 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:17:23,519 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:17:23,519 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:17:23,519 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:17:23,519 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:17:23,519 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:18:04,858 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-22 16:18:04,858 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-22 16:18:04,858 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-22 16:18:04,858 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-22 16:18:04,858 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-22 16:18:04,858 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-22 16:18:04,858 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-22 16:18:04,858 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-22 16:18:04,858 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-22 16:18:04,858 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-22 16:18:04,898 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-22 16:18:04,898 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-22 16:18:04,898 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-22 16:18:04,898 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-22 16:18:04,898 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-22 16:18:04,898 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-22 16:18:04,898 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-22 16:18:04,898 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-22 16:18:04,898 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-22 16:18:04,898 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-22 16:18:04,938 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:18:04,938 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:18:04,938 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:18:04,938 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:18:04,938 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:18:04,938 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:18:04,938 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:18:04,938 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:18:04,938 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:18:04,938 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving model.
+2024-03-22 16:22:06,529 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-22 16:22:06,529 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-22 16:22:06,529 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-22 16:22:06,529 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-22 16:22:06,529 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-22 16:22:06,529 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-22 16:22:06,529 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-22 16:22:06,529 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-22 16:22:06,529 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-22 16:22:06,529 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-22 16:22:06,677 - GlobalLogger - ERROR - behavior_stimulus_moveing_0.8 model. Not fitted.
+2024-03-22 16:22:06,677 - GlobalLogger - ERROR - behavior_stimulus_moveing_0.8 model. Not fitted.
+2024-03-22 16:22:06,677 - GlobalLogger - ERROR - behavior_stimulus_moveing_0.8 model. Not fitted.
+2024-03-22 16:22:06,677 - GlobalLogger - ERROR - behavior_stimulus_moveing_0.8 model. Not fitted.
+2024-03-22 16:22:06,677 - GlobalLogger - ERROR - behavior_stimulus_moveing_0.8 model. Not fitted.
+2024-03-22 16:22:06,677 - GlobalLogger - ERROR - behavior_stimulus_moveing_0.8 model. Not fitted.
+2024-03-22 16:22:06,677 - GlobalLogger - ERROR - behavior_stimulus_moveing_0.8 model. Not fitted.
+2024-03-22 16:22:06,677 - GlobalLogger - ERROR - behavior_stimulus_moveing_0.8 model. Not fitted.
+2024-03-22 16:22:06,677 - GlobalLogger - ERROR - behavior_stimulus_moveing_0.8 model. Not fitted.
+2024-03-22 16:22:06,677 - GlobalLogger - ERROR - behavior_stimulus_moveing_0.8 model. Not fitted.
+2024-03-22 16:22:06,682 - GlobalLogger - WARNING - Skipping behavior_stimulus_moveing_0.8 model. May because of no statioary frames
+2024-03-22 16:22:06,682 - GlobalLogger - WARNING - Skipping behavior_stimulus_moveing_0.8 model. May because of no statioary frames
+2024-03-22 16:22:06,682 - GlobalLogger - WARNING - Skipping behavior_stimulus_moveing_0.8 model. May because of no statioary frames
+2024-03-22 16:22:06,682 - GlobalLogger - WARNING - Skipping behavior_stimulus_moveing_0.8 model. May because of no statioary frames
+2024-03-22 16:22:06,682 - GlobalLogger - WARNING - Skipping behavior_stimulus_moveing_0.8 model. May because of no statioary frames
+2024-03-22 16:22:06,682 - GlobalLogger - WARNING - Skipping behavior_stimulus_moveing_0.8 model. May because of no statioary frames
+2024-03-22 16:22:06,682 - GlobalLogger - WARNING - Skipping behavior_stimulus_moveing_0.8 model. May because of no statioary frames
+2024-03-22 16:22:06,682 - GlobalLogger - WARNING - Skipping behavior_stimulus_moveing_0.8 model. May because of no statioary frames
+2024-03-22 16:22:06,682 - GlobalLogger - WARNING - Skipping behavior_stimulus_moveing_0.8 model. May because of no statioary frames
+2024-03-22 16:22:06,682 - GlobalLogger - WARNING - Skipping behavior_stimulus_moveing_0.8 model. May because of no statioary frames
+2024-03-22 16:22:06,929 - GlobalLogger - ERROR - behavior_position model. Not fitted.
+2024-03-22 16:22:06,929 - GlobalLogger - ERROR - behavior_position model. Not fitted.
+2024-03-22 16:22:06,929 - GlobalLogger - ERROR - behavior_position model. Not fitted.
+2024-03-22 16:22:06,929 - GlobalLogger - ERROR - behavior_position model. Not fitted.
+2024-03-22 16:22:06,929 - GlobalLogger - ERROR - behavior_position model. Not fitted.
+2024-03-22 16:22:06,929 - GlobalLogger - ERROR - behavior_position model. Not fitted.
+2024-03-22 16:22:06,929 - GlobalLogger - ERROR - behavior_position model. Not fitted.
+2024-03-22 16:22:06,929 - GlobalLogger - ERROR - behavior_position model. Not fitted.
+2024-03-22 16:22:06,929 - GlobalLogger - ERROR - behavior_position model. Not fitted.
+2024-03-22 16:22:06,929 - GlobalLogger - ERROR - behavior_position model. Not fitted.
+2024-03-22 16:22:06,934 - GlobalLogger - WARNING - Skipping behavior_position model. May because of no statioary frames
+2024-03-22 16:22:06,934 - GlobalLogger - WARNING - Skipping behavior_position model. May because of no statioary frames
+2024-03-22 16:22:06,934 - GlobalLogger - WARNING - Skipping behavior_position model. May because of no statioary frames
+2024-03-22 16:22:06,934 - GlobalLogger - WARNING - Skipping behavior_position model. May because of no statioary frames
+2024-03-22 16:22:06,934 - GlobalLogger - WARNING - Skipping behavior_position model. May because of no statioary frames
+2024-03-22 16:22:06,934 - GlobalLogger - WARNING - Skipping behavior_position model. May because of no statioary frames
+2024-03-22 16:22:06,934 - GlobalLogger - WARNING - Skipping behavior_position model. May because of no statioary frames
+2024-03-22 16:22:06,934 - GlobalLogger - WARNING - Skipping behavior_position model. May because of no statioary frames
+2024-03-22 16:22:06,934 - GlobalLogger - WARNING - Skipping behavior_position model. May because of no statioary frames
+2024-03-22 16:22:06,934 - GlobalLogger - WARNING - Skipping behavior_position model. May because of no statioary frames
+2024-03-22 16:22:07,192 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-22 16:22:07,192 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-22 16:22:07,192 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-22 16:22:07,192 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-22 16:22:07,192 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-22 16:22:07,192 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-22 16:22:07,192 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-22 16:22:07,192 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-22 16:22:07,192 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-22 16:22:07,192 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
