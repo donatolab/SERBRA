@@ -1184,7 +1184,7 @@ ax1.set_xticks(label_pos)
 ax1.set_xticklabels(print_labels, rotation=45, ha="right")
 
 
-ylabel = "coefficient of determination (r2 score)"
+ylabel = "mean position in cm"
 
 #ax2.spines["top"].set_visible(False)
 #ax2.spines["right"].set_visible(False)
