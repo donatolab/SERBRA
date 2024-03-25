@@ -435,10 +435,15 @@ def normalize_vector_01(vector):
     return normalized_vector
 
 
-def normalize_matrix_01(matrix):
+def normalize_matrix_01(matrix, axis=1):
     new_matrix = np.zeros(matrix.shape)
-    for i in range(matrix.shape[1]):
-        new_matrix[:, i] = normalize_vector_01(matrix[:, i])
+    for i in range(matrix.shape[axis]):
+        if axis == 0:
+            new_matrix[i, :] = normalize_vector_01(matrix[i, :])
+        elif axis == 1:
+            new_matrix[:, i] = normalize_vector_01(matrix[:, i])
+        else:
+            raise ValueError("Axis must be 0 or 1. 3D not supported.")
     return new_matrix
 
 
@@ -2305,7 +2310,7 @@ class Vizualizer:
         plt.legend(bbox_to_anchor=(0.5, 0.3), frameon=False)
         self.plot_ending(title)
 
-    def plot_ending(self, title):
+    def plot_ending(self, title, save=True):
         plt.suptitle(title)
         plt.tight_layout()  # Ensure subplots fit within figure area
         plot_save_path = (
@@ -2313,8 +2318,10 @@ class Vizualizer:
             .replace(">", "bigger")
             .replace("<", "smaller")
         )
-        plt.savefig(plot_save_path, dpi=300)
+        if save:
+            plt.savefig(plot_save_path, dpi=300)
         plt.show()
+        plt.close()
 
     def plot_consistency_scores(self, ax1, title, embeddings, labels, dataset_ids):
         (
