@@ -559,6 +559,49 @@ def fill_continuous_array(data_array, fps, time_gap):
     return filled_array
 
 
+def fill_vector(vector, indices, fill_value=np.nan):
+    filled_vector = vector.copy()
+    filled_vector[indices] = fill_value
+    return filled_vector
+
+
+def fill_matrix(matrix, indices, fill_value=np.nan, axis=0):
+    filled_matrix = matrix.copy()
+    if axis == 0:
+        filled_matrix[indices, :] = fill_value
+    elif axis == 1:
+        filled_matrix[:, indices] = fill_value
+    else:
+        raise ValueError("Axis must be 0 or 1. 3D not supported.")
+    return filled_matrix
+
+
+def fill(matrix, indices, fill_value=np.nan):
+    if len(matrix.shape) == 1:
+        return fill_vector(matrix, indices, fill_value)
+    else:
+        return fill_matrix(matrix, indices, fill_value)
+
+
+def fill_inputs(inputs: dict, indices: np.ndarray, fill_value=np.nan):
+    filtered_inputs = inputs.copy()
+    for key, value in filtered_inputs.items():
+        if len(value.shape) == 1:
+            filtered_inputs[key] = fill_vector(value, indices, fill_value=fill_value)
+        else:
+            filtered_inputs[key] = fill_matrix(value, indices, fill_value=fill_value)
+    return filtered_inputs
+
+
+def get_top_percentile_indices(vector, percentile=5, indices_smaller=True):
+    cutoff = np.percentile(vector, 100 - percentile)
+    if indices_smaller:
+        indices = np.where(vector < cutoff)[0]
+    else:
+        indices = np.where(vector > cutoff)[0]
+    return indices
+
+
 # dict
 def filter_dict_by_properties(
     dictionary,
