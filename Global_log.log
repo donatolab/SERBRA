@@ -514,3 +514,80 @@
 2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
 2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
 2024-03-22 16:22:07,197 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-25 10:26:16,162 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-25 10:26:16,199 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-25 10:26:16,240 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_distance_moving model already trained. Skipping.
+2024-03-25 10:26:16,245 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-25 10:26:16,603 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-25 10:26:16,603 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-25 11:25:54,131 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving_0.8 model.
+2024-03-25 11:25:54,131 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving_0.8 model.
+2024-03-25 11:31:08,202 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_stimulus_moving_0.8_iter-20000_dim-3_model-S1.pt
+2024-03-25 11:31:08,202 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_stimulus_moving_0.8_iter-20000_dim-3_model-S1.pt
+2024-03-25 11:31:08,244 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-25 11:31:08,244 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-25 13:17:32,259 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-25 13:17:32,259 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-25 13:17:32,259 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-25 13:17:32,259 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-25 13:17:32,259 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-25 13:30:55,076 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_position_moving_0.8_iter-20000_dim-3_model-S1.pt
+2024-03-25 13:30:55,076 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_position_moving_0.8_iter-20000_dim-3_model-S1.pt
+2024-03-25 13:30:55,076 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_position_moving_0.8_iter-20000_dim-3_model-S1.pt
+2024-03-25 13:30:55,076 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_position_moving_0.8_iter-20000_dim-3_model-S1.pt
+2024-03-25 13:30:55,076 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_position_moving_0.8_iter-20000_dim-3_model-S1.pt
+2024-03-25 13:30:55,127 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:30:55,127 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:30:55,127 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:30:55,127 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:30:55,127 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:32:06,589 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:32:06,589 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:32:06,589 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:32:06,589 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:32:06,589 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:33:18,449 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:33:18,449 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:33:18,449 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:33:18,449 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:33:18,449 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:34:30,296 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:34:30,296 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:34:30,296 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:34:30,296 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:34:30,296 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:35:42,851 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:35:42,851 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:35:42,851 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:35:42,851 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:35:42,851 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:36:56,941 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:36:56,941 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:36:56,941 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:36:56,941 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:36:56,941 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:38:11,640 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:38:11,640 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:38:11,640 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:38:11,640 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:38:11,640 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:39:26,525 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:39:26,525 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:39:26,525 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:39:26,525 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:39:26,525 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:46:25,888 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:46:25,888 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:46:25,888 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:46:25,888 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:46:25,888 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-27 13:29:54,627 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S1.pt
+2024-03-27 13:29:54,638 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S1.pt
+2024-03-27 13:29:54,645 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S1.pt
+2024-03-27 13:29:54,654 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S2.pt
+2024-03-27 13:29:54,664 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S2.pt
+2024-03-27 13:29:54,669 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S2.pt
+2024-03-27 13:29:54,679 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S3.pt
+2024-03-27 13:29:54,687 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S3.pt
+2024-03-27 13:29:54,696 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S3.pt
+2024-03-27 16:48:39,332 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\DON-004366_20210301_S1_ca_data.npy

@@ -6,6 +6,7 @@ tasks_infos:
     neural_metadata:
       method: 1P
       area: CA3 # e.g. CA3
+      imaging_setup: inscopix
       preprocessing_software: inscopix
       fps: 20
     behavior_metadata:

@@ -502,3 +502,119 @@
 2024-03-22 16:24:50,244 - GlobalLogger - WARNING - No data to transform given. Using default labels.
 2024-03-22 16:24:51,359 - GlobalLogger - ERROR - No embedding labels given.
 2024-03-22 16:24:51,360 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-24 19:47:24,132 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_time_iter-20000_dim-3_model-S1.pt
+2024-03-24 19:47:24,143 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_iter-20000_dim-3_model-S1.pt
+2024-03-24 19:47:24,152 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_hybrid_iter-20000_dim-3_model-S1.pt
+2024-03-24 19:47:24,164 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_time_iter-20000_dim-3_model-S2.pt
+2024-03-24 19:47:24,175 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_iter-20000_dim-3_model-S2.pt
+2024-03-24 19:47:24,184 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_hybrid_iter-20000_dim-3_model-S2.pt
+2024-03-24 19:47:24,197 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_time_iter-20000_dim-3_model-S3.pt
+2024-03-24 19:47:24,208 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_iter-20000_dim-3_model-S3.pt
+2024-03-24 19:47:24,216 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_hybrid_iter-20000_dim-3_model-S3.pt
+2024-03-24 19:47:24,217 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_ca_data.npy
+2024-03-24 19:47:24,255 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-03-24 19:47:26,974 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_pos_track.npy
+2024-03-24 19:47:27,403 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_distance_track.npy
+2024-03-24 19:47:27,745 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_velocity_track.npy
+2024-03-24 19:47:28,153 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_moving_track.npy
+2024-03-24 19:47:28,478 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_acceleration_track.npy
+2024-03-24 19:47:28,945 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_stimulus_track.npy
+2024-03-24 19:47:29,298 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_ca_data.npy
+2024-03-24 19:47:29,320 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-03-24 19:47:31,459 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_pos_track.npy
+2024-03-24 19:47:31,813 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_distance_track.npy
+2024-03-24 19:47:32,152 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_velocity_track.npy
+2024-03-24 19:47:32,586 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_moving_track.npy
+2024-03-24 19:47:32,902 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_acceleration_track.npy
+2024-03-24 19:47:33,284 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_stimulus_track.npy
+2024-03-24 19:47:33,605 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_ca_data.npy
+2024-03-24 19:47:33,644 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-03-24 19:47:36,334 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_pos_track.npy
+2024-03-24 19:47:36,692 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_distance_track.npy
+2024-03-24 19:47:37,106 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_velocity_track.npy
+2024-03-24 19:47:37,503 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_moving_track.npy
+2024-03-24 19:47:37,827 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_acceleration_track.npy
+2024-03-24 19:47:38,232 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_stimulus_track.npy
+2024-03-24 19:48:36,858 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_position_moving_iter-20000_dim-3_model-S1.pt
+2024-03-24 19:48:36,907 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-24 19:48:36,930 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_stimulus_moving_iter-20000_dim-3_model-S1.pt
+2024-03-24 19:48:36,973 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-24 19:48:36,992 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_distance_moving_iter-20000_dim-3_model-S1.pt
+2024-03-24 19:48:37,032 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_distance_moving model already trained. Skipping.
+2024-03-24 19:48:37,036 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-24 19:48:38,173 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-24 19:48:38,174 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-25 10:26:16,162 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving model already trained. Skipping.
+2024-03-25 10:26:16,199 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving model already trained. Skipping.
+2024-03-25 10:26:16,240 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_distance_moving model already trained. Skipping.
+2024-03-25 10:26:16,245 - GlobalLogger - WARNING - No data to transform given. Using default labels.
+2024-03-25 10:26:16,603 - GlobalLogger - ERROR - No embedding labels given.
+2024-03-25 10:26:16,603 - GlobalLogger - WARNING - Using behavior_data_types: ['position', 'stimulus', 'distance']
+2024-03-25 11:25:54,131 - GlobalLogger - INFO - DON-004366_20210228_S1: Training  behavior_distance_moving_0.8 model.
+2024-03-25 11:31:08,202 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_stimulus_moving_0.8_iter-20000_dim-3_model-S1.pt
+2024-03-25 11:31:08,244 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-25 13:17:32,259 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_stimulus_moving_0.8 model already trained. Skipping.
+2024-03-25 13:30:55,076 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_position_moving_0.8_iter-20000_dim-3_model-S1.pt
+2024-03-25 13:30:55,127 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:32:06,589 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:33:18,449 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:34:30,296 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:35:42,851 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:36:56,941 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:38:11,640 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:39:26,525 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-25 13:46:25,888 - GlobalLogger - INFO - DON-004366_20210228_S1: behavior_position_moving_0.8 model already trained. Skipping.
+2024-03-27 09:33:41,950 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_time_iter-20000_dim-3_model-S1.pt
+2024-03-27 09:33:41,973 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_iter-20000_dim-3_model-S1.pt
+2024-03-27 09:33:41,991 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_hybrid_iter-20000_dim-3_model-S1.pt
+2024-03-27 09:33:42,012 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_time_iter-20000_dim-3_model-S2.pt
+2024-03-27 09:33:42,036 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_iter-20000_dim-3_model-S2.pt
+2024-03-27 09:33:42,054 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_hybrid_iter-20000_dim-3_model-S2.pt
+2024-03-27 09:33:42,074 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_time_iter-20000_dim-3_model-S3.pt
+2024-03-27 09:33:42,096 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_behavior_iter-20000_dim-3_model-S3.pt
+2024-03-27 09:33:42,114 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\models\cebra_hybrid_iter-20000_dim-3_model-S3.pt
+2024-03-27 09:33:42,115 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_ca_data.npy
+2024-03-27 09:33:42,547 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-03-27 09:33:45,321 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_pos_track.npy
+2024-03-27 09:33:45,712 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_distance_track.npy
+2024-03-27 09:33:46,045 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_velocity_track.npy
+2024-03-27 09:33:46,433 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_moving_track.npy
+2024-03-27 09:33:46,785 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_acceleration_track.npy
+2024-03-27 09:33:47,182 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S1_stimulus_track.npy
+2024-03-27 09:33:47,518 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_ca_data.npy
+2024-03-27 09:33:47,734 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-03-27 09:33:49,888 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_pos_track.npy
+2024-03-27 09:33:50,275 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_distance_track.npy
+2024-03-27 09:33:50,694 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_velocity_track.npy
+2024-03-27 09:33:51,111 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_moving_track.npy
+2024-03-27 09:33:51,417 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_acceleration_track.npy
+2024-03-27 09:33:51,788 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S2_stimulus_track.npy
+2024-03-27 09:33:52,097 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_ca_data.npy
+2024-03-27 09:33:52,522 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-03-27 09:33:55,250 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_pos_track.npy
+2024-03-27 09:33:55,721 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_distance_track.npy
+2024-03-27 09:33:56,053 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_velocity_track.npy
+2024-03-27 09:33:56,439 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_moving_track.npy
+2024-03-27 09:33:56,749 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_acceleration_track.npy
+2024-03-27 09:33:57,140 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\DON-004366_20210228_S3_stimulus_track.npy
+2024-03-27 13:29:27,952 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S1.pt
+2024-03-27 13:29:27,974 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S1.pt
+2024-03-27 13:29:27,990 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S1.pt
+2024-03-27 13:29:28,016 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S2.pt
+2024-03-27 13:29:28,036 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S2.pt
+2024-03-27 13:29:28,054 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S2.pt
+2024-03-27 13:29:28,078 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S3.pt
+2024-03-27 13:29:28,102 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S3.pt
+2024-03-27 13:29:28,118 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S3.pt
+2024-03-27 13:29:28,119 - GlobalLogger - WARNING - No neural data found at D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\DON-004366_20210301_S1_ca_data.npy.
+2024-03-27 13:29:28,119 - GlobalLogger - WARNING - No raw data given. Creation not possible. Skipping.
+2024-03-27 13:29:54,627 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S1.pt
+2024-03-27 13:29:54,638 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S1.pt
+2024-03-27 13:29:54,645 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S1.pt
+2024-03-27 13:29:54,654 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S2.pt
+2024-03-27 13:29:54,664 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S2.pt
+2024-03-27 13:29:54,669 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S2.pt
+2024-03-27 13:29:54,679 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S3.pt
+2024-03-27 13:29:54,687 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S3.pt
+2024-03-27 13:29:54,696 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S3.pt
+2024-03-27 16:48:39,332 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\DON-004366_20210301_S1_ca_data.npy

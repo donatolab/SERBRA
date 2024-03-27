@@ -18,6 +18,7 @@ import re
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.ticker import MaxNLocator
+import seaborn as sns
 
 
 from cebra import CEBRA
@@ -50,10 +51,10 @@ def decode(
     # TODO: Improve decoder
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
     decoder = cebra.KNNDecoder(n_neighbors=n_neighbors, metric=metric)
-    label_train = force_2d(label_train)
-    # label_train = force_1_dim_larger(label_train)
+    label_train = Dataset.force_2d(label_train)
+    # label_train = Dataset.force_1_dim_larger(label_train)
 
-    label_test = force_2d(label_test)
+    label_test = Dataset.force_2d(label_test)
     # label_test = force_1_dim_larger(label_test)
 
     embedding_train, label_train = force_equal_dimensions(embedding_train, label_train)
@@ -365,34 +366,6 @@ def butter_lowpass_filter(data, cutoff, fs, order=5):
     return y
 
 
-def force_1_dim_larger(arr: np.ndarray):
-    if len(arr.shape) == 1 or arr.shape[0] < arr.shape[1]:
-        global_logger.warning(
-            f"Data is probably transposed. Needed Shape [Time, cells] Transposing..."
-        )
-        print("Data is probably transposed. Needed Shape [Time, cells] Transposing...")
-        return arr.T  # Transpose the array if the condition is met
-    else:
-        return arr  # Return the original array if the condition is not met
-
-
-def force_2d(arr: np.ndarray):
-    arr_2d = arr
-    if len(arr.shape) == 1:
-        arr_2d = np.array([arr])
-        arr_2d = arr_2d.T
-    return arr_2d
-
-
-def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
-    shape_0_diff = array1.shape[0] - array2.shape[0]
-    if shape_0_diff > 0:
-        array1 = array1[:-shape_0_diff]
-    elif shape_0_diff < 0:
-        array2 = array2[:shape_0_diff]
-    return array1, array2
-
-
 def cosine_similarity(v1, v2):
     """
     A cosine similarity can be seen as the correlation between two vectors.
@@ -638,8 +611,27 @@ def get_str_from_dict(dictionary, keys):
     return string
 
 
+def keys_present(dictionary, keys):
+    present_keys = dictionary.keys()
+    for key in keys:
+        if key not in present_keys:
+            return key
+    return True
+
+
 # class
 def define_cls_attributes(cls_object, attributes_dict, override=False):
+    """
+    Defines attributes for a class object based on a dictionary.
+
+    Args:
+        cls_object (object): The class object to define attributes for.
+        attributes_dict (dict): A dictionary containing attribute names as keys and their corresponding values.
+        override (bool, optional): If True, existing attributes will be overridden. Defaults to False.
+
+    Returns:
+        object: The modified class object with the defined attributes.
+    """
     for key, value in attributes_dict.items():
         if key not in cls_object.__dict__.keys() or override:
             setattr(cls_object, key, value)
@@ -647,7 +639,11 @@ def define_cls_attributes(cls_object, attributes_dict, override=False):
 
 
 def copy_attributes_to_object(
-    propertie_name_list, set_object, get_object=None, propertie_values=None
+    propertie_name_list,
+    set_object,
+    get_object=None,
+    propertie_values=None,
+    override=True,
 ):
     """
     Set attributes of a target object based on a list of property names and values.
@@ -698,6 +694,8 @@ def copy_attributes_to_object(
         propertie_values if propertie_values else [None] * len(propertie_name_list)
     )
     for propertie, value in zip(propertie_name_list, propertie_values):
+        if propertie in set_object.__dict__.keys() and not override:
+            continue
         setattr(set_object, propertie, value)
 
 
@@ -727,23 +725,25 @@ def set_attributes_check_presents(
         present = attributes_present(needed_attributes, set_object)
         if present != True:
             raise NameError(
-                f"Variable {present} is not defined in yaml file {set_object.yaml_path}"
+                f"Variable {present} is not defined in yaml file for {set_object.id}"
             )
 
 
 class DataPlotterInterface:
     def __init__(self):
         self.data = None
-        self.title = None
-        self.ylable = None
-        self.ylimits = None
-        self.yticks = None
-        self.xlable = None
-        self.xlimits = None
-        self.xticks = None
-        self.num_ticks = None
-        self.figsize = None
-        self.save_path = None
+        self.plot_attributes = {
+            "title": None,
+            "ylable": None,
+            "ylimits": None,
+            "yticks": None,
+            "xlable": None,
+            "xlimits": None,
+            "xticks": None,
+            "num_ticks": None,
+            "figsize": None,
+            "save_path": None,
+        }
 
     def set_plot_parameter(
         self,
@@ -761,36 +761,58 @@ class DataPlotterInterface:
         save_path=None,
     ):
         self.fps = self.fps or fps or 30
-        self.title = self.title or title or f"{self.path.stem} data"
-        self.title = self.title if self.title[-4:] == "data" else self.title + " data"
+        self.plot_attributes["title"] = (
+            self.plot_attributes["title"] or title or f"{self.path.stem} data"
+        )
+        self.plot_attributes["title"] = (
+            self.plot_attributes["title"]
+            if self.plot_attributes["title"][-4:] == "data"
+            else self.plot_attributes["title"] + " data"
+        )
         descriptive_metadata_keys = [
             "area",
             "stimulus_type",
             "method",
             "processing_software",
         ]
-        self.title += get_str_from_dict(
+        self.plot_attributes["title"] += get_str_from_dict(
             dictionary=self.metadata, keys=descriptive_metadata_keys
         )
-        self.ylable = self.ylable or ylable or self.key
-        self.ylimits = self.ylimits or ylimits or None
-        self.yticks = self.yticks or yticks or None
-        self.xlable = self.xlable or xlable or "seconds"
-        self.xlimits = self.xlimits or xlimits or (0, len(self.data))
-        self.xticks = self.xticks or xticks or None
-        self.num_ticks = self.num_ticks or num_ticks or 50
-        self.figsize = self.figsize or figsize or (20, 3)
+        self.plot_attributes["ylable"] = (
+            self.plot_attributes["ylable"] or ylable or self.key
+        )
+        self.plot_attributes["ylimits"] = (
+            self.plot_attributes["ylimits"] or ylimits or None
+        )
+        self.plot_attributes["yticks"] = (
+            self.plot_attributes["yticks"] or yticks or None
+        )
+        self.plot_attributes["xlable"] = (
+            self.plot_attributes["xlable"] or xlable or "seconds"
+        )
+        self.plot_attributes["xlimits"] = (
+            self.plot_attributes["xlimits"] or xlimits or (0, len(self.data))
+        )
+        self.plot_attributes["xticks"] = (
+            self.plot_attributes["xticks"] or xticks or None
+        )
+        self.plot_attributes["num_ticks"] = (
+            self.plot_attributes["num_ticks"] or num_ticks or 50
+        )
+        self.plot_attributes["figsize"] = (
+            self.plot_attributes["figsize"] or figsize or (20, 3)
+        )
         self.regenerate_plot = regenerate_plot or False
-        self.save_path = (
-            self.save_path
+        self.plot_attributes["save_path"] = (
+            self.plot_attributes["save_path"]
             or save_path
             or self.path.parent.parent.parent.joinpath(
                 "figures", self.path.stem + ".png"
             )
         )
         # create plot dir if missing
-        if not self.save_path.parent.exists():
-            self.save_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self.plot_attributes["save_path"].parent.exists():
+            self.plot_attributes["save_path"].parent.mkdir(parents=True, exist_ok=True)
 
     def set_data_plot(self):
         plt.plot(self.data)
@@ -807,7 +829,7 @@ class DataPlotterInterface:
             for frame in range(num_frames)
             if frame % frame_interval == 0
         ]
-        steps = round(len(time) / (2 * self.num_ticks))
+        steps = round(len(time) / (2 * self.plot_attributes["num_ticks"]))
         time_shortened = time[::steps]
         pos = np.arange(0, num_frames, frame_interval)[::steps]
         labels = [
@@ -850,31 +872,33 @@ class DataPlotterInterface:
             save_path=save_path,
         )
 
-        plt.figure(figsize=self.figsize)
-        if regenerate_plot or not save_file_present(self.save_path):
-            plt.title(self.title)
-            plt.ylabel(self.ylable)
-            if self.ylimits:
-                plt.ylim(self.ylimits)
-            if self.yticks:
-                plt.yticks(self.yticks[0], self.yticks[1])
-            plt.xlabel(self.xlable)
+        plt.figure(figsize=self.plot_attributes["figsize"])
+        if regenerate_plot or not save_file_present(self.plot_attributes["save_path"]):
+            plt.title(self.plot_attributes["title"])
+            plt.ylabel(self.plot_attributes["ylable"])
+            if self.plot_attributes["ylimits"]:
+                plt.ylim(self.plot_attributes["ylimits"])
+            if self.plot_attributes["yticks"]:
+                plt.yticks(
+                    self.plot_attributes["yticks"][0], self.plot_attributes["yticks"][1]
+                )
+            plt.xlabel(self.plot_attributes["xlable"])
             plt.tight_layout()
-            plt.xlim(self.xlimits)
+            plt.xlim(self.plot_attributes["xlimits"])
 
             self.set_data_plot()
 
-            if self.xticks:
-                plt.xticks(self.xticks)
+            if self.plot_attributes["xticks"]:
+                plt.xticks(self.plot_attributes["xticks"])
             else:
                 self.set_xticks_plot(
                     seconds_interval=seconds_interval,
                     written_label_steps=written_label_steps,
                 )
-            plt.savefig(self.save_path, dpi=dpi)
+            plt.savefig(self.plot_attributes["save_path"], dpi=dpi)
         else:
             # Load the image
-            image = plt.imread(self.save_path)
+            image = plt.imread(self.plot_attributes["save_path"])
             plt.imshow(image)
             plt.axis("off")
 
@@ -892,7 +916,7 @@ class Dataset(DataPlotterInterface):
         self.key = key
         self.raw_data_object = raw_data_object
         self.metadata = metadata
-        self.fps = metadata["fps"] if "fps" in metadata.keys() else None
+        self.fps = None if "fps" not in self.metadata.keys() else self.metadata["fps"]
 
     # TODO: use __subclass__?
     # def __init_subclass__(cls, key: str, **kwargs):
@@ -909,6 +933,8 @@ class Dataset(DataPlotterInterface):
     ):
         if not type(self.data) == np.ndarray:
             self.path = path if path else self.path
+
+            # if no raw data exists, regeneration is not possible
             if not self.raw_data_object and regenerate:
                 global_logger.warning(f"No raw data given. Regeneration not possible.")
                 global_logger.info(f"Loading old data.")
@@ -916,6 +942,8 @@ class Dataset(DataPlotterInterface):
                     f"No raw data given. Regeneration not possible. Loading old data."
                 )
                 regenerate = False
+
+            # Check if the file exists, and if it does, load the data, else create the dataset
             if path.exists() and not regenerate:
                 global_logger.info(f"Loading {self.path}")
                 print(f"Loading {self.path}")
@@ -926,7 +954,7 @@ class Dataset(DataPlotterInterface):
                 data_dimensions = self.data.shape
                 if len(data_dimensions) == 2:
                     # format of data should be [num_time_points, num_cells]
-                    self.data = force_1_dim_larger(arr=self.data)
+                    self.data = self.force_1_dim_larger(arr=self.data)
             else:
                 global_logger.warning(f"No {self.key} data found at {self.path}.")
                 print(f"No {self.key} data found at {self.path}.")
@@ -966,15 +994,51 @@ class Dataset(DataPlotterInterface):
     def correct_data(self, data):
         return data
 
-    def split(self, split_ratio=0.8):
-        data = self.data
+    @staticmethod
+    def split(data, split_ratio=0.8):
         split_index = int(len(data) * split_ratio)
         data_train = data[:split_index]
         data_test = data[split_index:]
         return data_train, data_test
 
-    def shuffle(self):
-        return sklearn.utils.shuffle(self.data)
+    @staticmethod
+    def shuffle(data):
+        return sklearn.utils.shuffle(data)
+
+    @staticmethod
+    def filter_by_idx(data, idx_to_keep=None):
+        if isinstance(idx_to_keep, np.ndarray) or isinstance(idx_to_keep, list):
+            data_unfiltered, idx_to_keep = force_equal_dimensions(data, idx_to_keep)
+            data_filtered = data_unfiltered[idx_to_keep]
+            return data_filtered
+        else:
+            global_logger
+            print(f"No idx_to_keep given. Returning unfiltered data.")
+            return data
+
+    @staticmethod
+    def force_1_dim_larger(data: np.ndarray):
+        if len(data.shape) == 1 or data.shape[0] < data.shape[1]:
+            global_logger.warning(
+                f"Data is probably transposed. Needed Shape [Time, cells] Transposing..."
+            )
+            print(
+                "Data is probably transposed. Needed Shape [Time, cells] Transposing..."
+            )
+            return data.T  # Transpose the array if the condition is met
+        else:
+            return data  # Return the original array if the condition is not met
+
+    @staticmethod
+    def force_2d(data: np.ndarray):
+        data_2d = data
+        dimensions = len(data.shape)
+        if dimensions == 1:
+            data_2d = np.array([data])
+            data_2d = data_2d.T
+        elif dimensions > 2:
+            raise ValueError("Data has more than 2 dimensions.")
+        return data_2d
 
 
 class Data_Position(Dataset):
@@ -1094,7 +1158,7 @@ class Data_Velocity(Dataset):
             key="velocity", raw_data_object=raw_data_object, metadata=metadata
         )
         self.raw_velocitys = None
-        self.ylable = "velocity cm/s"
+        self.plot_attributes["ylable"] = "velocity cm/s"
 
     def process_raw_data(self):
         """
@@ -1125,7 +1189,7 @@ class Data_Acceleration(Dataset):
             key="acceleration", raw_data_object=raw_data_object, metadata=metadata
         )
         self.raw_acceleration = None
-        self.ylable = "acceleration cm/s^2"
+        self.plot_attributes["ylable"] = "acceleration cm/s^2"
 
     def process_raw_data(self):
         """
@@ -1149,9 +1213,9 @@ class Data_Moving(Dataset):
         super().__init__(
             key="moving", raw_data_object=raw_data_object, metadata=metadata
         )
-        self.ylable = "Movement State"
-        self.ylimits = (-0.1, 1.1)
-        self.yticks = [[0, 1], ["Stationary", "Moving"]]
+        self.plot_attributes["ylable"] = "Movement State"
+        self.plot_attributes["ylimits"] = (-0.1, 1.1)
+        self.plot_attributes["yticks"] = [[0, 1], ["Stationary", "Moving"]]
         self.velocity_threshold = 2  # cm/s
         self.brain_processing_delay = {
             "CA1": 2,  # seconds
@@ -1180,14 +1244,32 @@ class Data_Moving(Dataset):
         return self.fit_moving_to_brainarea(data, self.metadata["area"])
 
 
-class Data_CA(Dataset):
+class Data_CAM(Dataset):
     def __init__(self, raw_data_object=None, metadata=None):
+        super().__init__(key="cam", raw_data_object=raw_data_object, metadata=metadata)
+        vr_root_folder = "0000VR"  # VR
+        cam_root_folder = "0000MC"  # Cam Data
+        cam_top_root_folder = "000BSM"  # Top View Mousecam
+        # TODO: implement cam data loading
+
+
+class Data_CA(Dataset):
+    def __init__(self, path=None, raw_data_object=None, metadata=None):
         super().__init__(
-            key="neural", raw_data_object=raw_data_object, metadata=metadata
+            key="calcium", path=path, raw_data_object=raw_data_object, metadata=metadata
         )
-        self.title = f"Raster Plot of Binarized Neural Data: : {self.metadata}"
-        self.ylable = "Neuron ID"
-        self.figsize = (20, 10)
+        needed_attributes = ["method", "preprocessing_software", "imaging_setup"]
+        present = keys_present(metadata, needed_attributes)
+        if present != True:
+            raise NameError(
+                f"Missing metadata for {self.key} dataset: {present} not defined."
+            )
+        self.setup, self.preprocess = self.define_data_preprocessing()
+        self.plot_attributes["title"] = (
+            f"Raster Plot of Binarized Calcium Data: : {self.metadata}"
+        )
+        self.plot_attributes["ylable"] = "Neuron ID"
+        self.plot_attributes["figsize"] = (20, 10)
 
     def set_data_plot(self):
         binarized_data = self.data
@@ -1202,22 +1284,99 @@ class Data_CA(Dataset):
         plt.imshow(image, cmap="gray", aspect="auto", interpolation="none")
         plt.gca().invert_yaxis()  # Invert y-axis for better visualization of trials/neurons
 
+    def define_data_preprocessing(self):
+        imaging_setup = self.metadata["imaging_setup"]
+        if imaging_setup == "femtonics":
+            setup = femtonics_setup()
+        elif imaging_setup == "thorlabs":
+            setup = thorlabs_setup()
+        elif imaging_setup == "inscopix":
+            setup = inscopix_setup()
+        else:
+            raise ValueError(f"Imaging setup {imaging_setup} not supported.")
 
-class Data_CAM(Dataset):
-    def __init__(self, raw_data_object=None, metadata=None):
-        super().__init__(key="cam", raw_data_object=raw_data_object, metadata=metadata)
-        # TODO: implement cam data loading
+        preprocessing_software = self.metadata["preprocessing_software"]
+        if preprocessing_software == "suite2p":
+            preprocess = suite2p_preprocessing()
+        elif preprocessing_software == "inscopix":
+            preprocess = inscopix_preprocessing()
+
+        return setup, preprocess
+
+
+class Data_Probe(Dataset):
+    def __init__(self, path=None, raw_data_object=None, metadata=None):
+        super().__init__(
+            key="probe", path=path, raw_data_object=raw_data_object, metadata=metadata
+        )
+        pass
+
+
+# Imaging Setup Classes
+class femtonics_setup:
+    def __init__(self):
+        root_folder = "002P-F"
+        # TODO: output files not defined
+        # TODO: naming not correct defined
+        output_fname = "animalid_sessiondate_taskname.mesc"
+
+
+class thorlabs_setup:
+    def __init__(self):
+        root_folder = "002P-T"
+        output_fname = "data\Image_001_001.raw"
+        # TODO: output files not defined
+
+
+class inscopix_setup:
+    def __init__(self):
+        root_folder = "001P-I"
+        output_fname = None
+        # TODO: output files not defined
+
+
+# Preprocessing Classes
+class inscopix_preprocessing:
+    def __init__(self):
+        # TODO: implement inscopix manager
+        # TODO: implement inscopix attributes
+        default_folder = None
+        pass
+
+
+class suite2p_preprocessing:
+    def __init__(self):
+        # TODO: implement suite2p manager
+        self.default_folder = Path("tif", "suite2p", "plane0")
+        self.output_fnames = {
+            "f_raw": "F.npy",
+            "f_neuropil": "F_neu.npy",
+            "iscell": "iscell.npy",
+            "ops": "ops.npy",
+            "spks": "spks.npy",
+            "stat": "stat.npy",
+            "cabincorr": "binarized_traces.npz",
+            "cell_geldrying": "cell_drying.npy",
+            "binary": "data.bin",
+        }
+        self.preprocessing_output_fpaths = {
+            key: self.default_folder.joinpath(value)
+            for key, value in self.output_fnames.items()
+        }
 
 
 class Datasets:
-    def __init__(self, data_dir, metadata={}):
-        self.data_dir = data_dir
+    def __init__(self, root_dir, metadata={}):
+        if "data_dir" in metadata.keys():
+            self.data_dir = Path(root_dir).joinpath(metadata["data_dir"])
+        else:
+            self.data_dir = Path(root_dir)
         self.metadata = metadata
         self.data_sources = {}
 
-    def load(self, taskial_fname, data_source, regenerate_plot=False):
+    def load(self, task_name, data_source, regenerate_plot=False):
         fname_ending = self.data_sources[data_source]
-        fname = f"{taskial_fname}_{fname_ending}.npy"
+        fname = f"{task_name}_{fname_ending}.npy"
         fpath = self.data_dir.joinpath(fname)
         data_object = getattr(self, data_source)
         data = data_object.load(fpath, regenerate_plot=regenerate_plot)
@@ -1234,55 +1393,78 @@ class Datasets:
             if type(concatenated_data) != np.ndarray:
                 concatenated_data = data
             else:
-                concatenated_data, data = force_equal_dimensions(
+                concatenated_data, data = self.force_equal_dimensions(
                     concatenated_data, data
                 )
                 concatenated_data = np.concatenate([concatenated_data, data], axis=1)
-        concatenated_data_filtered = self.filter_by_idx(
+        concatenated_data_filtered = Dataset.filter_by_idx(
             concatenated_data, idx_to_keep=idx_to_keep
         )
         concatenated_data_shuffled = (
-            self.shuffle(concatenated_data_filtered)
+            Dataset.shuffle(concatenated_data_filtered)
             if shuffle
             else concatenated_data_filtered
         )
-        concatenated_data_tain, concatenated_data_test = self.split(
+        concatenated_data_tain, concatenated_data_test = Dataset.split(
             concatenated_data_shuffled, split_ratio
         )
         return concatenated_data_tain, concatenated_data_test
 
-    def split(self, data, split_ratio=0.8):
-        split_index = int(len(data) * split_ratio)
-        data_train = data[:split_index]
-        data_test = data[split_index:]
-        return data_train, data_test
-
-    def shuffle(self, data):
-        return sklearn.utils.shuffle(data)
-
-    def filter_by_idx(self, data, idx_to_keep=None):
-        if isinstance(idx_to_keep, np.ndarray) or isinstance(idx_to_keep, list):
-            data_unfiltered, idx_to_keep = force_equal_dimensions(data, idx_to_keep)
-            data_filtered = data_unfiltered[idx_to_keep]
-            return data_filtered
-        else:
-            global_logger
-            print(f"No idx_to_keep given. Returning unfiltered data.")
-            return data
+    @staticmethod
+    def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
+        """
+        Force two arrays to have the same dimensions.
+        By cropping the larger array to the size of the smaller array.
+        """
+        shape_0_diff = array1.shape[0] - array2.shape[0]
+        if shape_0_diff > 0:
+            array1 = array1[:-shape_0_diff]
+        elif shape_0_diff < 0:
+            array2 = array2[:shape_0_diff]
+        return array1, array2
 
 
-class Datasets_neural(Datasets):
-    def __init__(self, data_dir, metadata={}):
-        super().__init__(data_dir, metadata=metadata)
-        self.suite2p = Data_CA(metadata=self.metadata)
-        self.inscopix = Data_CA(metadata=self.metadata)
+class Datasets_Neural(Datasets):
+    def __init__(self, root_dir, metadata={}):
+        super().__init__(root_dir, metadata=metadata)
+        # TODO: currently not able to manage individual analyzed sessions, needed?
+        self.photon = Data_CA(metadata=self.metadata)
+        self.probe = Data_Probe(metadata=self.metadata)
         # TODO: split into different datasets if needed
-        self.data_sources = {"suite2p": "ca_data", "inscopix": "ca_data"}
+        self.photon_imaging_methods = ["femtonics", "thorlabs", "inscopix"]
+        self.probe_imaging_methods = ["neuropixels", "tetrode"]
+        self.data_sources = {"photon": "ca_data", "probe": "ca_data"}
+
+    def load(self, task_name, data_source, regenerate_plot=False):
+        if data_source in self.photon_imaging_methods:
+            imaging_type = "photon"
+        elif data_source in self.probe_imaging_methods:
+            imaging_type = "probe"
+        else:
+            raise ValueError(f"Imaging type {data_source} not supported.")
+
+this part needs to be build correct, so photons loading function needs to be build
+...................................................................
+        fname_ending = self.data_sources[imaging_type]
+        fname = f"{task_name}_{fname_ending}.npy"
+        fpath = self.data_dir.joinpath(fname)
+        data_object = getattr(self, imaging_type)
+        data = data_object.load(fpath, regenerate_plot=regenerate_plot)
+...................................................................
+        return data
 
 
-class Datasets_behavior(Datasets):
-    def __init__(self, data_dir, metadata={}):
-        super().__init__(data_dir, metadata=metadata)
+class Datasets_Behavior(Datasets):
+    def __init__(self, root_dir, metadata={}):
+        super().__init__(root_dir, metadata=metadata)
+        movement_root_folder = "TRD-2P"  # Treadmil 2P
+        movement_1p_root_folder = "TRD-1P"  # Treadmil 1P
+        movement_train_root_folder = "TRD-TR"  # Treadmil training
+        self.data_dir = (
+            self.data_dir
+            if not self.data_dir == root_dir
+            else self.data_dir.joinpath("TRD-2P")
+        )
         self.position = Data_Position(metadata=self.metadata)
         self.stimulus = Data_Stimulus(
             raw_data_object=self.position, metadata=self.metadata
@@ -1427,8 +1609,10 @@ class Animal:
                             ) in wanted_embeddings_dict.items():
                                 labels_id = f"{session_date[-3:]}_{task.task} {wanted_stimulus_type}"
                                 position_lables = task.behavior.position.data
-                                position_lables, embedding = force_equal_dimensions(
-                                    position_lables, embedding
+                                position_lables, embedding = (
+                                    Datasets.force_equal_dimensions(
+                                        position_lables, embedding
+                                    )
                                 )
                                 labels[wanted_embedding]["embeddings"][
                                     labels_id
@@ -1566,12 +1750,13 @@ class Task:
 
         self.load_metadata(metadata)
         self.data_dir = data_dir or session_dir
-        self.neural = Datasets_neural(self.data_dir, self.neural_metadata)
-        self.behavior_metadata["area"] = self.neural_metadata[
-            "area"
-        ]  # TODO: ok like this?
-        self.behavior = Datasets_behavior(self.data_dir, self.behavior_metadata)
-
+        self.neural = Datasets_Neural(
+            root_dir=self.data_dir, metadata=self.neural_metadata
+        )
+        self.behavior_metadata["area"] = self.neural_metadata["area"]
+        self.behavior = Datasets_Behavior(
+            root_dir=self.data_dir, metadata=self.behavior_metadata
+        )
         self.model_dir = model_dir or self.data_dir.joinpath("models")
         self.models = None
         self.embeddings = {}
@@ -1585,31 +1770,31 @@ class Task:
             needed_attributes=needed_attributes,
         )
 
-    def load_data(self, data_source, data="neural", regenerate_plot=False):
+    def load_data(self, data_source, data_type="neural", regenerate_plot=False):
         # loads neural or behaviour data
-        data_object = getattr(self, data)
-        data = data_object.load(
-            self.id, data_source=data_source, regenerate_plot=regenerate_plot
+        datasets_object = getattr(self, data_type)
+        data = datasets_object.load(
+            self.name, data_source=data_source, regenerate_plot=regenerate_plot
         )
         return data
 
     def load_all_data(self, behavior_datas=["position"], regenerate_plots=False):
         """
-        neural_Data = ["suite2p", "inscopix"]
+        neural_Data = ["femtonics", "inscopix"]
         behavior_datas = ["position", "cam"]
         """
         data = {"neural": {}, "behavior": {}}
         for mouse_data in ["neural", "behavior"]:
             if mouse_data == "neural":
-                # TODO: not sure if this is enough, maybe path set in yaml
-                # TODO: currently only suite2p loading is done, add inscopix
-                data_to_load = self.neural_metadata["preprocessing_software"]
+                data_to_load = self.neural_metadata["imaging_setup"]
             else:
                 data_to_load = behavior_datas
             data_to_load = make_list_ifnot(data_to_load)
             for data_source in data_to_load:
                 data[mouse_data][data_source] = self.load_data(
-                    data_source, data=mouse_data, regenerate_plot=regenerate_plots
+                    data_source=data_source,
+                    data_type=mouse_data,
+                    regenerate_plot=regenerate_plots,
                 )
         return data
 
@@ -1647,12 +1832,10 @@ class Task:
                 # shuffle=shuffled,
                 # split_ratio=split_ratio
             )
-        data_filtered = datasets_object.filter_by_idx(data, idx_to_keep=idx_to_keep)
-        data_shuffled = (
-            datasets_object.shuffle(data_filtered) if shuffled else data_filtered
-        )
-        data_train, data_test = datasets_object.split(data_shuffled, split_ratio)
-        data_train = force_2d(data_train)
+        data_filtered = Dataset.filter_by_idx(data, idx_to_keep=idx_to_keep)
+        data_shuffled = Dataset.shuffle(data_filtered) if shuffled else data_filtered
+        data_train, data_test = Dataset.split(data_shuffled, split_ratio)
+        data_train = Dataset.force_2d(data_train)
         # data_train = force_1_dim_larger(data_train)
         return data_train, data_test
 
@@ -1713,7 +1896,7 @@ class Task:
         model_name: str = None,
         neural_data: np.ndarray = None,
         behavior_data: np.ndarray = None,
-        neural_data_types: List[str] = None,  # ["suite2p"],
+        neural_data_types: List[str] = None,  # ["femtonics"],
         behavior_data_types: List[str] = None,  # ["position"],
         manifolds_pipeline: str = "cebra",
         model_settings: dict = None,
@@ -1746,7 +1929,7 @@ class Task:
             datasets_object=self.neural,
             data_types=self.neural_metadata[
                 "preprocessing_software"
-            ],  # e.g. ["suite2p"], iscopix
+            ],  # e.g. ["femtonics"], iscopix
             data=neural_data,
             movement_state=movement_state,
             shuffled=shuffled,
@@ -1780,8 +1963,10 @@ class Task:
                         raise ValueError(
                             f"No behavior data types given for {model_type} model."
                         )
-                    neural_data_train, behavior_data_train = force_equal_dimensions(
-                        neural_data_train, behavior_data_train
+                    neural_data_train, behavior_data_train = (
+                        Datasets.force_equal_dimensions(
+                            neural_data_train, behavior_data_train
+                        )
                     )
                     model.fit(neural_data_train, behavior_data_train)
                 model.fitted = models_class.fitted(model)
@@ -1816,11 +2001,13 @@ class Task:
         # TODO: create function to integrate train and test embeddings into models
         if not type(to_transform_data) == np.ndarray:
             global_logger.warning(f"No data to transform given. Using default labels.")
-            print(f"No neural data given. Using default labels. suite2p")
-            to_transform_data = self.neural.suite2p.data
+            print(f"No neural data given. Using default labels. femtonics")
+            to_transform_data = self.neural.femtonics.data
             if not isinstance(to_transform_data, np.ndarray):
-                global_logger.warning(f"No suite2p data found. Checking for inscopix.")
-                print(f"No neural data from suite2p found. Checking for inscopix")
+                global_logger.warning(
+                    f"No femtonics data found. Checking for inscopix."
+                )
+                print(f"No neural data from femtonics found. Checking for inscopix")
                 to_transform_data = self.neural.inscopix.data
 
         filtered_models = models or self.get_pipeline_models(
@@ -2169,7 +2356,7 @@ class Vizualizer:
         figsize=(10, 10),
         dpi=300,
     ):
-        embedding, labels = force_equal_dimensions(
+        embedding, labels = Datasets.force_equal_dimensions(
             embedding, embedding_labels["labels"]
         )
 
@@ -2201,7 +2388,6 @@ class Vizualizer:
                     MaxNLocator(integer=True)
                 )  # Adjust ticks to integers
                 cbar.set_ticks(colorbar_ticks)  # Set custom ticks
-
         return ax
 
     def plot_multiple_embeddings(
@@ -2353,19 +2539,6 @@ class Vizualizer:
         plt.legend(bbox_to_anchor=(0.5, 0.3), frameon=False)
         self.plot_ending(title)
 
-    def plot_ending(self, title, save=True):
-        plt.suptitle(title)
-        plt.tight_layout()  # Ensure subplots fit within figure area
-        plot_save_path = (
-            str(self.save_dir.joinpath(title + ".png"))
-            .replace(">", "bigger")
-            .replace("<", "smaller")
-        )
-        if save:
-            plt.savefig(plot_save_path, dpi=300)
-        plt.show()
-        plt.close()
-
     def plot_consistency_scores(self, ax1, title, embeddings, labels, dataset_ids):
         (
             time_scores,
@@ -2488,6 +2661,294 @@ class Vizualizer:
         ax2.set_ylabel(ylabel)
         plt.legend(bbox_to_anchor=(1, 1), frameon=False)
         plt.show()
+
+    def plot_histogram(self, data, title, bins=100, figsize=(10, 5)):
+        plt.figure(figsize=figsize)
+        plt.title(title)
+        plt.xlabel("Value")
+        plt.ylabel("Frequency")
+        plt.hist(data, bins=bins)
+        plt.show()
+        plt.close()
+
+    def histogam_subplot(
+        self,
+        data: np.ndarray,
+        title: str,
+        ax,
+        bins=100,
+        xlim=[0, 1],
+        xlabel="",
+        ylabel="Frequency",
+        xticklabels=None,
+        color=None,
+    ):
+        ax.set_title(title)
+        ax.hist(data.flatten(), bins=bins, color=color)
+        ax.set_xlim(xlim[0], xlim[1])
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        if xticklabels == "empty":
+            ax.set_xticklabels("")
+
+    def heatmap_subplot(
+        self,
+        matrix,
+        title,
+        ax,
+        sort=False,
+        xlabel="Cell ID",
+        ylabel="Cell ID",
+        cmap="YlGnBu",
+    ):
+        if sort:
+            # Assuming correlations is your correlation matrix as a NumPy array
+            # Convert it to a Pandas DataFrame
+            correlations_df = pd.DataFrame(matrix)
+            # sort the correlation matrix
+            matrix = correlations_df.sort_values(by=0, axis=1, ascending=False)
+
+        # Creating a heatmap with sort correlations
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        sns.heatmap(matrix, annot=False, cmap=cmap, ax=ax)
+
+    def plot_corr_hist_heat_salience(
+        self,
+        correlation: np.ndarray,
+        saliences,
+        title: str,
+        bins: int = 100,
+        sort=False,
+        figsize=(17, 5),
+    ):
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize)
+        self.histogam_subplot(
+            correlation,
+            "Correlation",
+            ax1,
+            bins=bins,
+            xlim=[-1, 1],
+            xlabel="Correlation Value",
+            ylabel="Frequency",
+        )
+        self.heatmap_subplot(correlation, "Correlation Heatmap", ax2, sort=sort)
+        self.histogam_subplot(
+            saliences,
+            "Saliences",
+            ax3,
+            xlim=[0, 2],
+            bins=bins,
+            xlabel="n",
+            ylabel="Frequency",
+        )
+        self.plot_ending(title, save=True)
+
+    def plot_dist_sal_dims(
+        self, distances, saliences, normalized_saliences, title, bins=100
+    ):
+        fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 1, figsize=(17, 10))
+        colors = [
+            "tab:blue",
+            "tab:orange",
+            "tab:green",
+            "tab:red",
+            "tab:purple",
+            "tab:brown",
+            "tab:pink",
+            "tab:gray",
+            "tab:olive",
+            "tab:cyan",
+        ]
+        title = title + " Histograms"
+
+        self.histogam_subplot(
+            distances,
+            "Distance from Origin",
+            ax1,
+            bins=bins,
+            color=colors[0],
+            xlim=[0, 2],
+            xticklabels="empty",
+        )
+        self.histogam_subplot(
+            saliences,
+            "Normalized Distances",
+            ax2,
+            bins=bins,
+            color=colors[1],
+            xticklabels="empty",
+        )
+        self.histogam_subplot(
+            normalized_saliences[:, 0],
+            "normalized X",
+            ax3,
+            bins=bins,
+            color=colors[2],
+            xticklabels="empty",
+        )
+        self.histogam_subplot(
+            normalized_saliences[:, 1],
+            "normalized Y",
+            ax4,
+            bins=bins,
+            color=colors[3],
+            xticklabels="empty",
+        )
+        self.histogam_subplot(
+            normalized_saliences[:, 2], "normalized Z", ax5, bins=bins, color=colors[4]
+        )
+        self.plot_ending(title, save=True)
+
+    def plot_dist_sal_dims_2(
+        self,
+        distances,
+        saliences,
+        normalized_saliences,
+        distances2,
+        saliences2,
+        normalized_saliences2,
+        title,
+        bins=100,
+    ):
+        fig, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, 2, figsize=(17, 10))
+        colors = [
+            "tab:blue",
+            "tab:orange",
+            "tab:green",
+            "tab:red",
+            "tab:purple",
+            "tab:brown",
+            "tab:pink",
+            "tab:gray",
+            "tab:olive",
+            "tab:cyan",
+        ]
+        title = title + " Histograms"
+
+        self.histogam_subplot(
+            distances,
+            "Distance from Origin",
+            ax1[0],
+            bins=bins,
+            color=colors[0],
+            xlim=[0, 2],
+        )
+        self.histogam_subplot(
+            saliences,
+            "Normalized Distances",
+            ax2[0],
+            bins=bins,
+            color=colors[1],
+            xticklabels="empty",
+        )
+        self.histogam_subplot(
+            normalized_saliences[:, 0],
+            "normalized X",
+            ax3[0],
+            bins=bins,
+            color=colors[2],
+            xticklabels="empty",
+        )
+        self.histogam_subplot(
+            normalized_saliences[:, 1],
+            "normalized Y",
+            ax4[0],
+            bins=bins,
+            color=colors[3],
+            xticklabels="empty",
+        )
+        self.histogam_subplot(
+            normalized_saliences[:, 2],
+            "normalized Z",
+            ax5[0],
+            bins=bins,
+            color=colors[4],
+        )
+
+        self.histogam_subplot(
+            distances2,
+            "Distance from Origin",
+            ax1[1],
+            bins=bins,
+            color=colors[0],
+            xlim=[0, 2],
+        )
+        self.histogam_subplot(
+            saliences2,
+            "Normalized Distances",
+            ax2[1],
+            bins=bins,
+            color=colors[1],
+            xticklabels="empty",
+        )
+        self.histogam_subplot(
+            normalized_saliences2[:, 0],
+            "normalized X",
+            ax3[1],
+            bins=bins,
+            color=colors[2],
+            xticklabels="empty",
+        )
+        self.histogam_subplot(
+            normalized_saliences2[:, 1],
+            "normalized Y",
+            ax4[1],
+            bins=bins,
+            color=colors[3],
+            xticklabels="empty",
+        )
+        self.histogam_subplot(
+            normalized_saliences2[:, 2],
+            "normalized Z",
+            ax5[1],
+            bins=bins,
+            color=colors[4],
+        )
+        self.plot_ending(title, save=True)
+
+    def plot_corr_heat_corr_heat(
+        self, correlation1, correlation2, title1, title2, sort=False, figsize=(17, 5)
+    ):
+        fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=figsize)
+        title = title1 + " vs " + title2
+        self.histogam_subplot(
+            correlation1,
+            title1 + " Correlation",
+            ax1,
+            bins=100,
+            xlim=[-1, 1],
+            xlabel="Correlation Value",
+            ylabel="Frequency",
+            color="tab:blue",
+        )
+        self.heatmap_subplot(correlation1, title1, ax2, sort=sort)
+        self.histogam_subplot(
+            correlation2,
+            title2 + " Correlation",
+            ax3,
+            bins=100,
+            xlim=[-1, 1],
+            xlabel="Correlation Value",
+            ylabel="Frequency",
+            color="tab:orange",
+        )
+        self.heatmap_subplot(correlation2, title2, ax4, sort=sort)
+        self.plot_ending(title, save=True)
+
+    def plot_ending(self, title, save=True):
+        plt.suptitle(title)
+        plt.tight_layout()  # Ensure subplots fit within figure area
+        plot_save_path = (
+            str(self.save_dir.joinpath(title + ".png"))
+            .replace(">", "bigger")
+            .replace("<", "smaller")
+        )
+        if save:
+            plt.savefig(plot_save_path, dpi=300)
+        plt.show()
+        plt.close()
 
 
 import logging

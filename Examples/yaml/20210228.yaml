@@ -1,5 +1,4 @@
 date: '20210228'
-method: 2P
 comment: null
 expt_pipeline: rigid_plastic
 tasks_infos:
@@ -7,6 +6,7 @@ tasks_infos:
     neural_metadata:
       method: 2P
       area: CA3
+      imaging_setup: femtonics
       preprocessing_software: suite2p
       fps: 30
     behavior_metadata:
@@ -20,6 +20,7 @@ tasks_infos:
     neural_metadata:
       method: 2P
       area: CA3
+      imaging_setup: femtonics
       preprocessing_software: suite2p
       fps: 30
     behavior_metadata:
@@ -33,6 +34,7 @@ tasks_infos:
     neural_metadata:
       method: 2P
       area: CA3
+      imaging_setup: femtonics
       preprocessing_software: suite2p
       fps: 30
     behavior_metadata:

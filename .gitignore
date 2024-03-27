@@ -2,4 +2,4 @@ data*
 *.pt
 Demo*
 **.log
-logs/
+logs*
