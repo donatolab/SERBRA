@@ -6,10 +6,12 @@ tasks_infos:
     neural_metadata:
       method: 1P
       area: CA3 # e.g. CA3
-      imaging_setup: inscopix
+      setup: inscopix
       preprocessing_software: inscopix
       fps: 20
     behavior_metadata:
+      method: 1P
+      preprocessing_software: manual
       stimulus_type: incremental # e.g. Variation A 
       stimulus_sequence: [1, 2, 3, 4, 5, 6, 1, 2] #
       #stimulus_sequence: [1, 2, 3, 4, 5, 6, 7, 8] #

@@ -2,6 +2,11 @@
 import os
 from pathlib import Path
 
+# setups and preprocessing software
+from Setups import *
+from Helper import *
+
+
 # type hints
 from typing import List, Union, Dict, Any, Tuple, Optional
 
@@ -9,10 +14,6 @@ from typing import List, Union, Dict, Any, Tuple, Optional
 import numpy as np
 from scipy.signal import butter, filtfilt  # , lfilter, freqz
 import sklearn
-
-# import cupy as cp  # numpy using CUDA for faster computation
-import yaml
-import re
 
 # Plotting
 import matplotlib.pyplot as plt
@@ -24,7 +25,6 @@ import seaborn as sns
 from cebra import CEBRA
 import cebra
 import cebra.integrations.sklearn.utils as sklearn_utils
-from datetime import datetime
 import torch
 
 # pip install binarize2pcalcium
@@ -120,613 +120,6 @@ def load_all_animals(
         animals_dict[animal_id] = animal
     animals_dict = sort_dict(animals_dict)
     return animals_dict
-
-
-def yield_animal(animals_dict):
-    for animal_id, animal in animals_dict.items():
-        yield animal
-
-
-def yield_animal_session(animals_dict):
-    for animal in yield_animal(animals_dict):
-        for session_date, session in animal.sessions.items():
-            yield animal, session
-
-
-def yield_animal_session_task(animals_dict):
-    for animal, session in yield_animal_session(animals_dict):
-        for task_id, task in session.tasks.items():
-            yield animal, session, task
-
-
-#### directory, file search
-def dir_exist_create(directory):
-    """
-    Checks if a directory exists and creates it if it doesn't.
-
-    Parameters:
-    dir (str): Path of the directory to check and create.
-
-    Returns:
-    None
-    """
-    # Check if the directory exists
-    directory = Path(directory)
-    if not directory.exists():
-        # Create the directory
-        directory.mkdir()
-
-
-def get_directories(directory, regex_search=""):
-    """
-    This function returns a list of directories from the specified directory that match the regular expression search pattern.
-
-    Parameters:
-    directory (str): The directory path where to look for directories.
-    regex_search (str, optional): The regular expression pattern to match. Default is an empty string, which means all directories are included.
-
-    Returns:
-    list: A list of directory names that match the regular expression search pattern.
-    """
-    directory = Path(directory)
-    directories = None
-    if directory.exists():
-        directories = [
-            name
-            for name in os.listdir(directory)
-            if directory.joinpath(name).is_dir()
-            and len(re.findall(regex_search, name)) > 0
-        ]
-    else:
-        global_logger.warning(f"Directory does not exist: {directory}")
-        print(f"Directory does not exist: {directory}")
-    return directories
-
-
-def get_files(directory, ending="", regex_search=""):
-    """
-    This function returns a list of files from the specified directory that match the regular expression search pattern and have the specified file ending.
-
-    Parameters:
-    directory (str): The directory path where to look for files.
-    ending (str, optional): The file ending to match. Default is '', which means all file endings are included.
-    regex_search (str, optional): The regular expression pattern to match. Default is an empty string, which means all files are included.
-
-    Returns:
-    list: A list of file names that match the regular expression search pattern and have the specified file ending.
-    """
-    directory = Path(directory)
-    files_list = None
-    if directory.exists():
-        files_list = [
-            name
-            for name in os.listdir(directory)
-            if directory.joinpath(name).is_file()
-            and len(re.findall(regex_search, name)) > 0
-            and name.endswith(ending)
-        ]
-    else:
-        global_logger.warning(f"Directory does not exist: {directory}")
-        print(f"Directory does not exist: {directory}")
-    return files_list
-
-
-def search_file(directory, filename):
-    """
-    This function searches for a file with a given filename within a specified directory and its subdirectories.
-
-    :param directory: The directory in which to search for the file.
-    :type directory: str
-    :param filename: The name of the file to search for.
-    :type filename: str
-    :return: The full path of the file if found, otherwise returns the string "Not found".
-    :rtype: str
-    """
-    for root, dirs, files in os.walk(directory):
-        if filename in files:
-            return Path(root).joinpath(filename)
-    return None
-
-
-def make_list_ifnot(string_or_list):
-    return [string_or_list] if type(string_or_list) != list else string_or_list
-
-
-def save_file_present(file_path, show_print=False):
-    file_path = Path(file_path)
-    file_present = False
-    if file_path.exists():
-        if show_print:
-            global_logger.warning(f"File already present {file_path}")
-            print(f"File already present {file_path}")
-        file_present = True
-    else:
-        if show_print:
-            global_logger.info(f"Saving {file_path.name} to {file_path}")
-            print(f"Saving {file_path.name} to {file_path}")
-    return file_present
-
-
-# Math
-def calc_cumsum_distances(positions, length, distance_threshold=30):
-    """
-    Calculates the cumulative sum of distances between positions along a track.
-
-    Args:
-    - positions (array-like): List or array of positions along the track.
-    - length (numeric): Length of the track.
-    - distance_threshold (numeric, optional): Threshold for considering a frame's distance change.
-                                            Defaults to 30.
-
-    Returns:
-    - cumsum_distance (numpy.ndarray): Cumulative sum of distances between positions.
-    """
-    cumsum_distances = []
-    cumsum_distance = 0
-    old_position = positions[0]
-    for position in positions[1:]:
-        frame_distance = position - old_position
-        if abs(frame_distance) < distance_threshold:
-            cumsum_distance += frame_distance
-        else:
-            # check if mouse moves from end to start of the track
-            if frame_distance < 0:
-                cumsum_distance += frame_distance + length
-            # check if mouse moves from start to end of the track
-            else:
-                cumsum_distance += frame_distance - length
-        old_position = position
-        cumsum_distances.append(cumsum_distance)
-    return np.array(cumsum_distances)
-
-
-def calculate_derivative(data):
-    """
-    Calculates the derivative of the given data.
-
-    Parameters:
-    - data (array-like): The input data (position or velocity) for which the derivative needs to be computed.
-
-    Returns:
-    - derivative (numpy.ndarray): The calculated derivative, representing either velocity based on position or acceleration based on velocity.
-    """
-    timestamps = np.array(range(len(data)))
-    # Calculate differences in data
-    diff = np.diff(data)
-    # Calculate differences in time
-    time_diff = np.diff(timestamps)
-
-    derivative = diff / time_diff
-
-    return derivative
-
-
-def moving_average(data, window_size=30):
-    weights = np.repeat(1.0, window_size) / window_size
-    return np.convolve(data, weights, "valid")
-
-
-def continuouse_to_discrete(continuouse_array, lengths: list):
-    """
-    Converts continuouse data into discrete values based on track lengths using NumPy.
-
-    Parameters:
-    - continuouse_array: array of continuouse data.
-    - lengths:  containing lengths of track parts.
-
-    Returns:
-    - discrete_values: NumPy array of discrete values corresponding to continuouse data.
-    """
-    # Calculate cumulative track lengths
-    cumulative_lengths = np.cumsum(lengths)
-
-    # Broadcast and compare continuouses against track boundaries
-    discrete_values = np.sum(
-        continuouse_array[:, np.newaxis] >= cumulative_lengths, axis=1
-    )
-
-    return discrete_values
-
-
-def butter_lowpass(cutoff, fs, order=5):
-    """
-    Design a lowpass Butterworth filter.
-
-    Parameters:
-        cutoff (float): The cutoff frequency in Hertz.
-        fs (float): The sampling frequency in Hertz.
-        order (int, optional): The filter order. Defaults to 5.
-
-    Returns:
-        b (array-like): Numerator (zeros) coefficients of the filter.
-        a (array-like): Denominator (poles) coefficients of the filter.
-    """
-
-    nyq = 0.5 * fs
-    normal_cutoff = cutoff / nyq
-    b, a = butter(order, normal_cutoff, btype="low", analog=False)
-    return b, a
-
-
-def butter_lowpass_filter(data, cutoff, fs, order=5):
-    """
-    Apply a lowpass Butterworth filter to the input data.
-
-    Parameters:
-        data (array-like): The input data to filter.
-        cutoff (float): The cutoff frequency in Hertz.
-        fs (float): The sampling frequency in Hertz.
-        order (int, optional): The filter order. Defaults to 5.
-
-    Returns:
-        y (array-like): The filtered output data.
-    """
-    b, a = butter_lowpass(cutoff, fs, order=order)
-    y = filtfilt(b, a, data)
-    return y
-
-
-def cosine_similarity(v1, v2):
-    """
-    A cosine similarity can be seen as the correlation between two vectors.
-    Returns:
-        float: The cosine similarity between the two vectors.
-    """
-    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-
-
-def correlate_vectors(vectors: np.ndarray):
-    """
-    Matrix Multiplikation is used to calculate the correlation matrix.
-
-    Equivalent to cosine measure for normalized vectors. Example code:
-        similarity_matrix = np.zeros((vectors.shape[0], vectors.shape[0]))
-        for i, v1 in enumerate(vectors):
-            for j, v2 in enumerate(vectors):
-                similarity_matrix[i, j] = cosine_similarity(v1, v2)
-
-    Returns:
-        np.ndarray: A matrix of correlations/cosine similarities between each pair of vectors.
-
-    Example:
-        vectors = np.array([[1, 2, 3],
-                            [4, 5, 6],
-                            [7, 8, 9]])
-        correlation_matrix = correlation_matrix(vectors)
-        print(correlation_matrix)
-    """
-    normalized_vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
-    correlation_matrix = normalized_vectors @ normalized_vectors.T
-
-    return correlation_matrix
-
-
-## normalization
-def normalize_vector_01(vector):
-    normalized_vector = vector - np.min(vector)
-    normalized_vector = normalized_vector / np.max(normalized_vector)
-    return normalized_vector
-
-
-def normalize_matrix_01(matrix, axis=1):
-    new_matrix = np.zeros(matrix.shape)
-    for i in range(matrix.shape[axis]):
-        if axis == 0:
-            new_matrix[i, :] = normalize_vector_01(matrix[i, :])
-        elif axis == 1:
-            new_matrix[:, i] = normalize_vector_01(matrix[:, i])
-        else:
-            raise ValueError("Axis must be 0 or 1. 3D not supported.")
-    return new_matrix
-
-
-# strings
-def filter_strings_by_properties(
-    strings, include_properties=None, exclude_properties=None
-):
-    """
-    Filters a list of strings based on given properties.
-
-    Args:
-    - strings (list): List of strings to filter.
-    - include_properties (list or str, optional): List of properties to include in filtered strings.
-        Each property can be a string or a list of strings.
-    - exclude_properties (list or str, optional): List of properties to exclude from filtered strings.
-        Each property can be a string or a list of strings.
-
-    Returns:
-    - filtered_strings (list): List of strings filtered based on the given properties.
-    """
-    filtered_strings = []
-
-    if include_properties:
-        if not isinstance(include_properties, list):
-            include_properties = [include_properties]
-        elif isinstance(include_properties, list) and all(
-            isinstance(prop, str) for prop in include_properties
-        ):
-            include_properties = [include_properties]
-
-    if exclude_properties:
-        if isinstance(exclude_properties, str):
-            exclude_properties = [exclude_properties]
-        elif isinstance(exclude_properties, list) and all(
-            isinstance(prop, str) for prop in exclude_properties
-        ):
-            exclude_properties = [exclude_properties]
-
-    for string in strings:
-        if include_properties:
-            # Check if any of the include properties lists are present in the string
-            include_check = any(
-                all(prop.lower() in string.lower() for prop in props)
-                for props in include_properties
-            )
-        else:
-            include_check = True
-
-        if exclude_properties:
-            # Check if any of the exclude properties lists are present in the string
-            exclude_check = any(
-                all(prop.lower() in string.lower() for prop in props)
-                for props in exclude_properties
-            )
-        else:
-            exclude_check = False
-
-        # Only include the string if it matches include properties and does not match exclude properties
-        if include_check and not exclude_check:
-            filtered_strings.append(string)
-
-    return filtered_strings
-
-
-def check_correct_metadata(string_or_list, name_parts):
-    name_parts = make_list_ifnot(name_parts)
-    success = True
-    if isinstance(string_or_list, Path):
-        if not string_or_list.exists():
-            success = False
-            global_logger.error(f"No matching file found")
-            print(f"No matching file found")
-        else:
-            string_or_list = string_or_list.name
-
-    if success:
-        for name_part in name_parts:
-            if not name_part in string_or_list:
-                success = False
-            if not success:
-                global_logger.error(
-                    f"Metadata naming does not match Object Metadata: {string_or_list} != {name_parts}"
-                )
-                print(
-                    f"Metadata naming does not match Object Metadata: {string_or_list} != {name_parts}"
-                )
-    return success
-
-
-# date
-def num_to_date(date_string):
-    if type(date_string) != str:
-        date_string = str(date_string)
-    date = datetime.strptime(date_string, "%Y%m%d")
-    return date
-
-
-# array
-def fill_continuous_array(data_array, fps, time_gap):
-    frame_gap = fps * time_gap
-    # Find indices where values change
-    value_changes = np.where(np.abs(np.diff(data_array)) > np.finfo(float).eps)[0] + 1
-    filled_array = data_array.copy()
-    # Fill gaps after continuous 2 seconds of the same value
-    for i in range(len(value_changes) - 1):
-        start = value_changes[i]
-        end = value_changes[i + 1]
-        if (
-            end - start <= frame_gap
-            and filled_array[start - 1] == filled_array[end + 1]
-        ):
-            filled_array[start:end] = [filled_array[start - 1]] * (end - start)
-    return filled_array
-
-
-def fill_vector(vector, indices, fill_value=np.nan):
-    filled_vector = vector.copy()
-    filled_vector[indices] = fill_value
-    return filled_vector
-
-
-def fill_matrix(matrix, indices, fill_value=np.nan, axis=0):
-    filled_matrix = matrix.copy()
-    if axis == 0:
-        filled_matrix[indices, :] = fill_value
-    elif axis == 1:
-        filled_matrix[:, indices] = fill_value
-    else:
-        raise ValueError("Axis must be 0 or 1. 3D not supported.")
-    return filled_matrix
-
-
-def fill(matrix, indices, fill_value=np.nan):
-    if len(matrix.shape) == 1:
-        return fill_vector(matrix, indices, fill_value)
-    else:
-        return fill_matrix(matrix, indices, fill_value)
-
-
-def fill_inputs(inputs: dict, indices: np.ndarray, fill_value=np.nan):
-    filtered_inputs = inputs.copy()
-    for key, value in filtered_inputs.items():
-        if len(value.shape) == 1:
-            filtered_inputs[key] = fill_vector(value, indices, fill_value=fill_value)
-        else:
-            filtered_inputs[key] = fill_matrix(value, indices, fill_value=fill_value)
-    return filtered_inputs
-
-
-def get_top_percentile_indices(vector, percentile=5, indices_smaller=True):
-    cutoff = np.percentile(vector, 100 - percentile)
-    if indices_smaller:
-        indices = np.where(vector < cutoff)[0]
-    else:
-        indices = np.where(vector > cutoff)[0]
-    return indices
-
-
-# dict
-def filter_dict_by_properties(
-    dictionary,
-    include_properties: List[List[str]] = None,  # or [str] or str
-    exclude_properties: List[List[str]] = None,  # or [str] or str):
-):
-    dict_keys = dictionary.keys()
-    if include_properties or exclude_properties:
-        dict_keys = filter_strings_by_properties(
-            dict_keys,
-            include_properties=include_properties,
-            exclude_properties=exclude_properties,
-        )
-    filtered_dict = {key: dictionary[key] for key in dict_keys}
-    return filtered_dict
-
-
-def sort_dict(dictionary):
-    return {key: value for key, value in sorted(dictionary.items())}
-
-
-def load_yaml(path, mode="r"):
-    with open(path, mode) as file:
-        dictionary = yaml.safe_load(file)
-    return dictionary
-
-
-def get_str_from_dict(dictionary, keys):
-    present_keys = dictionary.keys()
-    string = ""
-    for variable in keys:
-        if variable in present_keys:
-            string += f" {dictionary[variable]}"
-    return string
-
-
-def keys_present(dictionary, keys):
-    present_keys = dictionary.keys()
-    for key in keys:
-        if key not in present_keys:
-            return key
-    return True
-
-
-# class
-def define_cls_attributes(cls_object, attributes_dict, override=False):
-    """
-    Defines attributes for a class object based on a dictionary.
-
-    Args:
-        cls_object (object): The class object to define attributes for.
-        attributes_dict (dict): A dictionary containing attribute names as keys and their corresponding values.
-        override (bool, optional): If True, existing attributes will be overridden. Defaults to False.
-
-    Returns:
-        object: The modified class object with the defined attributes.
-    """
-    for key, value in attributes_dict.items():
-        if key not in cls_object.__dict__.keys() or override:
-            setattr(cls_object, key, value)
-    return cls_object
-
-
-def copy_attributes_to_object(
-    propertie_name_list,
-    set_object,
-    get_object=None,
-    propertie_values=None,
-    override=True,
-):
-    """
-    Set attributes of a target object based on a list of property names and values.
-
-    This function allows you to set attributes on a target object (the 'set_object') based on a list of
-    property names provided in 'propertie_name_list' and corresponding values. You can specify these
-    values directly through 'propertie_values' or retrieve them from another object ('get_object').
-    If 'propertie_values' is not provided, this function will attempt to fetch the values from the
-    'get_object' using the specified property names.
-
-    Args:
-        propertie_name_list (list): A list of property names to set on the 'set_object.'
-        set_object (object): The target object for attribute assignment.
-        get_object (object, optional): The source object to retrieve property values from. Default is None.
-        propertie_values (list, optional): A list of values corresponding to the property names.
-            Default is None.
-
-    Returns:
-        None
-
-    Raises:
-        ValueError: If the number of properties in 'propertie_name_list' does not match the number of values
-            provided in 'propertie_values' (if 'propertie_values' is specified).
-
-    Example Usage:
-        # Example 1: Set attributes directly with values
-        copy_attributes_to_object(["attr1", "attr2"], my_object, propertie_values=[value1, value2])
-
-        # Example 2: Retrieve attribute values from another object
-        copy_attributes_to_object(["attr1", "attr2"], my_object, get_object=source_object)
-    """
-    propertie_name_list = list(propertie_name_list)
-    if propertie_values:
-        propertie_values = list(propertie_values)
-        if len(propertie_values) != len(propertie_name_list):
-            raise ValueError(
-                f"Number of properties does not match given propertie values: {len(propertie_name_list)} != {len(propertie_values)}"
-            )
-    elif get_object:
-        propertie_values = []
-        for propertie in propertie_name_list:
-            if propertie in get_object.__dict__.keys():
-                propertie_values.append(getattr(get_object, propertie))
-            else:
-                propertie_values.append(None)
-
-    propertie_values = (
-        propertie_values if propertie_values else [None] * len(propertie_name_list)
-    )
-    for propertie, value in zip(propertie_name_list, propertie_values):
-        if propertie in set_object.__dict__.keys() and not override:
-            continue
-        setattr(set_object, propertie, value)
-
-
-def attributes_present(attribute_names, object):
-    for attribute_name in attribute_names:
-        defined_variable = getattr(object, attribute_name)
-        if defined_variable == None:
-            return attribute_name
-    return True
-
-
-def set_attributes_check_presents(
-    propertie_name_list,
-    set_object,
-    get_object=None,
-    propertie_values=None,
-    needed_attributes=None,
-):
-    copy_attributes_to_object(
-        propertie_name_list=propertie_name_list,
-        set_object=set_object,
-        get_object=get_object,
-        propertie_values=propertie_values,
-    )
-
-    if needed_attributes:
-        present = attributes_present(needed_attributes, set_object)
-        if present != True:
-            raise NameError(
-                f"Variable {present} is not defined in yaml file for {set_object.id}"
-            )
 
 
 class DataPlotterInterface:
@@ -908,20 +301,40 @@ class DataPlotterInterface:
 
 
 class Dataset(DataPlotterInterface):
-    def __init__(self, key, path=None, data=None, raw_data_object=None, metadata=None):
+    def __init__(
+        self,
+        key,
+        path=None,
+        data=None,
+        raw_data_object=None,
+        metadata=None,
+        root_dir=None,
+    ):
         # initialize plotting parameters
         super().__init__()
+        self.root_dir: Path = root_dir
         self.path: Path = path
+        self.data_dir = None
         self.data: np.ndarray = data
         self.key = key
         self.raw_data_object = raw_data_object
         self.metadata = metadata
         self.fps = None if "fps" not in self.metadata.keys() else self.metadata["fps"]
+        self.setup = self.get_setup(
+            self.metadata["setup"],
+            self.metadata["preprocessing_software"],
+            self.metadata["method"],
+        )
 
     # TODO: use __subclass__?
     # def __init_subclass__(cls, key: str, **kwargs):
     #    cls.key = key
     #    super().__init_subclass__(**kwargs)
+
+    def get_setup(self, setup_name, preprocessing_name, method_name):
+        raise NotImplementedError(
+            f"ERROR: Function get_setup is not defined for {self.__class__}."
+        )
 
     def load(
         self,
@@ -933,7 +346,7 @@ class Dataset(DataPlotterInterface):
     ):
         if not type(self.data) == np.ndarray:
             self.path = path if path else self.path
-
+            self.data_dir = self.path.parent
             # if no raw data exists, regeneration is not possible
             if not self.raw_data_object and regenerate:
                 global_logger.warning(f"No raw data given. Regeneration not possible.")
@@ -1041,20 +454,58 @@ class Dataset(DataPlotterInterface):
         return data_2d
 
 
-class Data_Position(Dataset):
-    def __init__(self, raw_data_object=None, metadata=None):
+class BehaviorDataset(Dataset):
+    def __init__(
+        self,
+        key,
+        path=None,
+        data=None,
+        raw_data_object=None,
+        metadata=None,
+        root_dir=None,
+    ):
+        super().__init__(key, path, data, raw_data_object, metadata, root_dir)
+        self.setup = self.get_setup(
+            self.metadata["setup"],
+            self.metadata["preprocessing_software"],
+            self.metadata["method"],
+        )
+
+    def get_setup(self, setup_name, preprocess_name, method_name):
+        if setup_name == "treadmill":
+            setup = Treadmill(preprocess_name, method_name, root_dir=self.root_dir)
+        elif setup_name == "trackball":
+            setup = Trackball(preprocess_name, method_name, root_dir=self.root_dir)
+        elif setup_name == "vr":
+            setup = VR(preprocess_name, method_name, root_dir=self.root_dir)
+        elif setup_name == "cam":
+            # TODO: different cam types need to be implemented
+            setup = Cam(preprocess_name, method_name, root_dir=self.root_dir)
+        else:
+            raise ValueError(f"Behavior setup {setup_name} not supported.")
+        return setup
+
+
+class Data_Position(BehaviorDataset):
+    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
         super().__init__(
-            key="position", raw_data_object=raw_data_object, metadata=metadata
+            key="position",
+            raw_data_object=raw_data_object,
+            metadata=metadata,
+            root_dir=root_dir,
         )
         self.environment_dimensions = self.metadata["environment_dimensions"]
 
     # FIXME: why is this data 1 datapoint smaller than neural data?
 
 
-class Data_Stimulus(Dataset):
-    def __init__(self, raw_data_object=None, metadata=None):
+class Data_Stimulus(BehaviorDataset):
+    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
         super().__init__(
-            key="stimulus", raw_data_object=raw_data_object, metadata=metadata
+            key="stimulus",
+            raw_data_object=raw_data_object,
+            metadata=metadata,
+            root_dir=root_dir,
         )
         # TODO: only working for steffens treadmil introduce into yaml
         # file no handling other types of stimuly besides track stimulus
@@ -1110,10 +561,13 @@ class Data_Stimulus(Dataset):
         return np.array(stimulus_type_at_frame)
 
 
-class Data_Distance(Dataset):
-    def __init__(self, raw_data_object=None, metadata=None):
+class Data_Distance(BehaviorDataset):
+    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
         super().__init__(
-            key="distance", raw_data_object=raw_data_object, metadata=metadata
+            key="distance",
+            raw_data_object=raw_data_object,
+            metadata=metadata,
+            root_dir=root_dir,
         )
         self.environment_dimensions = make_list_ifnot(
             self.metadata["environment_dimensions"]
@@ -1152,10 +606,13 @@ class Data_Distance(Dataset):
         return calc_cumsum_distances(track_positions, self.environment_dimensions)
 
 
-class Data_Velocity(Dataset):
-    def __init__(self, raw_data_object=None, metadata=None):
+class Data_Velocity(BehaviorDataset):
+    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
         super().__init__(
-            key="velocity", raw_data_object=raw_data_object, metadata=metadata
+            key="velocity",
+            raw_data_object=raw_data_object,
+            metadata=metadata,
+            root_dir=root_dir,
         )
         self.raw_velocitys = None
         self.plot_attributes["ylable"] = "velocity cm/s"
@@ -1183,10 +640,13 @@ class Data_Velocity(Dataset):
         return self.data
 
 
-class Data_Acceleration(Dataset):
-    def __init__(self, raw_data_object=None, metadata=None):
+class Data_Acceleration(BehaviorDataset):
+    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
         super().__init__(
-            key="acceleration", raw_data_object=raw_data_object, metadata=metadata
+            key="acceleration",
+            raw_data_object=raw_data_object,
+            metadata=metadata,
+            root_dir=root_dir,
         )
         self.raw_acceleration = None
         self.plot_attributes["ylable"] = "acceleration cm/s^2"
@@ -1208,10 +668,13 @@ class Data_Acceleration(Dataset):
         return self.data
 
 
-class Data_Moving(Dataset):
-    def __init__(self, raw_data_object=None, metadata=None):
+class Data_Moving(BehaviorDataset):
+    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
         super().__init__(
-            key="moving", raw_data_object=raw_data_object, metadata=metadata
+            key="moving",
+            raw_data_object=raw_data_object,
+            metadata=metadata,
+            root_dir=root_dir,
         )
         self.plot_attributes["ylable"] = "Movement State"
         self.plot_attributes["ylimits"] = (-0.1, 1.1)
@@ -1244,29 +707,32 @@ class Data_Moving(Dataset):
         return self.fit_moving_to_brainarea(data, self.metadata["area"])
 
 
-class Data_CAM(Dataset):
-    def __init__(self, raw_data_object=None, metadata=None):
-        super().__init__(key="cam", raw_data_object=raw_data_object, metadata=metadata)
-        vr_root_folder = "0000VR"  # VR
-        cam_root_folder = "0000MC"  # Cam Data
-        cam_top_root_folder = "000BSM"  # Top View Mousecam
-        # TODO: implement cam data loading
+class Data_Photon(Dataset):
+    """
+    Dataset class for managing photon data.
+    Attributes:
+        - method (str): The method used to record the data.
+        - preprocessing_software (str): The software used to preprocess the data.
+        - setup (str): The setup used to record the data.
+        - setup.data = raw_data_object
+    """
 
-
-class Data_CA(Dataset):
-    def __init__(self, path=None, raw_data_object=None, metadata=None):
+    def __init__(self, path=None, raw_data_object=None, metadata=None, root_dir=None):
         super().__init__(
-            key="calcium", path=path, raw_data_object=raw_data_object, metadata=metadata
+            key="photon",
+            path=path,
+            raw_data_object=raw_data_object,
+            metadata=metadata,
+            root_dir=root_dir,
         )
-        needed_attributes = ["method", "preprocessing_software", "imaging_setup"]
+        needed_attributes = ["method", "preprocessing_software", "setup"]
         present = keys_present(metadata, needed_attributes)
         if present != True:
             raise NameError(
                 f"Missing metadata for {self.key} dataset: {present} not defined."
             )
-        self.setup, self.preprocess = self.define_data_preprocessing()
         self.plot_attributes["title"] = (
-            f"Raster Plot of Binarized Calcium Data: : {self.metadata}"
+            f"Raster Plot of Binarized {self.key} Data: : {self.metadata}"
         )
         self.plot_attributes["ylable"] = "Neuron ID"
         self.plot_attributes["figsize"] = (20, 10)
@@ -1284,24 +750,16 @@ class Data_CA(Dataset):
         plt.imshow(image, cmap="gray", aspect="auto", interpolation="none")
         plt.gca().invert_yaxis()  # Invert y-axis for better visualization of trials/neurons
 
-    def define_data_preprocessing(self):
-        imaging_setup = self.metadata["imaging_setup"]
-        if imaging_setup == "femtonics":
-            setup = femtonics_setup()
-        elif imaging_setup == "thorlabs":
-            setup = thorlabs_setup()
-        elif imaging_setup == "inscopix":
-            setup = inscopix_setup()
+    def get_setup(self, setup_name, preprocess_name, method_name):
+        if setup_name == "femtonics":
+            setup = Femtonics(preprocess_name, method_name, root_dir=self.root_dir)
+        elif setup_name == "thorlabs":
+            setup = Thorlabs(preprocess_name, method_name, root_dir=self.root_dir)
+        elif setup_name == "inscopix":
+            setup = Inscopix(preprocess_name, method_name, root_dir=self.root_dir)
         else:
-            raise ValueError(f"Imaging setup {imaging_setup} not supported.")
-
-        preprocessing_software = self.metadata["preprocessing_software"]
-        if preprocessing_software == "suite2p":
-            preprocess = suite2p_preprocessing()
-        elif preprocessing_software == "inscopix":
-            preprocess = inscopix_preprocessing()
-
-        return setup, preprocess
+            raise ValueError(f"Imaging setup {setup_name} not supported.")
+        return setup
 
 
 class Data_Probe(Dataset):
@@ -1309,63 +767,15 @@ class Data_Probe(Dataset):
         super().__init__(
             key="probe", path=path, raw_data_object=raw_data_object, metadata=metadata
         )
+        # TODO: implement probe data loading
         pass
-
-
-# Imaging Setup Classes
-class femtonics_setup:
-    def __init__(self):
-        root_folder = "002P-F"
-        # TODO: output files not defined
-        # TODO: naming not correct defined
-        output_fname = "animalid_sessiondate_taskname.mesc"
-
-
-class thorlabs_setup:
-    def __init__(self):
-        root_folder = "002P-T"
-        output_fname = "data\Image_001_001.raw"
-        # TODO: output files not defined
-
-
-class inscopix_setup:
-    def __init__(self):
-        root_folder = "001P-I"
-        output_fname = None
-        # TODO: output files not defined
-
-
-# Preprocessing Classes
-class inscopix_preprocessing:
-    def __init__(self):
-        # TODO: implement inscopix manager
-        # TODO: implement inscopix attributes
-        default_folder = None
-        pass
-
-
-class suite2p_preprocessing:
-    def __init__(self):
-        # TODO: implement suite2p manager
-        self.default_folder = Path("tif", "suite2p", "plane0")
-        self.output_fnames = {
-            "f_raw": "F.npy",
-            "f_neuropil": "F_neu.npy",
-            "iscell": "iscell.npy",
-            "ops": "ops.npy",
-            "spks": "spks.npy",
-            "stat": "stat.npy",
-            "cabincorr": "binarized_traces.npz",
-            "cell_geldrying": "cell_drying.npy",
-            "binary": "data.bin",
-        }
-        self.preprocessing_output_fpaths = {
-            key: self.default_folder.joinpath(value)
-            for key, value in self.output_fnames.items()
-        }
 
 
 class Datasets:
+    """
+    Dataset class for managing multiple datasets. Getting correct data paths and loading data.
+    """
+
     def __init__(self, root_dir, metadata={}):
         if "data_dir" in metadata.keys():
             self.data_dir = Path(root_dir).joinpath(metadata["data_dir"])
@@ -1374,11 +784,17 @@ class Datasets:
         self.metadata = metadata
         self.data_sources = {}
 
+    def get_object(self, data_source):
+        raise NotImplementedError(
+            f"ERROR: Function get_object is not defined for {self.__class__}."
+        )
+
     def load(self, task_name, data_source, regenerate_plot=False):
-        fname_ending = self.data_sources[data_source]
-        fname = f"{task_name}_{fname_ending}.npy"
-        fpath = self.data_dir.joinpath(fname)
-        data_object = getattr(self, data_source)
+        # build path to data
+        data_object = self.get_object(data_source)
+        # ............................... das muss noch für behvior besser definiert werden
+        fpath = data_object.setup.preprocess.data
+        # ...............................
         data = data_object.load(fpath, regenerate_plot=regenerate_plot)
         return data
 
@@ -1426,16 +842,16 @@ class Datasets:
 
 class Datasets_Neural(Datasets):
     def __init__(self, root_dir, metadata={}):
-        super().__init__(root_dir, metadata=metadata)
+        super().__init__(root_dir=root_dir, metadata=metadata)
         # TODO: currently not able to manage individual analyzed sessions, needed?
-        self.photon = Data_CA(metadata=self.metadata)
-        self.probe = Data_Probe(metadata=self.metadata)
+        self.photon = Data_Photon(root_dir=root_dir, metadata=self.metadata)
+        # TODO: implement probe data loading
+        # self.probe = Data_Probe(root_dir=root_dir, metadata=self.metadata)
         # TODO: split into different datasets if needed
         self.photon_imaging_methods = ["femtonics", "thorlabs", "inscopix"]
         self.probe_imaging_methods = ["neuropixels", "tetrode"]
-        self.data_sources = {"photon": "ca_data", "probe": "ca_data"}
 
-    def load(self, task_name, data_source, regenerate_plot=False):
+    def get_object(self, data_source):
         if data_source in self.photon_imaging_methods:
             imaging_type = "photon"
         elif data_source in self.probe_imaging_methods:
@@ -1443,23 +859,13 @@ class Datasets_Neural(Datasets):
         else:
             raise ValueError(f"Imaging type {data_source} not supported.")
 
-this part needs to be build correct, so photons loading function needs to be build
-...................................................................
-        fname_ending = self.data_sources[imaging_type]
-        fname = f"{task_name}_{fname_ending}.npy"
-        fpath = self.data_dir.joinpath(fname)
         data_object = getattr(self, imaging_type)
-        data = data_object.load(fpath, regenerate_plot=regenerate_plot)
-...................................................................
-        return data
+        return data_object
 
 
 class Datasets_Behavior(Datasets):
     def __init__(self, root_dir, metadata={}):
         super().__init__(root_dir, metadata=metadata)
-        movement_root_folder = "TRD-2P"  # Treadmil 2P
-        movement_1p_root_folder = "TRD-1P"  # Treadmil 1P
-        movement_train_root_folder = "TRD-TR"  # Treadmil training
         self.data_dir = (
             self.data_dir
             if not self.data_dir == root_dir
@@ -1479,7 +885,6 @@ class Datasets_Behavior(Datasets):
             raw_data_object=self.velocity, metadata=self.metadata
         )
         self.moving = Data_Moving(raw_data_object=self.velocity, metadata=self.metadata)
-        self.cam = Data_CAM(metadata=self.metadata)
         self.data_sources = {
             "position": "pos_track",
             "distance": "distance_track",
@@ -1487,7 +892,6 @@ class Datasets_Behavior(Datasets):
             "acceleration": "acceleration_track",
             "stimulus": "stimulus_track",
             "moving": "moving_track",
-            "cam": "???",
         }
 
 
@@ -1786,7 +1190,7 @@ class Task:
         data = {"neural": {}, "behavior": {}}
         for mouse_data in ["neural", "behavior"]:
             if mouse_data == "neural":
-                data_to_load = self.neural_metadata["imaging_setup"]
+                data_to_load = self.neural_metadata["setup"]
             else:
                 data_to_load = behavior_datas
             data_to_load = make_list_ifnot(data_to_load)
@@ -2949,59 +2353,3 @@ class Vizualizer:
             plt.savefig(plot_save_path, dpi=300)
         plt.show()
         plt.close()
-
-
-import logging
-
-
-class GlobalLogger:
-    def __init__(self, save_dir=""):
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.configure_logger(save_dir=save_dir)
-
-    def configure_logger(self, save_dir=""):
-        self.logger.setLevel(logging.DEBUG)  # Set the desired level here
-
-        # Create a file handler which logs even debug messages.
-        log_file_path = os.path.join(save_dir, "Global_log.log")
-        fh = logging.FileHandler(log_file_path)
-        fh.setLevel(logging.DEBUG)
-
-        # Create a console handler with a higher log level.
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.ERROR)
-
-        # Create a formatter and add it to the handlers.
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        fh.setFormatter(formatter)
-        ch.setFormatter(formatter)
-
-        # Add the handlers to the logger.
-        self.logger.addHandler(fh)
-        self.logger.addHandler(ch)
-
-    def set_save_dir(self, save_dir):
-        # Get the old handler
-        old_handler = self.logger.handlers[0]
-
-        # Create a new handler with the updated filename
-        new_handler = logging.FileHandler(save_dir + "/Global_log.log")
-        new_handler.setLevel(old_handler.level)
-        new_handler.setFormatter(old_handler.formatter)
-
-        # Remove the old handler and add the new one
-        self.logger.removeHandler(old_handler)
-        self.logger.addHandler(new_handler)
-
-
-global_logger_object = GlobalLogger()
-global_logger = global_logger_object.logger
-
-# global_logger_object.set_save_dir(os.path.join(os.getcwd(), "logs"))
-# global_logger = global_logger_object.logger
-# global_logger.info('check if log file is created in new working directory')
-# global_logger
-# print(global_logger_object.logger.handlers)
-# global_logger_object.logger.handlers[0].baseFilename
