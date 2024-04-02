@@ -149,13 +149,11 @@ def get_files(directory, ending="", regex_search=""):
     directory = Path(directory)
     files_list = None
     if directory.exists():
-        files_list = [
-            name
-            for name in os.listdir(directory)
-            if directory.joinpath(name).is_file()
-            and len(re.findall(regex_search, name)) > 0
-            and name.endswith(ending)
-        ]
+        files_list = []
+        for name in os.listdir(directory):
+            if directory.joinpath(name).is_file():
+                if len(re.findall(regex_search, name)) > 0 and name.endswith(ending):
+                    files_list.append(name)
     else:
         global_logger.warning(f"Directory does not exist: {directory}")
         print(f"Directory does not exist: {directory}")

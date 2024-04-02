@@ -367,7 +367,7 @@ class Dataset(DataPlotterInterface):
                 data_dimensions = self.data.shape
                 if len(data_dimensions) == 2:
                     # format of data should be [num_time_points, num_cells]
-                    self.data = self.force_1_dim_larger(arr=self.data)
+                    self.data = self.force_1_dim_larger(data=self.data)
             else:
                 global_logger.warning(f"No {self.key} data found at {self.path}.")
                 print(f"No {self.key} data found at {self.path}.")
@@ -465,25 +465,44 @@ class BehaviorDataset(Dataset):
         root_dir=None,
     ):
         super().__init__(key, path, data, raw_data_object, metadata, root_dir)
-        self.setup = self.get_setup(
-            self.metadata["setup"],
-            self.metadata["preprocessing_software"],
-            self.metadata["method"],
-        )
 
     def get_setup(self, setup_name, preprocess_name, method_name):
         if setup_name == "treadmill":
-            setup = Treadmill(preprocess_name, method_name, root_dir=self.root_dir)
+            setup = Treadmill(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
         elif setup_name == "trackball":
-            setup = Trackball(preprocess_name, method_name, root_dir=self.root_dir)
+            setup = Trackball(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
         elif setup_name == "vr":
-            setup = VR(preprocess_name, method_name, root_dir=self.root_dir)
+            setup = VR(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
         elif setup_name == "cam":
             # TODO: different cam types need to be implemented
-            setup = Cam(preprocess_name, method_name, root_dir=self.root_dir)
+            setup = Cam(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
         else:
             raise ValueError(f"Behavior setup {setup_name} not supported.")
         return setup
+
+
+class NeuralDataset(Dataset):
+    def __init__(
+        self,
+        key,
+        path=None,
+        data=None,
+        raw_data_object=None,
+        metadata=None,
+        root_dir=None,
+    ):
+        super().__init__(key, path, data, raw_data_object, metadata, root_dir)
+
+    def process_raw_data(self):
+        self.setup.preprocess.process_raw_data()
 
 
 class Data_Position(BehaviorDataset):
@@ -495,6 +514,10 @@ class Data_Position(BehaviorDataset):
             root_dir=root_dir,
         )
         self.environment_dimensions = self.metadata["environment_dimensions"]
+
+    def process_raw_data(self):
+        self.data = self.setup.preprocess.process_raw_data()
+        return self.data
 
     # FIXME: why is this data 1 datapoint smaller than neural data?
 
@@ -707,7 +730,7 @@ class Data_Moving(BehaviorDataset):
         return self.fit_moving_to_brainarea(data, self.metadata["area"])
 
 
-class Data_Photon(Dataset):
+class Data_Photon(NeuralDataset):
     """
     Dataset class for managing photon data.
     Attributes:
@@ -737,6 +760,10 @@ class Data_Photon(Dataset):
         self.plot_attributes["ylable"] = "Neuron ID"
         self.plot_attributes["figsize"] = (20, 10)
 
+    def process_raw_data(self):
+        self.data = self.setup.preprocess.process_raw_data()
+        return self.data
+
     def set_data_plot(self):
         binarized_data = self.data
         num_time_steps, num_neurons = binarized_data.shape
@@ -752,11 +779,17 @@ class Data_Photon(Dataset):
 
     def get_setup(self, setup_name, preprocess_name, method_name):
         if setup_name == "femtonics":
-            setup = Femtonics(preprocess_name, method_name, root_dir=self.root_dir)
+            setup = Femtonics(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
         elif setup_name == "thorlabs":
-            setup = Thorlabs(preprocess_name, method_name, root_dir=self.root_dir)
+            setup = Thorlabs(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
         elif setup_name == "inscopix":
-            setup = Inscopix(preprocess_name, method_name, root_dir=self.root_dir)
+            setup = Inscopix(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
         else:
             raise ValueError(f"Imaging setup {setup_name} not supported.")
         return setup
@@ -768,7 +801,7 @@ class Data_Probe(Dataset):
             key="probe", path=path, raw_data_object=raw_data_object, metadata=metadata
         )
         # TODO: implement probe data loading
-        pass
+        raise NotImplementedError("Probe data loading not implemented.")
 
 
 class Datasets:
@@ -782,7 +815,6 @@ class Datasets:
         else:
             self.data_dir = Path(root_dir)
         self.metadata = metadata
-        self.data_sources = {}
 
     def get_object(self, data_source):
         raise NotImplementedError(
@@ -790,11 +822,13 @@ class Datasets:
         )
 
     def load(self, task_name, data_source, regenerate_plot=False):
+        """
+        Load data from a specific data source.
+            data_object is a object inhereting the Dataset attributes and functions.
+        """
         # build path to data
         data_object = self.get_object(data_source)
-        # ............................... das muss noch für behvior besser definiert werden
-        fpath = data_object.setup.preprocess.data
-        # ...............................
+        fpath = data_object.setup.preprocess.get_data_path(task_name)
         data = data_object.load(fpath, regenerate_plot=regenerate_plot)
         return data
 
@@ -871,28 +905,26 @@ class Datasets_Behavior(Datasets):
             if not self.data_dir == root_dir
             else self.data_dir.joinpath("TRD-2P")
         )
-        self.position = Data_Position(metadata=self.metadata)
+        self.position = Data_Position(root_dir=root_dir, metadata=self.metadata)
         self.stimulus = Data_Stimulus(
-            raw_data_object=self.position, metadata=self.metadata
+            raw_data_object=self.position, root_dir=root_dir, metadata=self.metadata
         )
         self.distance = Data_Distance(
-            raw_data_object=self.position, metadata=self.metadata
+            raw_data_object=self.position, root_dir=root_dir, metadata=self.metadata
         )
         self.velocity = Data_Velocity(
-            raw_data_object=self.distance, metadata=self.metadata
+            raw_data_object=self.distance, root_dir=root_dir, metadata=self.metadata
         )
         self.acceleration = Data_Acceleration(
-            raw_data_object=self.velocity, metadata=self.metadata
+            raw_data_object=self.velocity, root_dir=root_dir, metadata=self.metadata
         )
-        self.moving = Data_Moving(raw_data_object=self.velocity, metadata=self.metadata)
-        self.data_sources = {
-            "position": "pos_track",
-            "distance": "distance_track",
-            "velocity": "velocity_track",
-            "acceleration": "acceleration_track",
-            "stimulus": "stimulus_track",
-            "moving": "moving_track",
-        }
+        self.moving = Data_Moving(
+            raw_data_object=self.velocity, root_dir=root_dir, metadata=self.metadata
+        )
+
+    def get_object(self, data_source):
+        data_object = getattr(self, data_source)
+        return data_object
 
 
 class Animal:

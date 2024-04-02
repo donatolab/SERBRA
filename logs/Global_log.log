@@ -636,3 +636,12 @@
 2024-03-28 08:55:35,670 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S3.pt
 2024-03-28 08:55:35,681 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S3.pt
 2024-03-28 08:55:35,694 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S3.pt
+2024-03-28 17:26:52,303 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S1.pt
+2024-03-28 17:26:52,316 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S1.pt
+2024-03-28 17:26:52,324 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S1.pt
+2024-03-28 17:26:52,337 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S2.pt
+2024-03-28 17:26:52,347 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S2.pt
+2024-03-28 17:26:52,356 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S2.pt
+2024-03-28 17:26:52,368 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_time_iter-20000_dim-3_model-S3.pt
+2024-03-28 17:26:52,379 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_behavior_iter-20000_dim-3_model-S3.pt
+2024-03-28 17:26:52,387 - GlobalLogger - INFO - Loaded matching model D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210301\models\cebra_hybrid_iter-20000_dim-3_model-S3.pt
