@@ -481,6 +481,15 @@ def fill_continuous_array(data_array, fps, time_gap):
     return filled_array
 
 
+def convert_values_to_binary(vec: np.ndarray, threshold=2.5):
+    smaller_idx = np.where(vec < threshold)
+    bigger_idx = np.where(vec > threshold)
+    vec[smaller_idx] = 0
+    vec[bigger_idx] = 1
+    vec = vec.astype(int)
+    return vec
+
+
 def fill_vector(vector, indices, fill_value=np.nan):
     filled_vector = vector.copy()
     filled_vector[indices] = fill_value
@@ -676,3 +685,16 @@ def set_attributes_check_presents(
             raise NameError(
                 f"Variable {present} is not defined in yaml file for {set_object.id}"
             )
+
+
+# matlab
+def load_matlab_metadata(mat_fpath):
+    import scipy.io as sio
+
+    mat = sio.loadmat(mat_fpath)
+    # get the metadata
+    dtypes = mat["metadata"][0][0].dtype.fields
+    values = mat["metadata"][0][0]
+    for attribute, value in zip(dtypes, values):
+        value = value[0] if len(value) > 0 else " "
+        print(f"{attribute:>12}: {str(value)}")

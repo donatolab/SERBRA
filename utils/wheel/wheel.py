@@ -175,7 +175,7 @@ class Wheel:
             df,
             x="x",
             y="time",
-            z="y"
+            z="y",
             # ,
             # width=1,
             # height=1

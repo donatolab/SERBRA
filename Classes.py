@@ -467,7 +467,17 @@ class BehaviorDataset(Dataset):
         super().__init__(key, path, data, raw_data_object, metadata, root_dir)
 
     def get_setup(self, setup_name, preprocess_name, method_name):
-        if setup_name == "treadmill":
+        if setup_name == "box":
+            setup = Box(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
+        elif setup_name == "cam":
+            # TODO: cam data is typically use for position or behavior detection... so it should be RAW data or already preprocessed
+            # TODO: different cam types need to be implemented
+            setup = Cam(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
+        elif setup_name == "treadmill":
             setup = Treadmill(
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
@@ -475,13 +485,16 @@ class BehaviorDataset(Dataset):
             setup = Trackball(
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
-        elif setup_name == "vr":
-            setup = VR(
+        elif setup_name == "openfield":
+            setup = Openfield(
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
-        elif setup_name == "cam":
-            # TODO: different cam types need to be implemented
-            setup = Cam(
+        elif setup_name == "vr_treadmill":
+            setup = VR_Treadmill(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
+        elif setup_name == "wheel":
+            setup = Wheel(
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
         else:
@@ -734,8 +747,10 @@ class Data_Photon(NeuralDataset):
     """
     Dataset class for managing photon data.
     Attributes:
+        - data (np.ndarray): The binariced traces.
         - method (str): The method used to record the data.
         - preprocessing_software (str): The software used to preprocess the data.
+            - raw fluoresence traces can be found inside preprocessing object #TODO: implement example
         - setup (str): The setup used to record the data.
         - setup.data = raw_data_object
     """
@@ -761,7 +776,7 @@ class Data_Photon(NeuralDataset):
         self.plot_attributes["figsize"] = (20, 10)
 
     def process_raw_data(self):
-        self.data = self.setup.preprocess.process_raw_data()
+        self.data = self.setup.process_raw_data()
         return self.data
 
     def set_data_plot(self):
@@ -833,7 +848,6 @@ class Datasets:
         return data
 
     def get_multi_data(self, sources, shuffle=False, idx_to_keep=None, split_ratio=1):
-        # FIXME: is this correct?
         sources = make_list_ifnot(sources)
         concatenated_data = None
         for source in sources:
@@ -1437,14 +1451,10 @@ class Task:
         # TODO: create function to integrate train and test embeddings into models
         if not type(to_transform_data) == np.ndarray:
             global_logger.warning(f"No data to transform given. Using default labels.")
-            print(f"No neural data given. Using default labels. femtonics")
-            to_transform_data = self.neural.femtonics.data
+            print(f"No neural data given. Using default labels. photon")
+            to_transform_data = self.neural.photon.data
             if not isinstance(to_transform_data, np.ndarray):
-                global_logger.warning(
-                    f"No femtonics data found. Checking for inscopix."
-                )
-                print(f"No neural data from femtonics found. Checking for inscopix")
-                to_transform_data = self.neural.inscopix.data
+                raise ValueError("No data to neural transform given.")
 
         filtered_models = models or self.get_pipeline_models(
             manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude

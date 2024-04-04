@@ -6,12 +6,13 @@ tasks_infos:
     neural_metadata:
       method: 1P
       area: CA3 # e.g. CA3
-      setup: inscopix
+      setup: inscopix # femtonics, thorlabs, 
       preprocessing_software: inscopix
       fps: 20
     behavior_metadata:
       method: 1P
-      preprocessing_software: manual
+      setup: box # treadmill, wheel, trackball, openfield
+      preprocessing_software: manual # mat_to_position, mat_to_velocity, csv_to_....
       stimulus_type: incremental # e.g. Variation A 
       stimulus_sequence: [1, 2, 3, 4, 5, 6, 1, 2] #
       #stimulus_sequence: [1, 2, 3, 4, 5, 6, 7, 8] #
