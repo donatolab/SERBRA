@@ -125,6 +125,7 @@ def load_all_animals(
 class DataPlotterInterface:
     def __init__(self):
         self.data = None
+        self.metadata = None
         self.plot_attributes = {
             "title": None,
             "ylable": None,
@@ -478,23 +479,23 @@ class BehaviorDataset(Dataset):
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
         elif setup_name == "treadmill":
-            setup = Treadmill(
+            setup = Treadmill_Setup(
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
         elif setup_name == "trackball":
-            setup = Trackball(
+            setup = Trackball_Setup(
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
         elif setup_name == "openfield":
-            setup = Openfield(
+            setup = Openfield_Setup(
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
         elif setup_name == "vr_treadmill":
-            setup = VR_Treadmill(
+            setup = VR_Wheel(
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
         elif setup_name == "wheel":
-            setup = Wheel(
+            setup = Rotary_Wheel(
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
         else:
@@ -515,7 +516,7 @@ class NeuralDataset(Dataset):
         super().__init__(key, path, data, raw_data_object, metadata, root_dir)
 
     def process_raw_data(self):
-        self.setup.preprocess.process_raw_data()
+        self.setup.preprocess.process_data()
 
 
 class Data_Position(BehaviorDataset):
@@ -529,7 +530,7 @@ class Data_Position(BehaviorDataset):
         self.environment_dimensions = self.metadata["environment_dimensions"]
 
     def process_raw_data(self):
-        self.data = self.setup.preprocess.process_raw_data()
+        self.data = self.setup.preprocess.process_data()
         return self.data
 
     # FIXME: why is this data 1 datapoint smaller than neural data?
@@ -843,7 +844,7 @@ class Datasets:
         """
         # build path to data
         data_object = self.get_object(data_source)
-        fpath = data_object.setup.preprocess.get_data_path(task_name)
+        fpath = data_object.setup.get_data_path(task_name)
         data = data_object.load(fpath, regenerate_plot=regenerate_plot)
         return data
 

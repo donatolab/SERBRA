@@ -1,6 +1,9 @@
 from pathlib import Path
 from Helper import *
 
+# math
+from scipy.interpolate import interp1d
+
 import cebra
 
 
@@ -159,17 +162,16 @@ class Setup(Output):
         self.data_paths = None
         self.preproces = None
 
-    def get_preprocess(self, preprocess_name):
-        raise NotImplementedError(
-            "Preprocess method not implemented for {self.__class__}"
-        )
-
-    def get_data_to_process(self, task_name=None):
-        data_paths = self.get_output_paths()
+    def get_data_path(self, task_name):
+        fpath = self.preprocess.get_data_path(task_name)
+        return fpath
 
     def process_data(self, task_name=None):
-        raw_data = self.get_data_to_process(task_name=task_name)
-        data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
+        raise NotImplementedError(
+            f"Data processing not implemented for {self.__class__}"
+        )
+        # raw_data = self.get_data_to_process(task_name=task_name)
+        # data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
         return data
 
 
@@ -186,27 +188,336 @@ class NeuralSetup(Setup):
             raise ValueError(f"Preprocessing software {preprocess_name} not supported.")
         return preprocess
 
-
-class BehaviorSetup(Setup):
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
-
-    def get_preprocess(self, preprocess_name):
-        if preprocess_name == "manual":
-            preprocess = Manual(self.method, self.key, self.root_dir)
-        elif preprocess_name == "mat_to_velocity":
-            preprocess = Mat_to_Velocity(self.method, self.key, self.root_dir)
-        elif preprocess_name == "mat_to_position":
-            preprocess = Mat_to_Position(self.method, self.key, self.root_dir)
-        elif preprocess_name == "csv_to_py":
-            preprocess = CSV_to_py(self.method, self.key, self.root_dir)
-        else:
-            raise ValueError(f"Preprocessing software {preprocess_name} not supported.")
-        return preprocess
+    def process_data(self, task_name=None):
+        raw_data = self.load_data(defined_task_name=task_name)
+        data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
+        return data
 
 
 ## Behavior
-class Treadmill(BehaviorSetup):
+class Wheel:
+    def __init__(self, radius=0.1, clicks_per_rotation=500):
+        self.radius = radius  # in meters
+        self.clicks_per_rotation = clicks_per_rotation
+        self.click_distance = (2 * np.pi * self.radius) / self.clicks_per_rotation
+
+
+class Treadmill:
+    def __init__(
+        self,
+        belt_len: int = 180,
+        belt_segment_len: int = 30,
+        belt_segment_num: int = 6,
+        belt_type: dict = {
+            "A": [1, 2, 3, 4, 5, 6],
+            "A'": [1, 6, 4, 2, 3, 5],
+            "B": [1, 1, 1, 1, 1, 1],
+        },
+    ):
+        self.belt_len = belt_len
+        self.belt_segment_len = belt_segment_len
+        self.belt_segment_num = belt_segment_num
+        self.belt_type = belt_type
+
+
+class RotaryEncoder:
+    def __init__(self, sample_rate=10000, imaging_sample_rate=30):
+        # TODO: imaging_sample_rate should be read from the data or metadata
+        # TODO: imaging_sample_rate should be read from the data or metadata
+        # TODO: imaging_sample_rate should be read from the data or metadata
+        # TODO: imaging_sample_rate should be read from the data or metadata
+        # TODO: imaging_sample_rate should be read from the data or metadata
+        # TODO: imaging_sample_rate should be read from the data or metadata
+        # TODO: imaging_sample_rate should be read from the data or metadata
+        # TODO: imaging_sample_rate should be read from the data or metadata
+        # TODO: imaging_sample_rate should be read from the data or metadata
+        self.sample_rate = sample_rate  # 10kHz
+        self.imaging_sample_rate = imaging_sample_rate  # 30Hz
+
+    @staticmethod
+    def convert_wheel_data(self, data):
+        """
+        columns: roatry encoder state1 | roatry encoder state 2 |        lab sync      | frames
+        values          0 or   1       |       0 or   1         |0 or 1 reflecor strip | galvosync
+
+        lab sync is not alway detected
+        """
+        print("Processing matlab files")
+        # get wheel electricity contact values
+        wheel_ch_a = data[:, 0]
+        wheel_ch_b = data[:, 1]
+
+        # filter out noise
+        wheel_ch_a_bin = convert_values_to_binary(wheel_ch_a)
+        wheel_ch_b_bin = convert_values_to_binary(wheel_ch_b)
+
+        # calulates rotation direction of quadrature rotary encoder
+        rotary_binarized = self.quadrature_rotation_encoder(
+            wheel_ch_a_bin, wheel_ch_b_bin
+        )
+        lab_sync = np.array(data[:, 1]).reshape(-1, 1)
+        galvo_sync = np.array(data[:, 3]).reshape(-1, 1)
+        return rotary_binarized, lab_sync, galvo_sync
+
+    @staticmethod
+    def quadrature_rotation_encoder(ch_a, ch_b):
+        """
+        calulates rotation direction of quadrature rotary encoder.
+
+        <ch_a,ch_b> two encoder channels with High (1) and Low (0) states
+        <out> rotation vector with fwd (1) and rev (-1) motion, same size as input
+
+        This code was originally written in matlab
+        20050528 Steffen Kandler
+        """
+        # encode-state look-up table
+        lut = [
+            [0, 0],  # state 1
+            [1, 0],  # state 2
+            [1, 1],  # state 3
+            [0, 1],  # state 4
+        ]
+
+        # create state vector
+        statevec = np.stack([ch_a, ch_b]).transpose()
+
+        # create rotation vector
+        rot_dirs = np.zeros([len(statevec), 1])
+        old_state = statevec[0]
+        for i, state in enumerate(statevec[1:]):
+            state_diff = lut.index(list(state)) - lut.index(list(old_state))
+            if state_diff == -3:
+                rot_dirs[i] = 1  # fwd
+            elif state_diff == 3:
+                rot_dirs[i] = -1  # rev
+
+            old_state = state
+        return rot_dirs
+
+    @staticmethod
+    def galvo_trigger_times(galvo_sync):
+        """
+        value > 0 for when 2P frame is obtained;
+        value = 0 in between
+
+        find rising edge of trigger
+        """
+        indices = np.where(galvo_sync >= 1)[0]
+        galvo_trigger = np.zeros(len(galvo_sync))
+        galvo_trigger[:] = 0
+        galvo_trigger[indices] = 1
+
+        triggers = []
+        for idx in indices:
+            if galvo_trigger[idx - 1] == 0:
+                triggers.append(idx)
+        return triggers
+
+    def calc_distances(self, rotary_binarized, click_distance):
+        # get times of rotary encoder
+        rotation_clicks_at_times = np.where(rotary_binarized != 0)[0]
+
+        # calculate distance
+        distances = np.zeros(len(rotation_clicks_at_times), dtype=np.float32)
+        for click_time in rotation_clicks_at_times:
+            forward_or_backward = rotary_binarized[click_time]  # can be +/- 1
+            distances[click_time] = forward_or_backward * click_distance
+
+        # remove 0 distances
+        no_movement = np.where(distances == 0)[0]
+        distances = np.delete(distances, no_movement)
+
+        if len(distances) == 0:
+            # create dummy array
+            distances = np.array([0])
+            dist_times = np.array([0])
+        else:
+            # set distances times based on non-zero rotatry encoder vals
+            dist_times = np.arange(rotary_binarized.shape[0], dtype=np.int32)
+            dist_times = np.delete(dist_times, no_movement)
+        return distances, dist_times
+
+    def fill_distance_gaps(self, distance, times, time_threshold=0.5):
+        """
+        Fill in the rotary encoder when it's in an undefined state for > 0.5 sec
+        """
+        # refill in the rotary encoder when it's in an undefined state for > 0.5 sec
+        max_time = self.sample_rate * time_threshold
+
+        dist_full = [distance[0]]
+        times_full = [times[0]]
+
+        prev_dist_time = times[0]
+        for k, dist_time in enumerate(times[1:]):
+            # if time between two rotary encoder values is larger than threshold
+            if (dist_time - prev_dist_time) >= max_time:
+                # create array of zeros for the time between the two rotary encoder values
+                temp = np.arange(prev_dist_time, dist_time, max_time)[1:]
+                times_full.append(temp)
+                dist_full.append(temp * 0)
+            else:
+                # append the distance and time
+                times_full.append(dist_time)
+                dist_full.append(distance[k])
+            prev_dist_time = dist_time
+        # convert lists to numpy arrays
+        dist_times_full = np.hstack(times_full)
+        distance_full = np.hstack(dist_full)
+        return distance_full, dist_times_full
+
+    def rotary_to_distances(
+        self,
+        rotary_binarized: np.ndarray,
+        click_distance: float,
+        galvo_triggers_times: np.ndarray,
+    ):
+        """
+        Convert rotary encoder data to distance
+        """
+        # extract distance from rotary encoder
+        distances, dist_times = self.calc_distances(rotary_binarized, click_distance)
+
+        # fill in the gaps in the distance data
+        distance_full, dist_times_full = self.fill_distance_gaps(distances, dist_times)
+
+        # Fit the detected distance times and values
+        if distance_full.shape[0] != 0:
+            # create an extrapolation function
+            F = interp1d(x=dist_times_full, y=distance_full, fill_value="extrapolate")
+
+            # extrapolate the distance to fill gaps of no distance
+            # resample the fit function at the correct galvo_tirgger times
+            distance_extra = F(galvo_triggers_times)
+        else:
+            distance_extra = np.zeros(len(rotary_binarized))
+
+        # np.save(fname_out, galvo_dist)
+        return distance_extra
+
+    def calc_velocities(self, rotary_binarized, click_distance):
+        # get times of rotary encoder
+        rotation_clicks_at_times = np.where(rotary_binarized != 0)[0]
+
+        # calculate velocity
+        velocities = np.zeros(len(rotation_clicks_at_times), dtype=np.float32)
+        last_click_time = 0
+        for click_time in rotation_clicks_at_times:
+            #
+            forward_or_backward = rotary_binarized[click_time]  # can be +/- 1
+            # delta distance / delta time
+            velocities[click_time] = (forward_or_backward * click_distance) / (
+                (click_time - last_click_time) / self.sample_rate
+            )
+            last_click_time = click_time
+
+        # remove 0 velocities
+        no_velocities = np.where(velocities == 0)[0]
+        velocities = np.delete(velocities, no_velocities)
+
+        if len(velocities) == 0:
+            # create dummy array
+            velocities = np.array([0])
+            vel_times = np.array([0])
+        else:
+            # set velocities times based on non-zero rotatry encoder vals
+            vel_times = np.arange(rotary_binarized.shape[0], dtype=np.int32)
+            vel_times = np.delete(vel_times, no_velocities)
+        return velocities, vel_times
+
+    def fill_velocity_gaps(self, velocity, times, time_threshold=0.5):
+        """
+        Fill in the rotary encoder when it's in an undefined state for > 0.5 sec
+        """
+        # refill in the rotary encoder when it's in an undefined state for > 0.5 sec
+        max_time = self.sample_rate * time_threshold
+
+        vel_full = [velocity[0]]
+        times_full = [times[0]]
+
+        prev_vel_time = times[0]
+        for k, vel_time in enumerate(times[1:]):  # , desc="refilling stationary times"
+            # if time between two rotary encoder values is larger than threshold
+            if (vel_time - prev_vel_time) >= max_time:
+                # create array of zeros for the time between the two rotary encoder values
+                temp = np.arange(prev_vel_time, vel_time, max_time)[1:]
+                times_full.append(temp)
+                vel_full.append(temp * 0)
+            else:
+                # append the velocity and time
+                times_full.append(vel_time)
+                vel_full.append(velocity[k])
+            prev_vel_time = vel_time
+        # convert lists to numpy arrays
+        vel_times_full = np.hstack(times_full)
+        velocity_full = np.hstack(vel_full)
+        return velocity_full, vel_times_full
+
+    def rotary_to_velocity(
+        self,
+        rotary_binarized: np.ndarray,
+        click_distance: float,
+        galvo_triggers_times: np.ndarray,
+    ):
+        """
+        Convert rotary encoder data to velocity
+        """
+        # extract velocity from rotary encoder
+        velocities, vel_times = self.calc_velocities(rotary_binarized, click_distance)
+
+        # fill in the gaps in the velocity data
+        velocity_full, vel_times_full = self.fill_velocity_gaps(velocities, vel_times)
+
+        # Fit the detected velocity times and values
+        if velocity_full.shape[0] != 0:
+            # create an extrapolation function
+            F = interp1d(x=vel_times_full, y=velocity_full, fill_value="extrapolate")
+
+            # extrapolate the velocity to fill gaps of no velocity
+            # resample the fit function at the correct galvo_tirgger times
+            velocity_extra = F(galvo_triggers_times)
+        else:
+            velocity_extra = np.zeros(len(rotary_binarized))
+
+        # np.save(fname_out, galvo_vel)
+        return velocity_extra
+
+    def extract_data(self, data: np.ndarray, wheel: Wheel):
+        rotary_binarized, lab_sync, galvo_sync = self.convert_wheel_data(data)
+
+        # get rotary encoder times
+        rotary_times = np.arange(rotary_binarized.shape[0]) / self.sample_rate
+
+        # get turned distances of the wheel surface
+        rotary_distances = np.cumsum(rotary_binarized) * wheel.click_distance
+
+        # get galvo trigger times for 2P frame
+        galvo_triggers_times = self.galvo_trigger_times(galvo_sync)
+
+        # get distance of the wheel surface
+        distances = self.rotary_to_distances(
+            rotary_binarized, wheel.click_distance, galvo_triggers_times
+        )
+        distance_over_time = np.cumsum(distances)
+
+        velocity_from_distances = np.diff(distances)
+
+        # get velocity of the wheel surface
+        velocity = self.rotary_to_velocity(
+            rotary_binarized, wheel.click_distance, galvo_triggers_times
+        )
+
+        print(asdff)
+        # ........................
+        data = {
+            "distance": distance_over_time,
+            "velocity": velocity,
+            "acceleration": None,
+            "moving": None,
+        }
+        return data
+
+
+class Treadmill_Setup(Setup):
     """
     Class managing the treadmill setup of Steffen.
     Rotation data is stored in .mat files.
@@ -219,28 +530,60 @@ class Treadmill(BehaviorSetup):
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         # TODO: define correct output files
         # DON-017115_20231120_TRD-2P_S5-ACQ.mat
-        self.static_outputs = None
+        self.static_outputs = {}
         self.variable_outputs = {self.root_dir: ["*.mat"]}
         self.data_naming_scheme = (
             "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}"
         )
-        #TODO: should metadata be variable or static?
-        self.belt_len = 180 # cm
-        self.belt_segment_len = 30 # cm
-        self.belt_segment_num = 6
-        self.belt_type = {"A": [1, 2, 3, 4, 5, 6], "A'": [1, 6, 4, 2, 3, 5], "B": [1, 1, 1, 1, 1, 1]}
-        ################################################################################################
+        # TODO: integrate metadata, so wheel and Treadmil can be set differently?
+        self.wheel = Wheel()
+        self.treadmill = Treadmill()
+        self.rotary_encoder = RotaryEncoder()
         if preprocess_name != "mat_to_position":
             raise NameError(
                 f"WARNING: preprocess_name should be 'mat_to_position'! Got {preprocess_name}, which can lead to errors for this Behavior Setup."
             )
-        self.preprocess = self.get_preprocess(preprocess_name)
+
+    def get_data_path(self, task_name):
+        fname = f"{task_name}_{self.key}.npy"
+        fpath = self.get_file_path(fname, defined_task_name=task_name)
+        fpath = fpath if fpath.exists() else None
+        # TODO: is this correct?......
+        return fpath
+
+    def process_data(self, task_name=None):
+        raw_data = self.load_data(defined_task_name=task_name)
+        rotary_data = self.rotary_encoder.extract_data(raw_data)
+        treadmil_data = self.treadmill.get_positions(rotary_data["distance"])
+
+        data = {**rotary_data, **treadmil_data}
+        # .....................
+        print(asdf)
+        raise NotImplementedError(
+            f"remove preprocessing metadata from yaml file for {self.__class__}"
+        )
+        self.static_outputs = {}
+        self.variable_outputs = {
+            self.root_dir: [
+                "*_2p_galvo_trigger.npy",
+                "*_triggers.npy",
+                "*_velocity.npy",
+                "*_wheel.npy",
+                "*_position.npy",
+                "*_distance.npy",
+                "*_velocity.npy",
+                "*_acceleration.npy",
+                "*_stimulus.npy",
+                "*_moving.npy",
+            ]
+        }
+        return data
 
     # get_file_path is inherited from Output class
     # get_output_paths is inherited from Output class
 
 
-class Wheel(BehaviorSetup):
+class Wheel_Setup(Setup):
     """
     Class managing the wheel setup of Steffen.
     Rotation data is stored in .mat files.
@@ -250,11 +593,12 @@ class Wheel(BehaviorSetup):
         super().__init__(preprocess_name, method, key, root_dir)
         self.root_dir_name = f"TRD-{method}"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
-        self.static_outputs = None
+        self.static_outputs = {}
         self.variable_outputs = {self.root_dir: ["*.mat"]}
         self.data_naming_scheme = (
             "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}"
         )
+        self.wheel = Wheel()
         if preprocess_name != "mat_to_velocity":
             raise NameError(
                 f"WARNING: preprocess_name should be 'mat_to_velocity'! Got {preprocess_name}, which can lead to errors for this Behavior Setup."
@@ -263,29 +607,42 @@ class Wheel(BehaviorSetup):
         raise NotImplementedError("Wheel setup not implemented yet")
 
 
-class Trackball(BehaviorSetup):
+class Trackball_Setup(Setup):
     def __init__(self, preprocess_name, method, key, root_dir=None):
         super().__init__(preprocess_name, method, key, root_dir)
         root_folder = f"???-{method}"
         raise NotImplementedError("Treadmill setup not implemented yet")
 
 
-class VR_Treadmill(BehaviorSetup):
+class Rotary_Wheel(Wheel_Setup):
     def __init__(self, preprocess_name, method, key, root_dir=None):
         super().__init__(preprocess_name, method, key, root_dir)
-        self.root_dir_name = f"TRD-{method}"
-        self.root_dir = self.root_dir.joinpath(self.root_dir_name)
-        # TODO: define correct output files
-        # DON-017115_20231120_TRD-2P_S5-ACQ.mat
-        self.static_outputs = None
-        self.variable_outputs = {self.root_dir: ["*.csv"]}
-        self.data_naming_scheme = (
-            "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}"
+        self.rotary_encoder = RotaryEncoder()
+
+    def process_data(self, task_name=None):
+        raise NotImplementedError(
+            f"Rotary wheel setup not implemented yet {self.__class__}"
         )
-        self.preprocess = self.get_preprocess(preprocess_name)
+        rotary_binarized, lab_sync, galvo_sync = self.rotary_encoder.convert_wheel_data(
+            raw_data
+        )
+        data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
+        return data
 
 
-class Openfield(BehaviorSetup):
+class VR_Wheel(Wheel_Setup):
+    def __init__(self, preprocess_name, method, key, root_dir=None):
+        super().__init__(preprocess_name, method, key, root_dir)
+        self.static_outputs = {}
+        self.variable_outputs = {self.root_dir: ["*"]}
+
+    def process_data(self, task_name=None):
+        raise NotImplementedError(
+            f"VR wheel setup not implemented yet {self.__class__}"
+        )
+
+
+class Openfield_Setup(Setup):
     def __init__(self, preprocess_name, method, key, root_dir=None):
         super().__init__(preprocess_name, method, key, root_dir)
 
@@ -295,7 +652,7 @@ class Openfield(BehaviorSetup):
         self.preprocess = self.get_preprocess(preprocess_name)
 
 
-class Box(BehaviorSetup):
+class Box(Setup):
     def __init__(self, preprocess_name, method, key, root_dir=None):
         super().__init__(preprocess_name, method, key, root_dir)
 
@@ -305,7 +662,7 @@ class Box(BehaviorSetup):
         self.preprocess = self.get_preprocess(preprocess_name)
 
 
-class Cam(BehaviorSetup):
+class Cam(Setup):
     def __init__(self, preprocess_name, method, key, root_dir=None):
         super().__init__(preprocess_name, method, key, root_dir)
         vr_root_folder = "0000VR"  # VR
@@ -323,7 +680,7 @@ class Femtonics(NeuralSetup):
         super().__init__(preprocess_name, method, key, root_dir)
         self.root_dir_name = f"00{method}-F"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
-        self.static_outputs = None
+        self.static_outputs = {}
         self.variable_outputs = {self.root_dir: ["*.mesc"]}
         self.data_naming_scheme = (
             "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}"
@@ -370,246 +727,6 @@ class Preprocessing(Output):
         return data
 
 
-## Behavior
-class Manual(Preprocessing):
-    """
-    Class to manage manual preprocessing
-    """
-
-    def __init__(self, method):
-        # TODO: implement manual manager
-        raise NotImplementedError("Manual preprocessing not implemented yet")
-
-
-class CSV_to_py(Preprocessing):
-    """
-    Class to manage the conversion of .csv files to .npy files
-    """
-
-    def __init__(self, method, key, root_dir=None):
-        super().__init__(method, key, root_dir)
-        self.static_outputs = {}
-        self.variable_outputs = {self.root_dir: ["*"]}
-        # TODO: maybe first from csv to mat then to py. depends on time implementing
-        # ranans code in python
-        raise NotImplementedError("CSV to numpy preprocessing not implemented yet")
-
-
-class Mat_to_Position(Preprocessing):
-    """
-    Class to manage the conversion of .mat files to .npy files
-    """
-
-    # TODO: implement mat_to_Velocity manager
-    def __init__(self, method, key, root_dir=None):
-        # TODO: implement suite2p manager
-        super().__init__(method, key, root_dir)
-        self.static_outputs = {}
-        self.variable_outputs = {
-            self.root_dir: [
-                "*_2p_galvo_trigger.npy",
-                "*_triggers.npy",
-                "*_velocity.npy",
-                "*_wheel.npy",
-                "*_wheel.npy",
-                "*_position.npy",
-                "*_distance.npy",
-                "*_velocity.npy",
-                "*_acceleration.npy",
-                "*_stimulus.npy",
-                "*_moving.npy",
-            ]
-        }
-
-    def process_data(self, raw_data, task_name=None, save=True):
-        """ """
-        rotary_binarized, lab_sync, galvo = self.get_wheel_data(raw_data)
-        self.load_tracks2(fname_tracks, bin_width)
-        data = self.load_data(task_name=task_name)
-        return data
-    
-    def asdf(self):
-        ....................
-        pass
-
-    def get_wheel_data(self, data):
-        """
-        columns: roatry encoder state1 | roatry encoder state 2 |        lab sync      | frames
-        values          0 or   1       |       0 or   1         |0 or 1 reflecor strip | galvosync
-
-        lab sync is not alway detected
-        """
-        print("Processing matlab files")
-        # get wheel electricity contact values
-        wheel_ch_a = data[:, 0]
-        wheel_ch_b = data[:, 1]
-
-        # filter out noise
-        wheel_ch_a_bin = convert_values_to_binary(wheel_ch_a)
-        wheel_ch_b_bin = convert_values_to_binary(wheel_ch_b)
-
-        # calulates rotation direction of quadrature rotary encoder
-        rotary_binarized = self.quadrature_rotation_encoder(wheel_ch_a_bin, wheel_ch_b_bin)
-        lab_sync = np.array(data[:, 1]).reshape(-1, 1)
-        galvo = np.array(data[:, 3]).reshape(-1, 1)
-        return rotary_binarized, lab_sync, galvo
-
-    def quadrature_rotation_encoder(ch_a, ch_b):
-        """
-        calulates rotation direction of quadrature rotary encoder.
-
-        <ch_a,ch_b> two encoder channels with High (1) and Low (0) states
-        <out> rotation vector with fwd (1) and rev (-1) motion, same size as input
-
-        This code was originally written in matlab
-        20050528 Steffen Kandler
-        """
-        # encode-state look-up table
-        lut = [
-            [0, 0],  # state 1
-            [1, 0],  # state 2
-            [1, 1],  # state 3
-            [0, 1],  # state 4
-        ]
-
-        # create state vector
-        statevec = np.stack([ch_a, ch_b]).transpose()
-
-        # create rotation vector
-        rot_dirs = np.zeros([len(statevec), 1])
-        old_state = statevec[0]
-        for i, state in enumerate(statevec[1:]):
-            state_diff = lut.index(list(state)) - lut.index(list(old_state))
-            if state_diff == -3:
-                rot_dirs[i] = 1  # fwd
-            elif state_diff == 3:
-                rot_dirs[i] = -1  # rev
-
-            old_state = state
-        return rot_dirs
-
-    def load_tracks2(fname_tracks, bin_width):
-        #
-        raise NotImplementedError("Mat to position preprocessing not implemented yet")
-        pos_tracks = []
-        idx_tracks = []
-        idx_ctr = 0
-
-        # loop over all 3 segments here while loading
-        for fname_track in fname_tracks:
-            with h5py.File(fname_track, "r") as file:
-                #
-                pos = file["trdEval"]["position_atframe"][()].squeeze()
-
-                n_timesteps = pos.shape[0]
-                print(fname_track, "# of time steps: ", pos.shape)
-
-            # bin speed for some # of bins
-            # bin_width = 1
-            sum_flag = False
-            pos_bin = run_binning(pos, bin_width, sum_flag)
-            # print ("pos bin: ", pos_bin.shape)
-
-            #
-            pos_tracks.append(pos_bin)
-
-            # add locations of the belt realtive
-            temp = np.arange(idx_ctr, idx_ctr + n_timesteps, 1)
-            temp = np.int32(run_binning(temp, bin_width, sum_flag))
-            idx_tracks.append(temp)
-
-            idx_ctr += n_timesteps
-
-        return pos_tracks, idx_tracks
-
-    def run_binning(data, bin_size=7, sum_flag=True):
-        # split data into bins
-        idx = np.arange(0, data.shape[0], bin_size)
-        d2 = np.array_split(data, idx[1:])
-
-        # sum on time axis; drop last value
-        if sum_flag:
-            d3 = np.array(d2[:-1]).sum(1)
-        else:
-            d3 = np.median(np.array(d2[:-1]), axis=1)
-
-        print("   Data binned using ", bin_size, " frame bins, final size:  ", d3.shape)
-
-        #
-        return d3
-
-
-class Mat_to_Velocity(Preprocessing):
-    """
-    Class to manage the conversion of .mat files to .npy files
-    """
-
-    # TODO: implement mat_to_Velocity manager
-    def __init__(self, method, key, root_dir=None):
-        # TODO: implement suite2p manager
-        super().__init__(method, key, root_dir)
-        self.static_outputs = {}
-        self.variable_outputs = {
-            self.root_dir: [
-                "*_2p_galvo_trigger.npy",
-                "*_triggers.npy",
-                "*_velocity.npy",
-                "*_wheel.npy",
-                "*_position.npy",
-                "*_distance.npy",
-                "*_velocity.npy",
-                "*_acceleration.npy",
-                "*_stimulus.npy",
-                "*_moving.npy",
-            ]
-        }
-
-    def process_data(self, raw_data, task_name=None, save=True):
-        self.convert_movement_data(self.root_dir)
-        data = self.load_data(task_name=task_name)
-        return data
-
-    def convert_movement_data(
-        self, directory=None, wheel_processing_fname="process_wheel.m"
-    ):
-        """
-        Converts movement data from .mat files to velocity data and saves it as .npy files.
-
-        Args:
-            wheel_processing_fname (str, optional): Filename of the Octave/MATLAB function for processing wheel data.
-                Defaults to "process_wheel.m".
-
-        Returns:
-            None: If the movement directory does not exist or if there is any error during the conversion process,
-                None is returned. The velocity files are saved as .npy files in the specified movement directory.
-
-        Raises:
-            Any exceptions raised during the process are logged and handled, allowing the function to continue
-            processing other files.
-
-        Note:
-            This function assumes the presence of specific directories and files within the movement directory
-            for processing. It utilizes external resources like the Octave/MATLAB environment and the 'oct2py'
-            package for MATLAB/Octave integration.
-
-        """
-        raise NotImplementedError(
-            f"Movement data conversion not implemented for {self.__class__}"
-        )
-
-        w = wheel.Wheel()
-        # w.root_dir = os.path.split("wheel.npy")[0]
-        w.root_dir = movement_dir
-        w.load_track(session_part=session_part)
-        w.compute_velocity(session_part=session_part)
-
-    # get_data_path is inherited from Output class
-    # process_data(self, task_name) is inherited from Preprocessing class
-    # load_data is inherited from Output class
-    # self.load_data(file_name, full_root_dir=self.root_dir)
-    # get_file_path is inherited from Output class
-
-
 ## Neural
 class Inscopix_Processing(Preprocessing):
     def __init__(self, method):
@@ -649,6 +766,11 @@ class Suite2p(Preprocessing):
             "cell_geldrying": "cell_drying.npy",
             "binary": "data.bin",
         }
+
+    def process_data(self, raw_data, task_name=None, save=True):
+        raise NotImplementedError(
+            f"Suite2p data processing not implemented for {self.__class__}"
+        )
 
     # get_data_path is inherited from Output class
     # process_raw_data(self, task_name) is inherited from Preprocessing class
