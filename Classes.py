@@ -310,6 +310,7 @@ class Dataset(DataPlotterInterface):
         raw_data_object=None,
         metadata=None,
         root_dir=None,
+        task_id=None,
     ):
         # initialize plotting parameters
         super().__init__()
@@ -318,6 +319,7 @@ class Dataset(DataPlotterInterface):
         self.data_dir = None
         self.data: np.ndarray = data
         self.key = key
+        self.task_id = task_id
         self.raw_data_object = raw_data_object
         self.metadata = metadata
         self.fps = None if "fps" not in self.metadata.keys() else self.metadata["fps"]
@@ -464,11 +466,18 @@ class BehaviorDataset(Dataset):
         raw_data_object=None,
         metadata=None,
         root_dir=None,
+        task_id=None,
     ):
-        super().__init__(key, path, data, raw_data_object, metadata, root_dir)
+        super().__init__(
+            key, path, data, raw_data_object, metadata, root_dir, task_id=task_id
+        )
 
     def get_setup(self, setup_name, preprocess_name, method_name):
-        if setup_name == "box":
+        if setup_name == "active_avoidance":
+            setup = Active_Avoidance(
+                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+            )
+        elif setup_name == "box":
             setup = Box(
                 preprocess_name, method_name, key=self.key, root_dir=self.root_dir
             )
@@ -512,37 +521,50 @@ class NeuralDataset(Dataset):
         raw_data_object=None,
         metadata=None,
         root_dir=None,
+        task_id=None,
     ):
-        super().__init__(key, path, data, raw_data_object, metadata, root_dir)
+        super().__init__(
+            key, path, data, raw_data_object, metadata, root_dir, task_id=task_id
+        )
 
     def process_raw_data(self):
         self.setup.preprocess.process_data()
 
 
 class Data_Position(BehaviorDataset):
-    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
+    def __init__(
+        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
+    ):
         super().__init__(
             key="position",
             raw_data_object=raw_data_object,
             metadata=metadata,
             root_dir=root_dir,
+            task_id=task_id,
         )
         self.environment_dimensions = self.metadata["environment_dimensions"]
 
+    def create_dataset(self, raw_data_object=None):
+        data = self.process_raw_data()
+        return data
+
     def process_raw_data(self):
-        self.data = self.setup.preprocess.process_data()
+        self.data = self.setup.process_data(self.task_id)
         return self.data
 
     # FIXME: why is this data 1 datapoint smaller than neural data?
 
 
 class Data_Stimulus(BehaviorDataset):
-    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
+    def __init__(
+        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
+    ):
         super().__init__(
             key="stimulus",
             raw_data_object=raw_data_object,
             metadata=metadata,
             root_dir=root_dir,
+            task_id=task_id,
         )
         # TODO: only working for steffens treadmil introduce into yaml
         # file no handling other types of stimuly besides track stimulus
@@ -599,12 +621,15 @@ class Data_Stimulus(BehaviorDataset):
 
 
 class Data_Distance(BehaviorDataset):
-    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
+    def __init__(
+        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
+    ):
         super().__init__(
             key="distance",
             raw_data_object=raw_data_object,
             metadata=metadata,
             root_dir=root_dir,
+            task_id=task_id,
         )
         self.environment_dimensions = make_list_ifnot(
             self.metadata["environment_dimensions"]
@@ -644,12 +669,15 @@ class Data_Distance(BehaviorDataset):
 
 
 class Data_Velocity(BehaviorDataset):
-    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
+    def __init__(
+        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
+    ):
         super().__init__(
             key="velocity",
             raw_data_object=raw_data_object,
             metadata=metadata,
             root_dir=root_dir,
+            task_id=task_id,
         )
         self.raw_velocitys = None
         self.plot_attributes["ylable"] = "velocity cm/s"
@@ -678,12 +706,15 @@ class Data_Velocity(BehaviorDataset):
 
 
 class Data_Acceleration(BehaviorDataset):
-    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
+    def __init__(
+        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
+    ):
         super().__init__(
             key="acceleration",
             raw_data_object=raw_data_object,
             metadata=metadata,
             root_dir=root_dir,
+            task_id=task_id,
         )
         self.raw_acceleration = None
         self.plot_attributes["ylable"] = "acceleration cm/s^2"
@@ -706,12 +737,15 @@ class Data_Acceleration(BehaviorDataset):
 
 
 class Data_Moving(BehaviorDataset):
-    def __init__(self, raw_data_object=None, metadata=None, root_dir=None):
+    def __init__(
+        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
+    ):
         super().__init__(
             key="moving",
             raw_data_object=raw_data_object,
             metadata=metadata,
             root_dir=root_dir,
+            task_id=task_id,
         )
         self.plot_attributes["ylable"] = "Movement State"
         self.plot_attributes["ylimits"] = (-0.1, 1.1)
@@ -756,7 +790,14 @@ class Data_Photon(NeuralDataset):
         - setup.data = raw_data_object
     """
 
-    def __init__(self, path=None, raw_data_object=None, metadata=None, root_dir=None):
+    def __init__(
+        self,
+        path=None,
+        raw_data_object=None,
+        metadata=None,
+        root_dir=None,
+        task_id=None,
+    ):
         super().__init__(
             key="photon",
             path=path,
@@ -825,26 +866,27 @@ class Datasets:
     Dataset class for managing multiple datasets. Getting correct data paths and loading data.
     """
 
-    def __init__(self, root_dir, metadata={}):
+    def __init__(self, root_dir, metadata={}, task_id=None):
         if "data_dir" in metadata.keys():
             self.data_dir = Path(root_dir).joinpath(metadata["data_dir"])
         else:
             self.data_dir = Path(root_dir)
         self.metadata = metadata
+        self.task_id = task_id
 
     def get_object(self, data_source):
         raise NotImplementedError(
             f"ERROR: Function get_object is not defined for {self.__class__}."
         )
 
-    def load(self, task_name, data_source, regenerate_plot=False):
+    def load(self, task_id, data_source, regenerate_plot=False):
         """
         Load data from a specific data source.
             data_object is a object inhereting the Dataset attributes and functions.
         """
         # build path to data
         data_object = self.get_object(data_source)
-        fpath = data_object.setup.get_data_path(task_name)
+        fpath = data_object.setup.get_data_path(task_id)
         data = data_object.load(fpath, regenerate_plot=regenerate_plot)
         return data
 
@@ -890,12 +932,14 @@ class Datasets:
 
 
 class Datasets_Neural(Datasets):
-    def __init__(self, root_dir, metadata={}):
-        super().__init__(root_dir=root_dir, metadata=metadata)
+    def __init__(self, root_dir, metadata={}, task_id=None):
+        super().__init__(root_dir=root_dir, metadata=metadata, task_id=task_id)
         # TODO: currently not able to manage individual analyzed sessions, needed?
-        self.photon = Data_Photon(root_dir=root_dir, metadata=self.metadata)
+        self.photon = Data_Photon(
+            root_dir=root_dir, metadata=self.metadata, task_id=self.task_id
+        )
         # TODO: implement probe data loading
-        # self.probe = Data_Probe(root_dir=root_dir, metadata=self.metadata)
+        # self.probe = Data_Probe(root_dir=root_dir, metadata=self.metadata, task_id=self.task_id)
         # TODO: split into different datasets if needed
         self.photon_imaging_methods = ["femtonics", "thorlabs", "inscopix"]
         self.probe_imaging_methods = ["neuropixels", "tetrode"]
@@ -913,28 +957,45 @@ class Datasets_Neural(Datasets):
 
 
 class Datasets_Behavior(Datasets):
-    def __init__(self, root_dir, metadata={}):
-        super().__init__(root_dir, metadata=metadata)
+    def __init__(self, root_dir, metadata={}, task_id=None):
+        super().__init__(root_dir=root_dir, metadata=metadata, task_id=task_id)
         self.data_dir = (
             self.data_dir
             if not self.data_dir == root_dir
             else self.data_dir.joinpath("TRD-2P")
         )
-        self.position = Data_Position(root_dir=root_dir, metadata=self.metadata)
+        self.position = Data_Position(
+            root_dir=root_dir, metadata=self.metadata, task_id=self.task_id
+        )
         self.stimulus = Data_Stimulus(
-            raw_data_object=self.position, root_dir=root_dir, metadata=self.metadata
+            raw_data_object=self.position,
+            root_dir=root_dir,
+            metadata=self.metadata,
+            task_id=self.task_id,
         )
         self.distance = Data_Distance(
-            raw_data_object=self.position, root_dir=root_dir, metadata=self.metadata
+            raw_data_object=self.position,
+            root_dir=root_dir,
+            metadata=self.metadata,
+            task_id=self.task_id,
         )
         self.velocity = Data_Velocity(
-            raw_data_object=self.distance, root_dir=root_dir, metadata=self.metadata
+            raw_data_object=self.distance,
+            root_dir=root_dir,
+            metadata=self.metadata,
+            task_id=self.task_id,
         )
         self.acceleration = Data_Acceleration(
-            raw_data_object=self.velocity, root_dir=root_dir, metadata=self.metadata
+            raw_data_object=self.velocity,
+            root_dir=root_dir,
+            metadata=self.metadata,
+            task_id=self.task_id,
         )
         self.moving = Data_Moving(
-            raw_data_object=self.velocity, root_dir=root_dir, metadata=self.metadata
+            raw_data_object=self.velocity,
+            root_dir=root_dir,
+            metadata=self.metadata,
+            task_id=self.task_id,
         )
 
     def get_object(self, data_source):
@@ -1202,11 +1263,11 @@ class Task:
         self.load_metadata(metadata)
         self.data_dir = data_dir or session_dir
         self.neural = Datasets_Neural(
-            root_dir=self.data_dir, metadata=self.neural_metadata
+            root_dir=self.data_dir, metadata=self.neural_metadata, task_id=self.id
         )
         self.behavior_metadata["area"] = self.neural_metadata["area"]
         self.behavior = Datasets_Behavior(
-            root_dir=self.data_dir, metadata=self.behavior_metadata
+            root_dir=self.data_dir, metadata=self.behavior_metadata, task_id=self.id
         )
         self.model_dir = model_dir or self.data_dir.joinpath("models")
         self.models = None
@@ -1225,7 +1286,7 @@ class Task:
         # loads neural or behaviour data
         datasets_object = getattr(self, data_type)
         data = datasets_object.load(
-            self.name, data_source=data_source, regenerate_plot=regenerate_plot
+            self.id, data_source=data_source, regenerate_plot=regenerate_plot
         )
         return data
 

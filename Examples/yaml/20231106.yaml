@@ -12,7 +12,6 @@ tasks_infos:
     behavior_metadata:
       method: 1P
       setup: box # treadmill, wheel, trackball, openfield
-      preprocessing_software: manual # mat_to_position, mat_to_velocity, csv_to_....
       stimulus_type: incremental # e.g. Variation A 
       stimulus_sequence: [1, 2, 3, 4, 5, 6, 1, 2] #
       #stimulus_sequence: [1, 2, 3, 4, 5, 6, 7, 8] #

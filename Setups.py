@@ -21,8 +21,8 @@ class Output:
         self.root_dir_name = None
         self.root_dir = Path(root_dir) if root_dir else Path()
         self.method = method
-        self.static_outputs = None
-        self.variable_outputs = None
+        self.static_outputs: dict = None
+        self.variable_outputs: dict = None
         self.preprocess_name = None
 
     def define_full_root_dir(self, full_root_dir: Path = None):
@@ -36,21 +36,18 @@ class Output:
             full_output_paths[full_folder_path] = fnames
         return full_output_paths
 
-    def get_variable_output_paths(self, full_root_dir, defined_task_name=None):
+    def get_variable_output_paths(self, full_root_dir, identifier: dict = None):
         full_output_paths = {}
-        for output_dir, regex_searches in self.variable_outputs.items():
+        for output_dir, naming_templates in self.variable_outputs.items():
             full_output_dir = full_root_dir.joinpath(output_dir)
-            found_files_list = []
-            for regex_search in regex_searches:
-                if defined_task_name:
-                    regex_search = regex_search.replace("*", defined_task_name)
-                found_files = get_files(full_output_dir, regex_search=regex_search)
-                if found_files:
-                    found_files_list += found_files
-            full_output_paths[output_dir] = found_files_list
+            files_list = []
+            for template in naming_templates:
+                fname = template.format(**identifier)
+                files_list.append(fname)
+            full_output_paths[output_dir] = files_list
         return full_output_paths
 
-    def get_output_paths(self, full_root_dir: Path = None, defined_task_name=None):
+    def get_output_paths(self, full_root_dir: Path = None, identifier: dict = None):
         full_root_dir = self.define_full_root_dir(full_root_dir)
         if not full_root_dir and self.variable_outputs:
             raise ValueError(
@@ -61,7 +58,7 @@ class Output:
         else:
             static_output_paths = self.get_static_output_paths(full_root_dir)
             variable_output_paths = self.get_variable_output_paths(
-                full_root_dir, defined_task_name
+                full_root_dir, identifier
             )
             # Merge dictionaries of static and variable output paths by unpacking
             # combine values of the same key
@@ -77,7 +74,13 @@ class Output:
         return output_paths
 
     @staticmethod
-    def transpose_output_paths(output_paths):
+    def extract_identifier(task_id: str):
+        animal_id, date, name = task_id.split("_")
+        identifier = {"animal_id": animal_id, "date": date, "task_name": name}
+        return identifier
+
+    @staticmethod
+    def transpose_output_paths(output_paths: dict):
         transposed_output_paths = {}
         for path, file_names in output_paths.items():
             for file_name in file_names:
@@ -85,18 +88,17 @@ class Output:
         return transposed_output_paths
 
     def get_file_path(
-        self, file_name=None, full_root_dir: Path = None, defined_task_name: str = None
+        self, file_name=None, full_root_dir: Path = None, identifier: dict = None
     ):
-        if not file_name and not defined_task_name:
-            raise ValueError("Either file_name or defined_task_name must be provided.")
+        if not file_name and not identifier:
+            raise ValueError("Either file_name or identifier must be provided.")
 
         full_root_dir = self.define_full_root_dir(full_root_dir)
-        output_paths = self.get_output_paths(full_root_dir, defined_task_name)
+        output_paths = self.get_output_paths(full_root_dir, identifier)
         transposed_output_paths = self.transpose_output_paths(output_paths)
 
-        if file_name:
-            fpath = transposed_output_paths[file_name].joinpath(file_name)
-        else:
+        fpath = transposed_output_paths[file_name].joinpath(file_name)
+        """else:
             if len(transposed_output_paths.keys()) > 1:
                 raise ValueError(
                     "Multiple files found. Please provide file_name to select one."
@@ -104,14 +106,14 @@ class Output:
             elif len(transposed_output_paths.keys()) == 0:
                 raise ValueError("No files found.")
             else:
-                fpath = list(transposed_output_paths.values())[0]
+                fpath = list(transposed_output_paths.values())[0]"""
         return fpath
 
     def load_data(
         self,
         file_name=None,
         task_name=None,
-        defined_task_name=None,
+        identifier=None,
         full_root_dir: Path = None,
     ):
         """
@@ -126,10 +128,10 @@ class Output:
             - Pickle files: p, pkl;
             - MAT-files: mat.
         """
-        if file_name or defined_task_name:
+        if file_name or identifier:
             fpath = self.get_file_path(
                 file_name=file_name,
-                defined_task_name=defined_task_name,
+                identifier=identifier,
                 full_root_dir=full_root_dir,
             )
         elif task_name:
@@ -143,8 +145,11 @@ class Output:
             print(f"File {file_name} not found in {fpath}")
         return data
 
-    def get_data_path(self, task_name):
-        raise NotImplementedError(f"Data path not implemented for {self.__class__}")
+    def get_data_path(self, task_id: str = None, fname: str = None):
+        identifier = Output.extract_identifier(task_id)
+        task_name = identifier["task_name"]
+        fname = f"{task_name}_{self.key}.npy" if not fname else fname
+        fpath = self.get_file_path(fname, identifier=identifier)
         return fpath
 
 
@@ -162,16 +167,12 @@ class Setup(Output):
         self.data_paths = None
         self.preproces = None
 
-    def get_data_path(self, task_name):
-        fpath = self.preprocess.get_data_path(task_name)
-        return fpath
-
-    def process_data(self, task_name=None):
+    def process_data(self, task_id=None):
         raise NotImplementedError(
             f"Data processing not implemented for {self.__class__}"
         )
-        # raw_data = self.get_data_to_process(task_name=task_name)
-        # data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
+        # raw_data = self.get_data_to_process(task_id=task_id)
+        # data = self.preprocess.process_data(raw_data=raw_data, task_id=task_id)
         return data
 
 
@@ -188,8 +189,13 @@ class NeuralSetup(Setup):
             raise ValueError(f"Preprocessing software {preprocess_name} not supported.")
         return preprocess
 
-    def process_data(self, task_name=None):
-        raw_data = self.load_data(defined_task_name=task_name)
+    def get_data_path(self, task_id):
+        fpath = self.preprocess.get_data_path(task_id)
+        return fpath
+
+    def process_data(self, task_id=None):
+        animal_id, date, task_name = Output.extract_identifier(task_id)
+        raw_data = self.load_data(identifier=task_name)
         data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
         return data
 
@@ -528,13 +534,27 @@ class Treadmill_Setup(Setup):
         super().__init__(preprocess_name, method, key, root_dir)
         self.root_dir_name = f"TRD-{method}"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
-        # TODO: define correct output files
+        # TODO: add posibility to provide data_naming_scheme in yaml file
         # DON-017115_20231120_TRD-2P_S5-ACQ.mat
         self.static_outputs = {}
-        self.variable_outputs = {self.root_dir: ["*.mat"]}
         self.data_naming_scheme = (
-            "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}"
+            "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
         )
+        self.variable_outputs = {
+            self.root_dir: [
+                self.data_naming_scheme,
+                "{task_name}_2p_galvo_trigger.npy",
+                "{task_name}_triggers.npy",
+                "{task_name}_velocity.npy",
+                "{task_name}_wheel.npy",
+                "{task_name}_position.npy",
+                "{task_name}_distance.npy",
+                "{task_name}_velocity.npy",
+                "{task_name}_acceleration.npy",
+                "{task_name}_stimulus.npy",
+                "{task_name}_moving.npy",
+            ]
+        }
         # TODO: integrate metadata, so wheel and Treadmil can be set differently?
         self.wheel = Wheel()
         self.treadmill = Treadmill()
@@ -544,39 +564,17 @@ class Treadmill_Setup(Setup):
                 f"WARNING: preprocess_name should be 'mat_to_position'! Got {preprocess_name}, which can lead to errors for this Behavior Setup."
             )
 
-    def get_data_path(self, task_name):
-        fname = f"{task_name}_{self.key}.npy"
-        fpath = self.get_file_path(fname, defined_task_name=task_name)
-        fpath = fpath if fpath.exists() else None
-        # TODO: is this correct?......
-        return fpath
-
-    def process_data(self, task_name=None):
-        raw_data = self.load_data(defined_task_name=task_name)
+    def process_data(self, task_id=None):
+        identifier = Output.extract_identifier(task_id)
+        fname = self.data_naming_scheme.format(**identifier)
+        raw_data = self.load_data(file_name=fname, identifier=identifier)
         rotary_data = self.rotary_encoder.extract_data(raw_data)
         treadmil_data = self.treadmill.get_positions(rotary_data["distance"])
 
         data = {**rotary_data, **treadmil_data}
-        # .....................
-        print(asdf)
         raise NotImplementedError(
             f"remove preprocessing metadata from yaml file for {self.__class__}"
         )
-        self.static_outputs = {}
-        self.variable_outputs = {
-            self.root_dir: [
-                "*_2p_galvo_trigger.npy",
-                "*_triggers.npy",
-                "*_velocity.npy",
-                "*_wheel.npy",
-                "*_position.npy",
-                "*_distance.npy",
-                "*_velocity.npy",
-                "*_acceleration.npy",
-                "*_stimulus.npy",
-                "*_moving.npy",
-            ]
-        }
         return data
 
     # get_file_path is inherited from Output class
@@ -594,10 +592,10 @@ class Wheel_Setup(Setup):
         self.root_dir_name = f"TRD-{method}"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {}
-        self.variable_outputs = {self.root_dir: ["*.mat"]}
         self.data_naming_scheme = (
-            "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}"
+            "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}.mat"
         )
+        self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
         self.wheel = Wheel()
         if preprocess_name != "mat_to_velocity":
             raise NameError(
@@ -649,7 +647,6 @@ class Openfield_Setup(Setup):
         # TODO: Typically data is gathered through a camera
         #
         raise NotImplementedError("Openfield setup not implemented yet")
-        self.preprocess = self.get_preprocess(preprocess_name)
 
 
 class Box(Setup):
@@ -659,7 +656,13 @@ class Box(Setup):
         # TODO: Typically data is gathered through a camera
         #
         raise NotImplementedError("Box setup not implemented yet")
-        self.preprocess = self.get_preprocess(preprocess_name)
+
+
+class Active_Avoidance(Setup):
+    def __init__(self, preprocess_name, method, key, root_dir=None):
+        super().__init__(preprocess_name, method, key, root_dir)
+        # TODO: Typically data is gathered through a camera
+        raise NotImplementedError("Active Avoidance setup not implemented yet")
 
 
 class Cam(Setup):
@@ -681,10 +684,10 @@ class Femtonics(NeuralSetup):
         self.root_dir_name = f"00{method}-F"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {}
-        self.variable_outputs = {self.root_dir: ["*.mesc"]}
         self.data_naming_scheme = (
-            "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}"
+            "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}.mesc"
         )
+        self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
         self.preprocess = self.get_preprocess(preprocess_name)
 
     # get_output_paths is inherited from Output class
@@ -713,12 +716,6 @@ class Preprocessing(Output):
     def __init__(self, method, key, root_dir=None):
         super().__init__(method, key, root_dir)
         self.root_dir = root_dir
-
-    def get_data_path(self, task_name):
-        fname = f"{task_name}_{self.key}.npy"
-        fpath = self.get_file_path(fname, defined_task_name=task_name)
-        fpath = fpath if fpath.exists() else None
-        return fpath
 
     def process_data(self, raw_data, task_name=None, save=True):
         raise NotImplementedError(
@@ -753,7 +750,7 @@ class Suite2p(Preprocessing):
                 "data.bin",
             ]
         }
-        self.variable_outputs = {self.data_dir: ["*_photon.npy"]}
+        self.variable_outputs = {self.data_dir: ["{task_name}_photon.npy"]}
         self.output_fnames = {
             "f_raw": "F.npy",
             "f_neuropil": "F_neu.npy",
