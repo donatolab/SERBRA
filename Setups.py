@@ -1,9 +1,11 @@
 from pathlib import Path
 from Helper import *
 
+# loading mat files
+import scipy.io as sio
+
 # math
 from scipy.interpolate import interp1d
-
 import cebra
 
 
@@ -16,14 +18,19 @@ class Output:
         - variable_outpus: dictionary of variable output files structured as {Path(): [regex_search1, regex_search2]}
     """
 
-    def __init__(self, method, key, root_dir=None):
+    def __init__(self, key, root_dir=None, metadata={}):
         self.key = key
         self.root_dir_name = None
         self.root_dir = Path(root_dir) if root_dir else Path()
-        self.method = method
+        self.method = metadata["method"] if "method" in metadata.keys() else None
+        self.preprocess_name = (
+            metadata["preprocessing_software"]
+            if "preprocessing_software" in metadata.keys()
+            else None
+        )
         self.static_outputs: dict = None
         self.variable_outputs: dict = None
-        self.preprocess_name = None
+        self.metadata = metadata
 
     def define_full_root_dir(self, full_root_dir: Path = None):
         return full_root_dir if full_root_dir else self.root_dir
@@ -160,9 +167,8 @@ class Setup(Output):
     All Paths are relative to the root folder of the setup
     """
 
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(method, key, root_dir)
-        self.preprocess_name = preprocess_name
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_naming_scheme = None
         self.data_paths = None
         self.preproces = None
@@ -177,14 +183,19 @@ class Setup(Output):
 
 
 class NeuralSetup(Setup):
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
 
-    def get_preprocess(self, preprocess_name):
+    def get_preprocess(self):
+        preprocess_name = self.preprocess_name
         if preprocess_name == "suite2p":
-            preprocess = Suite2p(self.method, self.key, self.root_dir)
+            preprocess = Suite2p(
+                key=self.key, root_dir=self.root_dir, metadata=self.metadata
+            )
         elif preprocess_name == "inscopix":
-            preprocess = Inscopix_Processing(self.method, self.key, self.root_dir)
+            preprocess = Inscopix_Processing(
+                key=self.key, root_dir=self.root_dir, metadata=self.metadata
+            )
         else:
             raise ValueError(f"Preprocessing software {preprocess_name} not supported.")
         return preprocess
@@ -219,28 +230,28 @@ class Treadmill:
             "A'": [1, 6, 4, 2, 3, 5],
             "B": [1, 1, 1, 1, 1, 1],
         },
+        wheel_radius=0.1,
+        wheel_clicks_per_rotation=500,
     ):
         self.belt_len = belt_len
         self.belt_segment_len = belt_segment_len
         self.belt_segment_num = belt_segment_num
         self.belt_type = belt_type
+        self.wheel = Wheel(wheel_radius, wheel_clicks_per_rotation)
 
 
 class RotaryEncoder:
     def __init__(self, sample_rate=10000, imaging_sample_rate=30):
         # TODO: imaging_sample_rate should be read from the data or metadata
         # TODO: imaging_sample_rate should be read from the data or metadata
-        # TODO: imaging_sample_rate should be read from the data or metadata
-        # TODO: imaging_sample_rate should be read from the data or metadata
-        # TODO: imaging_sample_rate should be read from the data or metadata
-        # TODO: imaging_sample_rate should be read from the data or metadata
-        # TODO: imaging_sample_rate should be read from the data or metadata
-        # TODO: imaging_sample_rate should be read from the data or metadata
-        # TODO: imaging_sample_rate should be read from the data or metadata
         self.sample_rate = sample_rate  # 10kHz
         self.imaging_sample_rate = imaging_sample_rate  # 30Hz
 
-    @staticmethod
+    def extract_data_from_matlab_file(self, fpath):
+        mat = sio.loadmat(fpath)
+        data = mat["trainingdata"]
+        return data
+
     def convert_wheel_data(self, data):
         """
         columns: roatry encoder state1 | roatry encoder state 2 |        lab sync      | frames
@@ -324,14 +335,14 @@ class RotaryEncoder:
         rotation_clicks_at_times = np.where(rotary_binarized != 0)[0]
 
         # calculate distance
-        distances = np.zeros(len(rotation_clicks_at_times), dtype=np.float32)
+        temp_distances = np.zeros(len(rotary_binarized), dtype=np.float32)
         for click_time in rotation_clicks_at_times:
             forward_or_backward = rotary_binarized[click_time]  # can be +/- 1
-            distances[click_time] = forward_or_backward * click_distance
+            temp_distances[click_time] = forward_or_backward * click_distance
 
         # remove 0 distances
-        no_movement = np.where(distances == 0)[0]
-        distances = np.delete(distances, no_movement)
+        no_movement = np.where(temp_distances == 0)[0]
+        distances = np.delete(temp_distances, no_movement)
 
         if len(distances) == 0:
             # create dummy array
@@ -405,20 +416,20 @@ class RotaryEncoder:
         rotation_clicks_at_times = np.where(rotary_binarized != 0)[0]
 
         # calculate velocity
-        velocities = np.zeros(len(rotation_clicks_at_times), dtype=np.float32)
+        temp_velocities = np.zeros(len(rotary_binarized), dtype=np.float32)
         last_click_time = 0
         for click_time in rotation_clicks_at_times:
             #
             forward_or_backward = rotary_binarized[click_time]  # can be +/- 1
             # delta distance / delta time
-            velocities[click_time] = (forward_or_backward * click_distance) / (
+            temp_velocities[click_time] = (forward_or_backward * click_distance) / (
                 (click_time - last_click_time) / self.sample_rate
             )
             last_click_time = click_time
 
         # remove 0 velocities
-        no_velocities = np.where(velocities == 0)[0]
-        velocities = np.delete(velocities, no_velocities)
+        no_velocities = np.where(temp_velocities == 0)[0]
+        velocities = np.delete(temp_velocities, no_velocities)
 
         if len(velocities) == 0:
             # create dummy array
@@ -487,7 +498,9 @@ class RotaryEncoder:
         # np.save(fname_out, galvo_vel)
         return velocity_extra
 
-    def extract_data(self, data: np.ndarray, wheel: Wheel):
+    def extract_data(self, fpath: np.ndarray, wheel: Wheel):
+        data = self.extract_data_from_matlab_file(fpath)
+
         rotary_binarized, lab_sync, galvo_sync = self.convert_wheel_data(data)
 
         # get rotary encoder times
@@ -505,12 +518,27 @@ class RotaryEncoder:
         )
         distance_over_time = np.cumsum(distances)
 
-        velocity_from_distances = np.diff(distances)
+        velocity_from_distances = np.diff(distance_over_time)
 
         # get velocity of the wheel surface
         velocity = self.rotary_to_velocity(
             rotary_binarized, wheel.click_distance, galvo_triggers_times
         )
+
+        """
+        from numba import njit
+        import random
+
+        @njit
+        def monte_carlo_pi(nsamples):
+            acc = 0
+            for i in range(nsamples):
+                x = random.random()
+                y = random.random()
+                if (x ** 2 + y ** 2) < 1.0:
+                    acc += 1
+            return 4.0 * acc / nsamples
+        """
 
         print(asdff)
         # ........................
@@ -530,9 +558,9 @@ class Treadmill_Setup(Setup):
     """
 
     # TODO: change naming of class to better describing treadmill setup
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
-        self.root_dir_name = f"TRD-{method}"
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.root_dir_name = f"TRD-{self.method}"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         # TODO: add posibility to provide data_naming_scheme in yaml file
         # DON-017115_20231120_TRD-2P_S5-ACQ.mat
@@ -555,20 +583,36 @@ class Treadmill_Setup(Setup):
                 "{task_name}_moving.npy",
             ]
         }
-        # TODO: integrate metadata, so wheel and Treadmil can be set differently?
-        self.wheel = Wheel()
-        self.treadmill = Treadmill()
-        self.rotary_encoder = RotaryEncoder()
-        if preprocess_name != "mat_to_position":
-            raise NameError(
-                f"WARNING: preprocess_name should be 'mat_to_position'! Got {preprocess_name}, which can lead to errors for this Behavior Setup."
-            )
+        needed_attributes = [
+            "radius",
+            "clicks_per_rotation",
+            "stimulus_type",
+            "stimulus_sequence",
+            "stimulus_length",
+            "environment_dimensions",
+            "fps",
+            "imaging_fps",
+        ]
+        check_needed_keys(metadata, needed_attributes)
+        self.treadmill = Treadmill(
+            belt_len=metadata["environment_dimensions"],
+            belt_segment_len=metadata["stimulus_length"],
+            belt_segment_num=metadata["stimulus_sequence"],
+            belt_type=metadata["stimulus_type"],
+            wheel_radius=metadata["radius"],
+            wheel_clicks_per_rotation=metadata["clicks_per_rotation"],
+        )
+        self.rotary_encoder = RotaryEncoder(
+            sample_rate=metadata["fps"], imaging_sample_rate=metadata["imaging_fps"]
+        )
 
     def process_data(self, task_id=None):
         identifier = Output.extract_identifier(task_id)
         fname = self.data_naming_scheme.format(**identifier)
-        raw_data = self.load_data(file_name=fname, identifier=identifier)
-        rotary_data = self.rotary_encoder.extract_data(raw_data)
+        raw_data_path = self.get_file_path(file_name=fname, identifier=identifier)
+        rotary_data = self.rotary_encoder.extract_data(
+            raw_data_path, wheel=self.treadmill.wheel
+        )
         treadmil_data = self.treadmill.get_positions(rotary_data["distance"])
 
         data = {**rotary_data, **treadmil_data}
@@ -587,34 +631,40 @@ class Wheel_Setup(Setup):
     Rotation data is stored in .mat files.
     """
 
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
-        self.root_dir_name = f"TRD-{method}"
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.root_dir_name = f"TRD-{self.method}"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {}
         self.data_naming_scheme = (
             "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}.mat"
         )
         self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
-        self.wheel = Wheel()
-        if preprocess_name != "mat_to_velocity":
-            raise NameError(
-                f"WARNING: preprocess_name should be 'mat_to_velocity'! Got {preprocess_name}, which can lead to errors for this Behavior Setup."
-            )
-        self.preprocess = self.get_preprocess(preprocess_name)
+        needed_attributes = [
+            "radius",
+            "clicks_per_rotation",
+        ]
+        check_needed_keys(metadata, needed_attributes)
+        self.wheel = Wheel(
+            radius=metadata["radius"],
+            clicks_per_rotation=metadata["clicks_per_rotation"],
+        )
+        self.rotary_encoder = RotaryEncoder(
+            sample_rate=metadata["fps"], imaging_sample_rate=metadata["fps"]
+        )
         raise NotImplementedError("Wheel setup not implemented yet")
 
 
 class Trackball_Setup(Setup):
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
-        root_folder = f"???-{method}"
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        root_folder = f"???-{self.method}"
         raise NotImplementedError("Treadmill setup not implemented yet")
 
 
 class Rotary_Wheel(Wheel_Setup):
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.rotary_encoder = RotaryEncoder()
 
     def process_data(self, task_name=None):
@@ -629,8 +679,8 @@ class Rotary_Wheel(Wheel_Setup):
 
 
 class VR_Wheel(Wheel_Setup):
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.static_outputs = {}
         self.variable_outputs = {self.root_dir: ["*"]}
 
@@ -641,8 +691,8 @@ class VR_Wheel(Wheel_Setup):
 
 
 class Openfield_Setup(Setup):
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
 
         # TODO: Typically data is gathered through a camera
         #
@@ -650,8 +700,8 @@ class Openfield_Setup(Setup):
 
 
 class Box(Setup):
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
 
         # TODO: Typically data is gathered through a camera
         #
@@ -659,36 +709,36 @@ class Box(Setup):
 
 
 class Active_Avoidance(Setup):
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         # TODO: Typically data is gathered through a camera
         raise NotImplementedError("Active Avoidance setup not implemented yet")
 
 
 class Cam(Setup):
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         vr_root_folder = "0000VR"  # VR
         cam_root_folder = "0000MC"  # Cam Data
         cam_top_root_folder = "000BSM"  # Top View Mousecam
         cam_top_root_folder = "TR-BSL"  # Top View Mousecam Inscopix
         # TODO: implement cam data loading
-        root_folder = f"???-{method}"
+        root_folder = f"???-{self.method}"
         raise NotImplementedError("Treadmill setup not implemented yet")
 
 
 ## Imaging
 class Femtonics(NeuralSetup):
-    def __init__(self, preprocess_name, method, key, root_dir=None):
-        super().__init__(preprocess_name, method, key, root_dir)
-        self.root_dir_name = f"00{method}-F"
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.root_dir_name = f"00{self.method}-F"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {}
         self.data_naming_scheme = (
             "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}.mesc"
         )
         self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
-        self.preprocess = self.get_preprocess(preprocess_name)
+        self.preprocess = self.get_preprocess()
 
     # get_output_paths is inherited from Output class
 
@@ -713,8 +763,8 @@ class Inscopix(NeuralSetup):
 # Preprocessing Classes
 ## Meta Class
 class Preprocessing(Output):
-    def __init__(self, method, key, root_dir=None):
-        super().__init__(method, key, root_dir)
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir = root_dir
 
     def process_data(self, raw_data, task_name=None, save=True):
@@ -733,9 +783,9 @@ class Inscopix_Processing(Preprocessing):
 
 
 class Suite2p(Preprocessing):
-    def __init__(self, method, key, root_dir=None):
+    def __init__(self, key, root_dir=None, metadata={}):
         # TODO: implement suite2p manager
-        super().__init__(method, key, root_dir)
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir.joinpath("tif", "suite2p", "plane0")
         self.static_outputs = {
             self.data_dir: [

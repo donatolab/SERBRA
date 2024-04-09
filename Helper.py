@@ -577,6 +577,12 @@ def keys_present(dictionary, keys):
     return True
 
 
+def check_needed_keys(metadata, needed_attributes):
+    present = keys_present(metadata, needed_attributes)
+    if present != True:
+        raise NameError(f"Missing metadata for: {present} not defined")
+
+
 # class
 def define_cls_attributes(cls_object, attributes_dict, override=False):
     """

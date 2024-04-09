@@ -323,16 +323,7 @@ class Dataset(DataPlotterInterface):
         self.raw_data_object = raw_data_object
         self.metadata = metadata
         self.fps = None if "fps" not in self.metadata.keys() else self.metadata["fps"]
-        self.setup = self.get_setup(
-            self.metadata["setup"],
-            self.metadata["preprocessing_software"],
-            self.metadata["method"],
-        )
-
-    # TODO: use __subclass__?
-    # def __init_subclass__(cls, key: str, **kwargs):
-    #    cls.key = key
-    #    super().__init_subclass__(**kwargs)
+        self.setup = self.get_setup(self.metadata["setup"])
 
     def get_setup(self, setup_name, preprocessing_name, method_name):
         raise NotImplementedError(
@@ -471,41 +462,52 @@ class BehaviorDataset(Dataset):
         super().__init__(
             key, path, data, raw_data_object, metadata, root_dir, task_id=task_id
         )
+        needed_attributes = ["setup"]
+        check_needed_keys(metadata, needed_attributes)
 
-    def get_setup(self, setup_name, preprocess_name, method_name):
+    def get_setup(self, setup_name):
+        self.setup_name = self.metadata["setup"]
         if setup_name == "active_avoidance":
             setup = Active_Avoidance(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+                key=self.key,
+                root_dir=self.root_dir,
+                metadata=self.metadata,
             )
         elif setup_name == "box":
             setup = Box(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
-            )
-        elif setup_name == "cam":
-            # TODO: cam data is typically use for position or behavior detection... so it should be RAW data or already preprocessed
-            # TODO: different cam types need to be implemented
-            setup = Cam(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+                key=self.key,
+                root_dir=self.root_dir,
+                metadata=self.metadata,
             )
         elif setup_name == "treadmill":
             setup = Treadmill_Setup(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+                key=self.key,
+                root_dir=self.root_dir,
+                metadata=self.metadata,
             )
         elif setup_name == "trackball":
             setup = Trackball_Setup(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+                key=self.key,
+                root_dir=self.root_dir,
+                metadata=self.metadata,
             )
         elif setup_name == "openfield":
             setup = Openfield_Setup(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+                key=self.key,
+                root_dir=self.root_dir,
+                metadata=self.metadata,
             )
         elif setup_name == "vr_treadmill":
             setup = VR_Wheel(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+                key=self.key,
+                root_dir=self.root_dir,
+                metadata=self.metadata,
             )
         elif setup_name == "wheel":
             setup = Rotary_Wheel(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+                key=self.key,
+                root_dir=self.root_dir,
+                metadata=self.metadata,
             )
         else:
             raise ValueError(f"Behavior setup {setup_name} not supported.")
@@ -526,6 +528,8 @@ class NeuralDataset(Dataset):
         super().__init__(
             key, path, data, raw_data_object, metadata, root_dir, task_id=task_id
         )
+        needed_attributes = ["method", "preprocessing_software", "setup"]
+        check_needed_keys(metadata, needed_attributes)
 
     def process_raw_data(self):
         self.setup.preprocess.process_data()
@@ -758,6 +762,9 @@ class Data_Moving(BehaviorDataset):
             "S1": None,
             "V1": None,
         }
+        # FIXME: move processing to setup
+        needed_attributes = ["setup"]
+        check_needed_keys(metadata, needed_attributes)
 
     def process_raw_data(self):
         velocities = self.raw_data_object.data
@@ -804,13 +811,8 @@ class Data_Photon(NeuralDataset):
             raw_data_object=raw_data_object,
             metadata=metadata,
             root_dir=root_dir,
+            task_id=task_id,
         )
-        needed_attributes = ["method", "preprocessing_software", "setup"]
-        present = keys_present(metadata, needed_attributes)
-        if present != True:
-            raise NameError(
-                f"Missing metadata for {self.key} dataset: {present} not defined."
-            )
         self.plot_attributes["title"] = (
             f"Raster Plot of Binarized {self.key} Data: : {self.metadata}"
         )
@@ -834,18 +836,24 @@ class Data_Photon(NeuralDataset):
         plt.imshow(image, cmap="gray", aspect="auto", interpolation="none")
         plt.gca().invert_yaxis()  # Invert y-axis for better visualization of trials/neurons
 
-    def get_setup(self, setup_name, preprocess_name, method_name):
+    def get_setup(self, setup_name):
         if setup_name == "femtonics":
             setup = Femtonics(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+                key=self.key,
+                root_dir=self.root_dir,
+                metadata=self.metadata,
             )
         elif setup_name == "thorlabs":
             setup = Thorlabs(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+                key=self.key,
+                root_dir=self.root_dir,
+                metadata=self.metadata,
             )
         elif setup_name == "inscopix":
             setup = Inscopix(
-                preprocess_name, method_name, key=self.key, root_dir=self.root_dir
+                key=self.key,
+                root_dir=self.root_dir,
+                metadata=self.metadata,
             )
         else:
             raise ValueError(f"Imaging setup {setup_name} not supported.")
@@ -1260,12 +1268,12 @@ class Task:
         self.id = f"{session_id}_{task}"
         self.name = task
 
-        self.load_metadata(metadata)
+        self.neural_metadata, self.behavior_metadata = self.load_metadata(metadata)
         self.data_dir = data_dir or session_dir
         self.neural = Datasets_Neural(
             root_dir=self.data_dir, metadata=self.neural_metadata, task_id=self.id
         )
-        self.behavior_metadata["area"] = self.neural_metadata["area"]
+        self.behavior_metadata = self.fit_behavior_metadata(self.neural)
         self.behavior = Datasets_Behavior(
             root_dir=self.data_dir, metadata=self.behavior_metadata, task_id=self.id
         )
@@ -1281,6 +1289,15 @@ class Task:
             propertie_values=metadata.values(),
             needed_attributes=needed_attributes,
         )
+
+        return self.neural_metadata, self.behavior_metadata
+
+    def fit_behavior_metadata(self, neural):
+        self.behavior_metadata["method"] = neural.metadata["method"]
+        self.behavior_metadata["imaging_fps"] = neural.metadata["fps"]
+        if "area" in neural.metadata.keys():
+            self.behavior_metadata["area"] = neural.metadata["area"]
+        return self.behavior_metadata
 
     def load_data(self, data_source, data_type="neural", regenerate_plot=False):
         # loads neural or behaviour data
