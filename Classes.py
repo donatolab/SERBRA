@@ -546,6 +546,7 @@ class Data_Position(BehaviorDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
+        self.plot_attributes["ylable"] = "position cm"
         self.environment_dimensions = self.metadata["environment_dimensions"]
 
     def create_dataset(self, raw_data_object=None):

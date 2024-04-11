@@ -5,6 +5,7 @@ from pathlib import Path
 # type hints
 from typing import List, Union, Dict, Any, Tuple, Optional
 
+
 # calculations
 import numpy as np
 from scipy.signal import butter, filtfilt  # , lfilter, freqz
@@ -16,7 +17,9 @@ import re
 
 from datetime import datetime
 
+# debugging
 import logging
+from time import time
 
 
 class GlobalLogger:
@@ -464,6 +467,10 @@ def num_to_date(date_string):
 
 
 # array
+def moving_average(x, w):
+    return np.convolve(x, np.ones(w), "valid") / w
+
+
 def fill_continuous_array(data_array, fps, time_gap):
     frame_gap = fps * time_gap
     # Find indices where values change
@@ -704,3 +711,19 @@ def load_matlab_metadata(mat_fpath):
     for attribute, value in zip(dtypes, values):
         value = value[0] if len(value) > 0 else " "
         print(f"{attribute:>12}: {str(value)}")
+
+
+# decorator functions
+
+
+def timer(func):
+    # This function shows the execution time of
+    # the function object passed
+    def wrap_func(*args, **kwargs):
+        t1 = time()
+        result = func(*args, **kwargs)
+        t2 = time()
+        print(f"Function {func.__name__!r} executed in {(t2-t1):.4f}s")
+        return result
+
+    return wrap_func

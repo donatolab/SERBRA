@@ -1,12 +1,18 @@
 from pathlib import Path
 from Helper import *
 
+# parallel processing
+from numba import jit, njit
+
 # loading mat files
 import scipy.io as sio
 
 # math
 from scipy.interpolate import interp1d
 import cebra
+
+# debugging
+import inspect
 
 
 # Meta Meta Class
@@ -159,6 +165,15 @@ class Output:
         fpath = self.get_file_path(fname, identifier=identifier)
         return fpath
 
+    def save_data(self, data, raw_data_path, identifier, overwrite=False):
+        for data_name, data_type in data.items():
+            fname = f"{identifier['task_name']}_{data_name}.npy"
+            fpath = raw_data_path.parent.joinpath(data_name)
+            if fpath.exists() and not overwrite:
+                print(f"File {fpath} already exists. Skipping.")
+            else:
+                np.save(fpath, data_type)
+
 
 # Setup Classes
 ## Meta Class
@@ -216,28 +231,50 @@ class Wheel:
     def __init__(self, radius=0.1, clicks_per_rotation=500):
         self.radius = radius  # in meters
         self.clicks_per_rotation = clicks_per_rotation
-        self.click_distance = (2 * np.pi * self.radius) / self.clicks_per_rotation
+        self.click_distance = (
+            2 * np.pi * self.radius
+        ) / self.clicks_per_rotation  # in meters
 
 
 class Treadmill:
     def __init__(
         self,
         belt_len: int = 180,
-        belt_segment_len: int = 30,
-        belt_segment_num: int = 6,
-        belt_type: dict = {
-            "A": [1, 2, 3, 4, 5, 6],
-            "A'": [1, 6, 4, 2, 3, 5],
-            "B": [1, 1, 1, 1, 1, 1],
-        },
+        belt_segment_len: List[int] = [30, 30, 30, 30, 30, 30],
+        belt_segment_seq: List[int] = [1, 2, 3, 4, 5, 6],
+        belt_type: str = "A",
         wheel_radius=0.1,
         wheel_clicks_per_rotation=500,
     ):
         self.belt_len = belt_len
         self.belt_segment_len = belt_segment_len
-        self.belt_segment_num = belt_segment_num
+        self.belt_segment_seq = belt_segment_seq
         self.belt_type = belt_type
         self.wheel = Wheel(wheel_radius, wheel_clicks_per_rotation)
+
+    def extract_data(self, cumulative_distance):
+        """
+        Extract data from the cumulative distance of the belt.
+        output:
+            data: dictionary with
+                - position: position of the animal on the belt
+                - stimulus: stimulus type at the position
+        """
+        # Normalize cumulative distance to treadmill length
+        ...... finish this function
+        positions = (cumulative_distance / cumulative_distance[-1]) * 180
+
+        segment_indices = (positions // segment_length).astype(int)
+
+        stimulus_type_indexes = continuouse_to_discrete(
+            positions, self.belt_segment_len
+        )
+        stimulus_type_at_frame = np.array(self.belt_segment_seq)[
+            stimulus_type_indexes % len(self.belt_segment_seq)
+        ]
+
+        data = {"position": positions, "stimulus": stimulus_type_at_frame}
+        return data
 
 
 class RotaryEncoder:
@@ -259,7 +296,6 @@ class RotaryEncoder:
 
         lab sync is not alway detected
         """
-        print("Processing matlab files")
         # get wheel electricity contact values
         wheel_ch_a = data[:, 0]
         wheel_ch_b = data[:, 1]
@@ -269,7 +305,7 @@ class RotaryEncoder:
         wheel_ch_b_bin = convert_values_to_binary(wheel_ch_b)
 
         # calulates rotation direction of quadrature rotary encoder
-        rotary_binarized = self.quadrature_rotation_encoder(
+        rotary_binarized = -self.quadrature_rotation_encoder(
             wheel_ch_a_bin, wheel_ch_b_bin
         )
         lab_sync = np.array(data[:, 1]).reshape(-1, 1)
@@ -321,7 +357,6 @@ class RotaryEncoder:
         """
         indices = np.where(galvo_sync >= 1)[0]
         galvo_trigger = np.zeros(len(galvo_sync))
-        galvo_trigger[:] = 0
         galvo_trigger[indices] = 1
 
         triggers = []
@@ -329,58 +364,6 @@ class RotaryEncoder:
             if galvo_trigger[idx - 1] == 0:
                 triggers.append(idx)
         return triggers
-
-    def calc_distances(self, rotary_binarized, click_distance):
-        # get times of rotary encoder
-        rotation_clicks_at_times = np.where(rotary_binarized != 0)[0]
-
-        # calculate distance
-        temp_distances = np.zeros(len(rotary_binarized), dtype=np.float32)
-        for click_time in rotation_clicks_at_times:
-            forward_or_backward = rotary_binarized[click_time]  # can be +/- 1
-            temp_distances[click_time] = forward_or_backward * click_distance
-
-        # remove 0 distances
-        no_movement = np.where(temp_distances == 0)[0]
-        distances = np.delete(temp_distances, no_movement)
-
-        if len(distances) == 0:
-            # create dummy array
-            distances = np.array([0])
-            dist_times = np.array([0])
-        else:
-            # set distances times based on non-zero rotatry encoder vals
-            dist_times = np.arange(rotary_binarized.shape[0], dtype=np.int32)
-            dist_times = np.delete(dist_times, no_movement)
-        return distances, dist_times
-
-    def fill_distance_gaps(self, distance, times, time_threshold=0.5):
-        """
-        Fill in the rotary encoder when it's in an undefined state for > 0.5 sec
-        """
-        # refill in the rotary encoder when it's in an undefined state for > 0.5 sec
-        max_time = self.sample_rate * time_threshold
-
-        dist_full = [distance[0]]
-        times_full = [times[0]]
-
-        prev_dist_time = times[0]
-        for k, dist_time in enumerate(times[1:]):
-            # if time between two rotary encoder values is larger than threshold
-            if (dist_time - prev_dist_time) >= max_time:
-                # create array of zeros for the time between the two rotary encoder values
-                temp = np.arange(prev_dist_time, dist_time, max_time)[1:]
-                times_full.append(temp)
-                dist_full.append(temp * 0)
-            else:
-                # append the distance and time
-                times_full.append(dist_time)
-                dist_full.append(distance[k])
-            prev_dist_time = dist_time
-        # convert lists to numpy arrays
-        dist_times_full = np.hstack(times_full)
-        distance_full = np.hstack(dist_full)
-        return distance_full, dist_times_full
 
     def rotary_to_distances(
         self,
@@ -392,82 +375,16 @@ class RotaryEncoder:
         Convert rotary encoder data to distance
         """
         # extract distance from rotary encoder
-        distances, dist_times = self.calc_distances(rotary_binarized, click_distance)
+        # calculate distance
+        at_time_moved = rotary_binarized * click_distance
 
-        # fill in the gaps in the distance data
-        distance_full, dist_times_full = self.fill_distance_gaps(distances, dist_times)
-
-        # Fit the detected distance times and values
-        if distance_full.shape[0] != 0:
-            # create an extrapolation function
-            F = interp1d(x=dist_times_full, y=distance_full, fill_value="extrapolate")
-
-            # extrapolate the distance to fill gaps of no distance
-            # resample the fit function at the correct galvo_tirgger times
-            distance_extra = F(galvo_triggers_times)
-        else:
-            distance_extra = np.zeros(len(rotary_binarized))
-
-        # np.save(fname_out, galvo_dist)
-        return distance_extra
-
-    def calc_velocities(self, rotary_binarized, click_distance):
-        # get times of rotary encoder
-        rotation_clicks_at_times = np.where(rotary_binarized != 0)[0]
-
-        # calculate velocity
-        temp_velocities = np.zeros(len(rotary_binarized), dtype=np.float32)
-        last_click_time = 0
-        for click_time in rotation_clicks_at_times:
-            #
-            forward_or_backward = rotary_binarized[click_time]  # can be +/- 1
-            # delta distance / delta time
-            temp_velocities[click_time] = (forward_or_backward * click_distance) / (
-                (click_time - last_click_time) / self.sample_rate
-            )
-            last_click_time = click_time
-
-        # remove 0 velocities
-        no_velocities = np.where(temp_velocities == 0)[0]
-        velocities = np.delete(temp_velocities, no_velocities)
-
-        if len(velocities) == 0:
-            # create dummy array
-            velocities = np.array([0])
-            vel_times = np.array([0])
-        else:
-            # set velocities times based on non-zero rotatry encoder vals
-            vel_times = np.arange(rotary_binarized.shape[0], dtype=np.int32)
-            vel_times = np.delete(vel_times, no_velocities)
-        return velocities, vel_times
-
-    def fill_velocity_gaps(self, velocity, times, time_threshold=0.5):
-        """
-        Fill in the rotary encoder when it's in an undefined state for > 0.5 sec
-        """
-        # refill in the rotary encoder when it's in an undefined state for > 0.5 sec
-        max_time = self.sample_rate * time_threshold
-
-        vel_full = [velocity[0]]
-        times_full = [times[0]]
-
-        prev_vel_time = times[0]
-        for k, vel_time in enumerate(times[1:]):  # , desc="refilling stationary times"
-            # if time between two rotary encoder values is larger than threshold
-            if (vel_time - prev_vel_time) >= max_time:
-                # create array of zeros for the time between the two rotary encoder values
-                temp = np.arange(prev_vel_time, vel_time, max_time)[1:]
-                times_full.append(temp)
-                vel_full.append(temp * 0)
-            else:
-                # append the velocity and time
-                times_full.append(vel_time)
-                vel_full.append(velocity[k])
-            prev_vel_time = vel_time
-        # convert lists to numpy arrays
-        vel_times_full = np.hstack(times_full)
-        velocity_full = np.hstack(vel_full)
-        return velocity_full, vel_times_full
+        # reduce the distance to the galvo trigger times
+        moved_distances_in_frame = np.zeros(len(galvo_triggers_times))
+        old_idx = 0
+        for frame, idx in enumerate(galvo_triggers_times[1:]):
+            moved_distances_in_frame[frame] = np.sum(at_time_moved[old_idx:idx])
+            old_idx = idx
+        return moved_distances_in_frame
 
     def rotary_to_velocity(
         self,
@@ -476,26 +393,97 @@ class RotaryEncoder:
         galvo_triggers_times: np.ndarray,
     ):
         """
-        Convert rotary encoder data to velocity
+        This METHOD is DEPRECATED and should not be used anymore.
+        Convert rotary encoder data to velocity.
         """
+
+        def remove_stationary_times(self, array, rotary_binarized):
+            # remove stationary times
+            stationary_times = np.where(array == 0)[0]
+            movement_values = np.delete(array, stationary_times)
+
+            if len(movement_values) == 0:
+                # create dummy array
+                movement_values = np.array([0])
+                movement_times = np.array([0])
+            else:
+                movement_times = np.arange(rotary_binarized.shape[0], dtype=np.int32)
+                movement_times = np.delete(movement_times, stationary_times)
+            return movement_values, movement_times
+
+        def calc_velocities(self, rotary_binarized, click_distance):
+            # get times of rotary encoder
+            rotation_clicks_at_times = np.where(rotary_binarized != 0)[0]
+
+            # calculate velocity
+            temp_velocities = np.zeros(len(rotary_binarized))
+            last_click_time = 0
+            for click_time in rotation_clicks_at_times:
+                #
+                forward_or_backward = rotary_binarized[click_time]  # can be +/- 1
+                # delta distance / delta time
+                temp_velocities[click_time] = (forward_or_backward * click_distance) / (
+                    (click_time - last_click_time) / self.sample_rate
+                )
+                last_click_time = click_time
+
+            velocities, vel_times = self.remove_stationary_times(
+                temp_velocities, rotary_binarized
+            )
+            return velocities, vel_times
+
+        def fill_gaps(self, array, times, time_threshold=0.5):
+            """
+            Fill in the rotary encoder when it's in an undefined state for > 0.5 sec. This is done for more accurate extrapolation
+            """
+            # refill in the rotary encoder when it's in an undefined state for > 0.5 sec
+            max_time = self.sample_rate * time_threshold
+
+            full = [array[0]]
+            times_full = [times[0]]
+
+            prev_time = times[0]
+            for k, time in enumerate(times[1:]):  # , desc="refilling stationary times"
+                # if time between two rotary encoder values is larger than threshold
+                # create array of zeros for the time between the two rotary encoder values
+                if (time - prev_time) >= max_time:
+                    zero_array = np.arange(prev_time, time, max_time)[1:]
+                    times_full.append(zero_array)
+                    full.append(zero_array * 0)
+                else:
+                    # append the velocity and time
+                    times_full.append(time)
+                    full.append(array[k])
+                prev_time = time
+            # convert lists to numpy arrays
+            times_full = np.hstack(times_full)
+            array_full = np.hstack(full)
+            return array_full, times_full
+
+        def extrapolate_fit(self, times, values, galvo_triggers_times):
+            if values.shape[0] != 0:
+                # create an extrapolation function
+                F = interp1d(x=times, y=values, fill_value="extrapolate")
+
+                # extrapolate the velocity to fill gaps of no velocity
+                # resample the fit function at the correct galvo_tirgger times
+                values_extra = F(galvo_triggers_times)
+            else:
+                values_extra = np.zeros(len(galvo_triggers_times))
+            return values_extra
+
         # extract velocity from rotary encoder
         velocities, vel_times = self.calc_velocities(rotary_binarized, click_distance)
 
         # fill in the gaps in the velocity data
-        velocity_full, vel_times_full = self.fill_velocity_gaps(velocities, vel_times)
+        velocity_full, vel_times_full = self.fill_gaps(velocities, vel_times)
 
-        # Fit the detected velocity times and values
-        if velocity_full.shape[0] != 0:
-            # create an extrapolation function
-            F = interp1d(x=vel_times_full, y=velocity_full, fill_value="extrapolate")
+        velocity_extra = self.extrapolate_fit(
+            times=vel_times_full,
+            values=velocity_full,
+            galvo_triggers_times=galvo_triggers_times,
+        )
 
-            # extrapolate the velocity to fill gaps of no velocity
-            # resample the fit function at the correct galvo_tirgger times
-            velocity_extra = F(galvo_triggers_times)
-        else:
-            velocity_extra = np.zeros(len(rotary_binarized))
-
-        # np.save(fname_out, galvo_vel)
         return velocity_extra
 
     def extract_data(self, fpath: np.ndarray, wheel: Wheel):
@@ -503,50 +491,30 @@ class RotaryEncoder:
 
         rotary_binarized, lab_sync, galvo_sync = self.convert_wheel_data(data)
 
-        # get rotary encoder times
-        rotary_times = np.arange(rotary_binarized.shape[0]) / self.sample_rate
-
-        # get turned distances of the wheel surface
-        rotary_distances = np.cumsum(rotary_binarized) * wheel.click_distance
-
         # get galvo trigger times for 2P frame
         galvo_triggers_times = self.galvo_trigger_times(galvo_sync)
 
-        # get distance of the wheel surface
+        ## get distance of the wheel surface
         distances = self.rotary_to_distances(
             rotary_binarized, wheel.click_distance, galvo_triggers_times
         )
-        distance_over_time = np.cumsum(distances)
+        cumulative_distance = np.cumsum(distances)
+        velocity_from_distances = np.diff(cumulative_distance)
 
-        velocity_from_distances = np.diff(distance_over_time)
+        ## get velocity m/s of the wheel surface
+        # velocity = self.rotary_to_velocity(
+        #    rotary_binarized, wheel.click_distance, galvo_triggers_times
+        # )
 
-        # get velocity of the wheel surface
-        velocity = self.rotary_to_velocity(
-            rotary_binarized, wheel.click_distance, galvo_triggers_times
+        velocity_smoothed = butter_lowpass_filter(
+            velocity_from_distances, cutoff=2, fs=self.imaging_sample_rate, order=2
         )
+        acceleration = np.diff(velocity_smoothed)
 
-        """
-        from numba import njit
-        import random
-
-        @njit
-        def monte_carlo_pi(nsamples):
-            acc = 0
-            for i in range(nsamples):
-                x = random.random()
-                y = random.random()
-                if (x ** 2 + y ** 2) < 1.0:
-                    acc += 1
-            return 4.0 * acc / nsamples
-        """
-
-        print(asdff)
-        # ........................
         data = {
-            "distance": distance_over_time,
-            "velocity": velocity,
-            "acceleration": None,
-            "moving": None,
+            "distance": cumulative_distance,
+            "velocity": velocity_smoothed,
+            "acceleration": acceleration,
         }
         return data
 
@@ -571,10 +539,7 @@ class Treadmill_Setup(Setup):
         self.variable_outputs = {
             self.root_dir: [
                 self.data_naming_scheme,
-                "{task_name}_2p_galvo_trigger.npy",
-                "{task_name}_triggers.npy",
                 "{task_name}_velocity.npy",
-                "{task_name}_wheel.npy",
                 "{task_name}_position.npy",
                 "{task_name}_distance.npy",
                 "{task_name}_velocity.npy",
@@ -597,7 +562,7 @@ class Treadmill_Setup(Setup):
         self.treadmill = Treadmill(
             belt_len=metadata["environment_dimensions"],
             belt_segment_len=metadata["stimulus_length"],
-            belt_segment_num=metadata["stimulus_sequence"],
+            belt_segment_seq=metadata["stimulus_sequence"],
             belt_type=metadata["stimulus_type"],
             wheel_radius=metadata["radius"],
             wheel_clicks_per_rotation=metadata["clicks_per_rotation"],
@@ -606,20 +571,23 @@ class Treadmill_Setup(Setup):
             sample_rate=metadata["fps"], imaging_sample_rate=metadata["imaging_fps"]
         )
 
-    def process_data(self, task_id=None):
+    def process_data(self, task_id=None, save: bool = True, overwrite: bool = False):
         identifier = Output.extract_identifier(task_id)
         fname = self.data_naming_scheme.format(**identifier)
         raw_data_path = self.get_file_path(file_name=fname, identifier=identifier)
         rotary_data = self.rotary_encoder.extract_data(
             raw_data_path, wheel=self.treadmill.wheel
         )
-        treadmil_data = self.treadmill.get_positions(rotary_data["distance"])
-
+        treadmil_data = self.treadmill.extract_data(rotary_data["distance"])
         data = {**rotary_data, **treadmil_data}
+
+        if save:
+            self.save_data(data, raw_data_path, identifier, overwrite)
+
         raise NotImplementedError(
             f"remove preprocessing metadata from yaml file for {self.__class__}"
         )
-        return data
+        return data[key]
 
     # get_file_path is inherited from Output class
     # get_output_paths is inherited from Output class
