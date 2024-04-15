@@ -14,6 +14,7 @@ from typing import List, Union, Dict, Any, Tuple, Optional
 import numpy as np
 from scipy.signal import butter, filtfilt  # , lfilter, freqz
 import sklearn
+import pandas as pd
 
 # Plotting
 import matplotlib.pyplot as plt
@@ -57,7 +58,9 @@ def decode(
     label_test = Dataset.force_2d(label_test)
     # label_test = force_1_dim_larger(label_test)
 
-    embedding_train, label_train = force_equal_dimensions(embedding_train, label_train)
+    embedding_train, label_train = Datasets.force_equal_dimensions(
+        embedding_train, label_train
+    )
 
     decoder.fit(embedding_train, label_train[:, 0])
 
@@ -415,7 +418,9 @@ class Dataset(DataPlotterInterface):
     @staticmethod
     def filter_by_idx(data, idx_to_keep=None):
         if isinstance(idx_to_keep, np.ndarray) or isinstance(idx_to_keep, list):
-            data_unfiltered, idx_to_keep = force_equal_dimensions(data, idx_to_keep)
+            data_unfiltered, idx_to_keep = Datasets.force_equal_dimensions(
+                data, idx_to_keep
+            )
             data_filtered = data_unfiltered[idx_to_keep]
             return data_filtered
         else:
@@ -952,6 +957,9 @@ class Datasets_Neural(Datasets):
         # TODO: split into different datasets if needed
         self.photon_imaging_methods = ["femtonics", "thorlabs", "inscopix"]
         self.probe_imaging_methods = ["neuropixels", "tetrode"]
+        if "fps" not in self.metadata.keys():
+            # TODO: this is not implemented for probe data
+            self.metadata["fps"] = self.photon.setup.get_fps()
 
     def get_object(self, data_source):
         if data_source in self.photon_imaging_methods:
@@ -1290,7 +1298,8 @@ class Task:
             propertie_values=metadata.values(),
             needed_attributes=needed_attributes,
         )
-
+        self.neural_metadata["task_id"] = self.id
+        self.behavior_metadata["task_id"] = self.id
         return self.neural_metadata, self.behavior_metadata
 
     def fit_behavior_metadata(self, neural):

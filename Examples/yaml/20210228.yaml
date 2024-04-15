@@ -11,13 +11,13 @@ tasks_infos:
       fps: 30
     behavior_metadata:
       setup: treadmill
-      radius: 0.1 # meters
+      radius: 0.055 # meters
       clicks_per_rotation: 500 
       stimulus_type: A
       stimulus_sequence: [1, 2, 3, 4, 5, 6]
       stimulus_length: [30, 30, 30, 30, 30, 30]
       stimulus_by: location
-      environment_dimensions: 180
+      environment_dimensions: 1.8 # meters
       fps: 10000
   S2: 
     neural_metadata:
@@ -28,13 +28,13 @@ tasks_infos:
       fps: 30
     behavior_metadata:
       setup: treadmill
-      radius: 0.1 # meters
+      radius: 0.055 # meters
       clicks_per_rotation: 500 
       stimulus_type: B
       stimulus_sequence: [1, 1, 1, 1, 1, 1]
       stimulus_length: [30, 30, 30, 30, 30, 30]
       stimulus_by: location
-      environment_dimensions: 180
+      environment_dimensions: 1.8 # meters
       fps: 10000
   S3: 
     neural_metadata:
@@ -45,11 +45,11 @@ tasks_infos:
       fps: 30
     behavior_metadata:
       setup: treadmill
-      radius: 0.1 # meters
+      radius: 0.055 # meters
       clicks_per_rotation: 500 
       stimulus_type: A'
       stimulus_sequence: [1, 6, 4, 2, 3, 5]
       stimulus_length: [30, 30, 30, 30, 30, 30]
       stimulus_by: location
-      environment_dimensions: 180
+      environment_dimensions: 1.8 # meters
       fps: 10000

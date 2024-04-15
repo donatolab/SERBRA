@@ -4,6 +4,9 @@ from Helper import *
 # parallel processing
 from numba import jit, njit
 
+# loading mesc files
+import h5py
+
 # loading mat files
 import scipy.io as sio
 
@@ -36,10 +39,19 @@ class Output:
         )
         self.static_outputs: dict = None
         self.variable_outputs: dict = None
+        self.data_naming_scheme = None
+        self.identifier: dict = self.extract_identifier(metadata["task_id"])
+        self.raw_data_path = None
         self.metadata = metadata
 
     def define_full_root_dir(self, full_root_dir: Path = None):
         return full_root_dir if full_root_dir else self.root_dir
+
+    def define_raw_data_path(self, fname: str = None):
+        if not fname:
+            fname = self.data_naming_scheme.format(**self.identifier)
+        raw_data_path = self.get_file_path(file_name=fname)
+        return raw_data_path
 
     def get_static_output_paths(self, full_root_dir: Path = None):
         full_root_dir = self.define_full_root_dir(full_root_dir)
@@ -49,20 +61,24 @@ class Output:
             full_output_paths[full_folder_path] = fnames
         return full_output_paths
 
-    def get_variable_output_paths(self, full_root_dir, identifier: dict = None):
+    def get_variable_output_paths(self, full_root_dir):
+        full_root_dir = self.define_full_root_dir(full_root_dir)
         full_output_paths = {}
-        for output_dir, naming_templates in self.variable_outputs.items():
-            full_output_dir = full_root_dir.joinpath(output_dir)
+        for relative_output_dir, naming_templates in self.variable_outputs.items():
+            full_folder_path = full_root_dir.joinpath(relative_output_dir)
             files_list = []
             for template in naming_templates:
-                fname = template.format(**identifier)
+                fname = template.format(**self.identifier)
                 files_list.append(fname)
-            full_output_paths[output_dir] = files_list
+            full_output_paths[full_folder_path] = files_list
         return full_output_paths
 
-    def get_output_paths(self, full_root_dir: Path = None, identifier: dict = None):
+    def get_output_paths(self, full_root_dir: Path = None):
         full_root_dir = self.define_full_root_dir(full_root_dir)
         if not full_root_dir and self.variable_outputs:
+            global_logger.error(
+                "No full_root_dir provided. Cannot define output paths for variable outputs."
+            )
             raise ValueError(
                 "No output file paths can be defined. Because outputs are variable."
             )
@@ -70,9 +86,7 @@ class Output:
             output_paths = self.get_static_output_paths()
         else:
             static_output_paths = self.get_static_output_paths(full_root_dir)
-            variable_output_paths = self.get_variable_output_paths(
-                full_root_dir, identifier
-            )
+            variable_output_paths = self.get_variable_output_paths(full_root_dir)
             # Merge dictionaries of static and variable output paths by unpacking
             # combine values of the same key
             output_paths = static_output_paths
@@ -100,14 +114,13 @@ class Output:
                 transposed_output_paths[file_name] = path
         return transposed_output_paths
 
-    def get_file_path(
-        self, file_name=None, full_root_dir: Path = None, identifier: dict = None
-    ):
-        if not file_name and not identifier:
-            raise ValueError("Either file_name or identifier must be provided.")
+    def get_file_path(self, file_name=None, full_root_dir: Path = None):
+        if not file_name:
+            global_logger.error("No file_name provided.")
+            raise ValueError("file_name must be provided to get file path.")
 
         full_root_dir = self.define_full_root_dir(full_root_dir)
-        output_paths = self.get_output_paths(full_root_dir, identifier)
+        output_paths = self.get_output_paths(full_root_dir)
         transposed_output_paths = self.transpose_output_paths(output_paths)
 
         fpath = transposed_output_paths[file_name].joinpath(file_name)
@@ -125,8 +138,6 @@ class Output:
     def load_data(
         self,
         file_name=None,
-        task_name=None,
-        identifier=None,
         full_root_dir: Path = None,
     ):
         """
@@ -141,16 +152,10 @@ class Output:
             - Pickle files: p, pkl;
             - MAT-files: mat.
         """
-        if file_name or identifier:
-            fpath = self.get_file_path(
-                file_name=file_name,
-                identifier=identifier,
-                full_root_dir=full_root_dir,
-            )
-        elif task_name:
-            fpath = self.get_data_path(task_name)
-        else:
-            raise ValueError("Either file_name or task_name must be provided.")
+        fpath = self.get_file_path(
+            file_name=file_name,
+            full_root_dir=full_root_dir,
+        )
 
         if fpath.exists():
             data = cebra.load_data(fpath)
@@ -162,17 +167,23 @@ class Output:
         identifier = Output.extract_identifier(task_id)
         task_name = identifier["task_name"]
         fname = f"{task_name}_{self.key}.npy" if not fname else fname
-        fpath = self.get_file_path(fname, identifier=identifier)
+        fpath = self.get_file_path(fname)
         return fpath
 
-    def save_data(self, data, raw_data_path, identifier, overwrite=False):
+    def save_data(self, data, overwrite=False):
         for data_name, data_type in data.items():
-            fname = f"{identifier['task_name']}_{data_name}.npy"
-            fpath = raw_data_path.parent.joinpath(data_name)
+            fname = f"{self.identifier['task_name']}_{data_name}"
+            fpath = self.raw_data_path.parent.joinpath(fname)
             if fpath.exists() and not overwrite:
                 print(f"File {fpath} already exists. Skipping.")
             else:
                 np.save(fpath, data_type)
+
+    def process_data(self, task_id=None):
+        raise NotImplementedError(
+            f"Data processing not implemented for {self.__class__}"
+        )
+        return data
 
 
 # Setup Classes
@@ -184,17 +195,6 @@ class Setup(Output):
 
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        self.data_naming_scheme = None
-        self.data_paths = None
-        self.preproces = None
-
-    def process_data(self, task_id=None):
-        raise NotImplementedError(
-            f"Data processing not implemented for {self.__class__}"
-        )
-        # raw_data = self.get_data_to_process(task_id=task_id)
-        # data = self.preprocess.process_data(raw_data=raw_data, task_id=task_id)
-        return data
 
 
 class NeuralSetup(Setup):
@@ -212,6 +212,9 @@ class NeuralSetup(Setup):
                 key=self.key, root_dir=self.root_dir, metadata=self.metadata
             )
         else:
+            global_logger.error(
+                f"Preprocessing software {preprocess_name} not supported."
+            )
             raise ValueError(f"Preprocessing software {preprocess_name} not supported.")
         return preprocess
 
@@ -224,6 +227,20 @@ class NeuralSetup(Setup):
         raw_data = self.load_data(identifier=task_name)
         data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
         return data
+
+    def extract_fps(self):
+        raise NotImplementedError(
+            f"Extracting fps not implemented yet in {self.__class__}"
+        )
+        return fps
+
+    def get_fps(self):
+        fps = None
+        if "fps" in self.metadata.keys():
+            fps = self.metadata["fps"]
+        else:
+            fps = self.extract_fps()
+        return fps
 
 
 ## Behavior
@@ -239,11 +256,11 @@ class Wheel:
 class Treadmill:
     def __init__(
         self,
-        belt_len: int = 180,
+        belt_len: int = 0.180,  # in m
         belt_segment_len: List[int] = [30, 30, 30, 30, 30, 30],
         belt_segment_seq: List[int] = [1, 2, 3, 4, 5, 6],
         belt_type: str = "A",
-        wheel_radius=0.1,
+        wheel_radius=0.1,  # in meters
         wheel_clicks_per_rotation=500,
     ):
         self.belt_len = belt_len
@@ -252,7 +269,61 @@ class Treadmill:
         self.belt_type = belt_type
         self.wheel = Wheel(wheel_radius, wheel_clicks_per_rotation)
 
-    def extract_data(self, cumulative_distance):
+    @staticmethod
+    def get_position_from_cumdist(
+        cumulative_distance: np.ndarray,
+        belt_len: List[int],
+        cum_dist_bevore=np.array([0]),
+    ):
+        """
+        Get position of the animal on the belt.
+        output:
+            position: position of the animal on the belt
+        """
+        full_moved_distance = cumulative_distance + cum_dist_bevore[-1]
+        overall_distance = np.concatenate([cum_dist_bevore, full_moved_distance])
+        positions = np.zeros(len(overall_distance))
+        started_lap = 1
+        ended_lap = 0
+        undmapped_positions = True
+        while undmapped_positions:
+            distance_min = ended_lap * belt_len
+            distance_max = started_lap * belt_len
+            distances_in_range = np.where(
+                (overall_distance >= distance_min) & (overall_distance < distance_max)
+            )[0]
+
+            positions[distances_in_range] = (
+                overall_distance[distances_in_range] - distance_min
+            )
+
+            if max(overall_distance) > distance_max:
+                ended_lap += 1
+                started_lap += 1
+            else:
+                undmapped_positions = False
+
+        positions_in_frame = positions[len(cum_dist_bevore) :]
+
+        return positions_in_frame
+
+    @staticmethod
+    def get_stimulus_at_position(
+        positions: np.ndarray, segment_lenghts: List[float], segment_seq: List[int]
+    ):
+        """
+        Get stimulus type at the position.
+        output:
+            stimulus: stimulus type at the position
+        """
+        # get segement/stimulus type at each frame
+        stimulus_type_indexes = continuouse_to_discrete(positions, segment_lenghts)
+        stimulus_type_at_frame = np.array(segment_seq)[
+            stimulus_type_indexes % len(segment_seq)
+        ]
+        return stimulus_type_at_frame
+
+    def extract_data(self, cumulative_distance, cum_dist_bevore):
         """
         Extract data from the cumulative distance of the belt.
         output:
@@ -261,19 +332,17 @@ class Treadmill:
                 - stimulus: stimulus type at the position
         """
         # Normalize cumulative distance to treadmill length
-        ...... finish this function
-        positions = (cumulative_distance / cumulative_distance[-1]) * 180
-
-        segment_indices = (positions // segment_length).astype(int)
-
-        stimulus_type_indexes = continuouse_to_discrete(
-            positions, self.belt_segment_len
+        positions = self.get_position_from_cumdist(
+            cumulative_distance, belt_len=self.belt_len, cum_dist_bevore=cum_dist_bevore
         )
-        stimulus_type_at_frame = np.array(self.belt_segment_seq)[
-            stimulus_type_indexes % len(self.belt_segment_seq)
-        ]
 
-        data = {"position": positions, "stimulus": stimulus_type_at_frame}
+        stimulus = self.get_stimulus_at_position(
+            positions,
+            segment_lenghts=self.belt_segment_len,
+            segment_seq=self.belt_segment_seq,
+        )
+
+        data = {"position": positions, "stimulus": stimulus}
         return data
 
 
@@ -308,9 +377,9 @@ class RotaryEncoder:
         rotary_binarized = -self.quadrature_rotation_encoder(
             wheel_ch_a_bin, wheel_ch_b_bin
         )
-        lab_sync = np.array(data[:, 1]).reshape(-1, 1)
+        lap_sync = np.array(data[:, 2]).reshape(-1, 1)
         galvo_sync = np.array(data[:, 3]).reshape(-1, 1)
-        return rotary_binarized, lab_sync, galvo_sync
+        return rotary_binarized, lap_sync, galvo_sync
 
     @staticmethod
     def quadrature_rotation_encoder(ch_a, ch_b):
@@ -370,21 +439,148 @@ class RotaryEncoder:
         rotary_binarized: np.ndarray,
         click_distance: float,
         galvo_triggers_times: np.ndarray,
+        lap_sync: np.ndarray,
     ):
         """
         Convert rotary encoder data to distance
+        The trigger times show times when the 2p obtained a frame.
+        |        lab sync      | frames
+        |0 or 1 reflecor strip | galvosync
         """
         # extract distance from rotary encoder
         # calculate distance
         at_time_moved = rotary_binarized * click_distance
 
+        # .... use lab sync to know if you are at start of the lap to define actual 0 position
+
+        # get first lab sync signal
+        lap_starts = np.where(lap_sync>4.5)[0]
+        first_lap_start = lap_starts[0]
+        ..........finisch this.....
+        first_lap_start_frame = int(first_lap_start/self.sample_rate)
+        
+        # reduce the distances to the galvo trigger times to reduce the amount of data
+        galvo_frame_imaging_ratio = int(self.sample_rate / self.imaging_sample_rate)
+        start_frame_time = galvo_triggers_times[0] - galvo_frame_imaging_ratio
+        to_sum_indices = np.arange(
+            0,
+            start_frame_time,
+            galvo_frame_imaging_ratio,
+        )
+        if to_sum_indices[-1] != start_frame_time:
+            to_sum_indices = np.append(to_sum_indices, start_frame_time)
+
+        distances_bevore_frame = np.zeros(len(to_sum_indices) - 1)
+        old_idx = 0
+        for frame, idx in enumerate(to_sum_indices[1:]):
+            distances_bevore_frame[frame] = np.sum(at_time_moved[old_idx:idx])
+            old_idx = idx
+
+        # calculate distance moved before each frame
+        cum_distances_bevore_frame = np.cumsum(distances_bevore_frame)
+
+        # calculate distance moved in each frame
         # reduce the distance to the galvo trigger times
         moved_distances_in_frame = np.zeros(len(galvo_triggers_times))
-        old_idx = 0
-        for frame, idx in enumerate(galvo_triggers_times[1:]):
+        old_idx = start_frame_time
+        for frame, idx in enumerate(galvo_triggers_times):
             moved_distances_in_frame[frame] = np.sum(at_time_moved[old_idx:idx])
             old_idx = idx
-        return moved_distances_in_frame
+
+        lap_sync_in_frame = np.zeros(len(galvo_triggers_times))
+        old_idx = start_frame_time
+        for frame, idx in enumerate(galvo_triggers_times):
+            lap_sync_in_frame[frame] = np.mean(lap_sync[old_idx:idx])
+            old_idx = idx
+
+        # ...............plotting ............
+        cum_dist = np.cumsum(moved_distances_in_frame)
+
+        positions = Treadmill.get_position_from_cumdist(
+            cum_dist, belt_len=1.8, cum_dist_bevore=cum_distances_bevore_frame
+        )
+
+        from datetime import datetime
+
+        seconds = len(cum_distances_bevore_frame)/self.imaging_sample_rate + np.arange(0, len(positions)) / self.imaging_sample_rate
+        # convert seconds to minutes
+        minutes = np.array(
+            [datetime.fromtimestamp(sec).strftime("%M:%S") for sec in seconds]
+        )
+        write_minutes = []
+        xticks_pos = []
+        for i, position in enumerate(positions):
+            if position - 0.005 < 0:
+                write_minutes.append(minutes[i])
+                xticks_pos.append(i)
+
+        print(xticks_pos)
+        # plt.figure(figsize=(30, 3))
+        # plt.plot(lap_sync)
+        # plt.xticks(xticks_pos, write_minutes)
+        # plt.show()
+
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(30, 3))
+        plt.plot(positions)
+        plt.xlim(0, len(positions))
+        plt.xticks(xticks_pos, write_minutes, rotation=90)
+        plt.show()
+
+        # lap sync with compressed version of the data
+        write_minutes_lap_sync = []
+        xticks_pos_lap_sync = []
+        for i, position in enumerate(lap_sync_in_frame):
+            if position - 4.75 > 0:
+                if (
+                    len(write_minutes_lap_sync) > 0
+                    and write_minutes_lap_sync[-1] != minutes[i]
+                ):
+                    write_minutes_lap_sync.append(minutes[i])
+                    xticks_pos_lap_sync.append(i)
+                elif len(write_minutes_lap_sync) == 0:
+                    write_minutes_lap_sync.append(minutes[i])
+                    xticks_pos_lap_sync.append(i)
+
+        print(xticks_pos_lap_sync)
+
+        plt.figure(figsize=(30, 3))
+        plt.plot(lap_sync_in_frame)
+        plt.xlim(0, len(positions))
+        plt.xticks(xticks_pos_lap_sync, write_minutes_lap_sync, rotation=90)
+        plt.show()
+
+        # lap sync original
+        seconds_lap_sync = np.arange(0, len(lap_sync)) / self.sample_rate
+        # convert seconds_lap_sync to minutes
+        minutes_lap_sync = np.array(
+            [datetime.fromtimestamp(sec).strftime("%M:%S") for sec in seconds_lap_sync]
+        )
+        write_minutes_lap_sync_org = []
+        xticks_pos_lap_sync_org = []
+        for i, lap_frame in enumerate(lap_sync):
+            if lap_frame - 4.80 > 0:
+                if (
+                    len(write_minutes_lap_sync_org) > 0
+                    and write_minutes_lap_sync_org[-1] != minutes_lap_sync[i]
+                ):
+                    write_minutes_lap_sync_org.append(minutes_lap_sync[i])
+                    xticks_pos_lap_sync_org.append(i)
+                elif len(write_minutes_lap_sync_org) == 0:
+                    write_minutes_lap_sync_org.append(minutes_lap_sync[i])
+                    xticks_pos_lap_sync_org.append(i)
+
+        print(xticks_pos_lap_sync_org)
+
+        plt.figure(figsize=(30, 3))
+        plt.plot(lap_sync[start_frame_time:])
+        plt.xlim(0, len(lap_sync[start_frame_time:]))
+        plt.xticks(xticks_pos_lap_sync_org, write_minutes_lap_sync_org, rotation=90)
+        plt.show()
+        # ...........................
+
+        return moved_distances_in_frame, cum_distances_bevore_frame, first_lap_start
 
     def rotary_to_velocity(
         self,
@@ -489,14 +685,14 @@ class RotaryEncoder:
     def extract_data(self, fpath: np.ndarray, wheel: Wheel):
         data = self.extract_data_from_matlab_file(fpath)
 
-        rotary_binarized, lab_sync, galvo_sync = self.convert_wheel_data(data)
+        rotary_binarized, lap_sync, galvo_sync = self.convert_wheel_data(data)
 
         # get galvo trigger times for 2P frame
         galvo_triggers_times = self.galvo_trigger_times(galvo_sync)
 
         ## get distance of the wheel surface
-        distances = self.rotary_to_distances(
-            rotary_binarized, wheel.click_distance, galvo_triggers_times
+        distances, cum_distances_bevore_frame = self.rotary_to_distances(
+            rotary_binarized, wheel.click_distance, galvo_triggers_times, lap_sync
         )
         cumulative_distance = np.cumsum(distances)
         velocity_from_distances = np.diff(cumulative_distance)
@@ -516,7 +712,7 @@ class RotaryEncoder:
             "velocity": velocity_smoothed,
             "acceleration": acceleration,
         }
-        return data
+        return data, cum_distances_bevore_frame
 
 
 class Treadmill_Setup(Setup):
@@ -558,6 +754,7 @@ class Treadmill_Setup(Setup):
             "fps",
             "imaging_fps",
         ]
+        self.raw_data_path = self.define_raw_data_path()
         check_needed_keys(metadata, needed_attributes)
         self.treadmill = Treadmill(
             belt_len=metadata["environment_dimensions"],
@@ -571,23 +768,19 @@ class Treadmill_Setup(Setup):
             sample_rate=metadata["fps"], imaging_sample_rate=metadata["imaging_fps"]
         )
 
-    def process_data(self, task_id=None, save: bool = True, overwrite: bool = False):
-        identifier = Output.extract_identifier(task_id)
-        fname = self.data_naming_scheme.format(**identifier)
-        raw_data_path = self.get_file_path(file_name=fname, identifier=identifier)
-        rotary_data = self.rotary_encoder.extract_data(
-            raw_data_path, wheel=self.treadmill.wheel
+    def process_data(self, save: bool = True, overwrite: bool = False):
+        rotary_data, cum_distances_bevore_frame, first_lap_start = self.rotary_encoder.extract_data(
+            self.raw_data_path, wheel=self.treadmill.wheel
         )
-        treadmil_data = self.treadmill.extract_data(rotary_data["distance"])
+        treadmil_data = self.treadmill.extract_data(
+            rotary_data["distance"], cum_dist_bevore=cum_distances_bevore_frame, zero_position_frame=first_lap_start
+        )
         data = {**rotary_data, **treadmil_data}
 
         if save:
-            self.save_data(data, raw_data_path, identifier, overwrite)
+            self.save_data(data, overwrite)
 
-        raise NotImplementedError(
-            f"remove preprocessing metadata from yaml file for {self.__class__}"
-        )
-        return data[key]
+        return data[self.key]
 
     # get_file_path is inherited from Output class
     # get_output_paths is inherited from Output class
@@ -703,12 +896,96 @@ class Femtonics(NeuralSetup):
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {}
         self.data_naming_scheme = (
-            "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}.mesc"
+            "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}.mesc"
         )
         self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
+        self.fps = self.get_fps()
         self.preprocess = self.get_preprocess()
 
-    # get_output_paths is inherited from Output class
+    def define_raw_data_path(self, fname: str = None):
+        """
+        Define the path to the raw data file.
+        If no unique file is found it is assumed that the data is stored in a multi file dataset.
+        Dataset is choosen if all identifiers(animal_id, date and task_name) are found in the file name.
+        """
+        if not self.raw_data_path:
+            if not fname:
+                fname = self.data_naming_scheme.format(**self.identifier)
+            raw_data_path = self.get_file_path(file_name=fname)
+
+            # Search for multi file dataset if no unique file is found
+            if not raw_data_path.exists():
+                allowed_symbols = "\-A-Za-z_0-9"
+                regex_search = f"{self.identifier['animal_id']}_{self.identifier['date']}[{allowed_symbols}]*{self.identifier['task_name']}[{allowed_symbols}]*"
+                raw_data_paths = get_files(
+                    raw_data_path.parent,
+                    ending=raw_data_path.suffix,
+                    regex_search=regex_search,
+                )
+                if len(raw_data_paths) == 0:
+                    global_logger.error(
+                        f"No MESC files found in {raw_data_path.parent} with {self.identifier} in name. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file."
+                    )
+                    raise FileNotFoundError(
+                        f"No MESC files found in {raw_data_path.parent} with {self.identifier} in name. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file."
+                    )
+                else:
+                    print(
+                        f"WARNING: File {raw_data_path} not found. Choosing first matching multi task dataset found in {raw_data_path.parent}."
+                    )
+                    global_logger.warning(
+                        f"File {raw_data_path} not found. Choosing first matching multi task dataset found in {raw_data_path.parent}. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file."
+                    )
+                    raw_data_path = raw_data_path.parent.joinpath(raw_data_paths[0])
+
+            self.raw_data_path = raw_data_path
+        return self.raw_data_path
+
+    def extract_fps(self):
+        """
+        Extract the frame rate from the MESC file.
+        """
+        mesc_fpath = self.define_raw_data_path()
+        fps = None
+        with h5py.File(mesc_fpath, "r") as file:
+            msessions = [
+                msession_data
+                for name, msession_data in file.items()
+                if "MSession" in name
+            ]
+            msession = msessions[0]
+            # msession_attribute_names = list(msession.attrs.keys())
+            munits = (
+                [munit_data for name, munit_data in msession.items() if "MUnit" in name]
+                if len(msessions) > 0
+                else []
+            )
+            # get frame times
+            frTimes = (
+                [
+                    munit.attrs["ZAxisConversionConversionLinearScale"]
+                    for munit in munits
+                ]
+                if len(munits) > 0
+                else None
+            )
+            if frTimes:
+                frTime = max(frTimes)  # in milliseconds
+                fps = 1000 / frTime
+        return fps
+
+    def process_data(self, save: bool = True, overwrite: bool = False):
+        raise NotImplementedError(
+            f"Data processing not implemented for {self.__class__}"
+        )
+        tiff_data = self.raw_to_tiff(self.raw_data_path)
+        suite2p_data = self.rotary_encoder.extract_data(tiff_data)
+        cabincorr_data = self.treadmill.extract_data(suite2p_data)
+        data = {**suite2p_data, **cabincorr_data}
+
+        if save:
+            self.save_data(data, overwrite)
+        return data[self.key]
 
 
 class Thorlabs(NeuralSetup):
@@ -734,12 +1011,6 @@ class Preprocessing(Output):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir = root_dir
-
-    def process_data(self, raw_data, task_name=None, save=True):
-        raise NotImplementedError(
-            f"Raw data processing not implemented for {self.__class__}"
-        )
-        return data
 
 
 ## Neural

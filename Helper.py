@@ -200,7 +200,7 @@ def save_file_present(file_path, show_print=False):
 
 
 # Math
-def calc_cumsum_distances(positions, length, distance_threshold=30):
+def calc_cumsum_distances(positions, length, distance_threshold=0.30):
     """
     Calculates the cumulative sum of distances between positions along a track.
 
@@ -227,8 +227,8 @@ def calc_cumsum_distances(positions, length, distance_threshold=30):
             # check if mouse moves from start to end of the track
             else:
                 cumsum_distance += frame_distance - length
-        old_position = position
         cumsum_distances.append(cumsum_distance)
+        old_position = position
     return np.array(cumsum_distances)
 
 
@@ -254,7 +254,7 @@ def calculate_derivative(data):
 
 
 def moving_average(data, window_size=30):
-    weights = np.repeat(1.0, window_size) / window_size
+    weights = np.ones(window_size) / window_size
     return np.convolve(data, weights, "valid")
 
 
@@ -467,10 +467,6 @@ def num_to_date(date_string):
 
 
 # array
-def moving_average(x, w):
-    return np.convolve(x, np.ones(w), "valid") / w
-
-
 def fill_continuous_array(data_array, fps, time_gap):
     frame_gap = fps * time_gap
     # Find indices where values change
