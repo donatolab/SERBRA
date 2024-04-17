@@ -874,7 +874,6 @@ class Data_Probe(Dataset):
         # TODO: implement probe data loading
         raise NotImplementedError("Probe data loading not implemented.")
 
-
 class Datasets:
     """
     Dataset class for managing multiple datasets. Getting correct data paths and loading data.

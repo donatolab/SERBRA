@@ -274,14 +274,24 @@ class Treadmill:
         cumulative_distance: np.ndarray,
         belt_len: List[int],
         cum_dist_bevore=np.array([0]),
+        lap_start_frame: float = 0,
     ):
         """
         Get position of the animal on the belt.
         output:
             position: position of the animal on the belt
         """
+        # FIXME: remove cum_dist_bevore, if decided to use lap distances,
+        # FIXME: also change value of lap_start_frame to fit the frames of cumulative_distance
+        # get real traveled distance
         full_moved_distance = cumulative_distance + cum_dist_bevore[-1]
-        overall_distance = np.concatenate([cum_dist_bevore, full_moved_distance])
+        overall_distance_unfitted = np.concatenate(
+            [cum_dist_bevore, full_moved_distance]
+        )
+        overall_distance = overall_distance_unfitted + (
+            180 - overall_distance_unfitted[lap_start_frame]
+        )
+
         positions = np.zeros(len(overall_distance))
         started_lap = 1
         ended_lap = 0
@@ -305,6 +315,8 @@ class Treadmill:
 
         positions_in_frame = positions[len(cum_dist_bevore) :]
 
+        # fit positions to lap signal occured after travelled distance
+
         return positions_in_frame
 
     @staticmethod
@@ -323,7 +335,12 @@ class Treadmill:
         ]
         return stimulus_type_at_frame
 
-    def extract_data(self, cumulative_distance, cum_dist_bevore):
+    def extract_data(
+        self,
+        cumulative_distance: np.ndarray,
+        cum_dist_bevore: np.ndarray,
+        lap_start_frame: float,
+    ):
         """
         Extract data from the cumulative distance of the belt.
         output:
@@ -333,7 +350,10 @@ class Treadmill:
         """
         # Normalize cumulative distance to treadmill length
         positions = self.get_position_from_cumdist(
-            cumulative_distance, belt_len=self.belt_len, cum_dist_bevore=cum_dist_bevore
+            cumulative_distance,
+            belt_len=self.belt_len,
+            cum_dist_bevore=cum_dist_bevore,
+            lap_start_frame=lap_start_frame,
         )
 
         stimulus = self.get_stimulus_at_position(
@@ -451,28 +471,24 @@ class RotaryEncoder:
         # calculate distance
         at_time_moved = rotary_binarized * click_distance
 
-        # .... use lab sync to know if you are at start of the lap to define actual 0 position
-
-        # get first lab sync signal
-        lap_starts = np.where(lap_sync>4.5)[0]
-        first_lap_start = lap_starts[0]
-        ..........finisch this.....
-        first_lap_start_frame = int(first_lap_start/self.sample_rate)
-        
         # reduce the distances to the galvo trigger times to reduce the amount of data
         galvo_frame_imaging_ratio = int(self.sample_rate / self.imaging_sample_rate)
         start_frame_time = galvo_triggers_times[0] - galvo_frame_imaging_ratio
-        to_sum_indices = np.arange(
+
+        # calculate distance moved before first frame
+        galvo_indices_bevore_frame = np.arange(
             0,
             start_frame_time,
             galvo_frame_imaging_ratio,
         )
-        if to_sum_indices[-1] != start_frame_time:
-            to_sum_indices = np.append(to_sum_indices, start_frame_time)
+        if galvo_indices_bevore_frame[-1] != start_frame_time:
+            galvo_indices_bevore_frame = np.append(
+                galvo_indices_bevore_frame, start_frame_time
+            )
 
-        distances_bevore_frame = np.zeros(len(to_sum_indices) - 1)
+        distances_bevore_frame = np.zeros(len(galvo_indices_bevore_frame) - 1)
         old_idx = 0
-        for frame, idx in enumerate(to_sum_indices[1:]):
+        for frame, idx in enumerate(galvo_indices_bevore_frame[1:]):
             distances_bevore_frame[frame] = np.sum(at_time_moved[old_idx:idx])
             old_idx = idx
 
@@ -493,16 +509,30 @@ class RotaryEncoder:
             lap_sync_in_frame[frame] = np.mean(lap_sync[old_idx:idx])
             old_idx = idx
 
+        # get moved distance until start of track
+        ## get first lab sync signal in frame
+        lap_start_times = np.where(lap_sync > 4.5)[0]
+        first_lap_start_time = 0
+        for lap_start_time in lap_start_times:
+            if lap_start_time > start_frame_time:
+                first_lap_start_time = lap_start_time
+                break
+        # get moved distance until first imaging lap
+        lap_start_frame = int(first_lap_start_time / galvo_frame_imaging_ratio)
+
         # ...............plotting ............
         cum_dist = np.cumsum(moved_distances_in_frame)
 
         positions = Treadmill.get_position_from_cumdist(
-            cum_dist, belt_len=1.8, cum_dist_bevore=cum_distances_bevore_frame
+            cum_dist,
+            belt_len=1.8,
+            cum_dist_bevore=cum_distances_bevore_frame,
+            lap_start_frame=lap_start_frame,
         )
 
         from datetime import datetime
 
-        seconds = len(cum_distances_bevore_frame)/self.imaging_sample_rate + np.arange(0, len(positions)) / self.imaging_sample_rate
+        seconds = np.arange(0, len(positions)) / self.imaging_sample_rate
         # convert seconds to minutes
         minutes = np.array(
             [datetime.fromtimestamp(sec).strftime("%M:%S") for sec in seconds]
@@ -510,7 +540,7 @@ class RotaryEncoder:
         write_minutes = []
         xticks_pos = []
         for i, position in enumerate(positions):
-            if position - 0.005 < 0:
+            if position - 0.008 < 0:
                 write_minutes.append(minutes[i])
                 xticks_pos.append(i)
 
@@ -525,6 +555,25 @@ class RotaryEncoder:
         plt.figure(figsize=(30, 3))
         plt.plot(positions)
         plt.xlim(0, len(positions))
+        plt.xticks(xticks_pos, write_minutes, rotation=90)
+        plt.show()
+
+        gdist = np.load(
+            r"d:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\temp_behavior_location\S1_position.npy"
+        )
+        gdist = gdist / 100
+        write_minutes = []
+        xticks_pos = []
+        for i, position in enumerate(gdist):
+            if position != 0 and position - 0.005 < 0:
+                write_minutes.append(minutes[i])
+                xticks_pos.append(i)
+
+        print(xticks_pos)
+
+        plt.figure(figsize=(30, 3))
+        plt.plot(gdist)
+        plt.xlim(0, len(gdist))
         plt.xticks(xticks_pos, write_minutes, rotation=90)
         plt.show()
 
@@ -580,7 +629,7 @@ class RotaryEncoder:
         plt.show()
         # ...........................
 
-        return moved_distances_in_frame, cum_distances_bevore_frame, first_lap_start
+        return moved_distances_in_frame, cum_distances_bevore_frame, lap_start_frame
 
     def rotary_to_velocity(
         self,
@@ -691,8 +740,10 @@ class RotaryEncoder:
         galvo_triggers_times = self.galvo_trigger_times(galvo_sync)
 
         ## get distance of the wheel surface
-        distances, cum_distances_bevore_frame = self.rotary_to_distances(
-            rotary_binarized, wheel.click_distance, galvo_triggers_times, lap_sync
+        distances, cum_distances_bevore_frame, lap_start_frame = (
+            self.rotary_to_distances(
+                rotary_binarized, wheel.click_distance, galvo_triggers_times, lap_sync
+            )
         )
         cumulative_distance = np.cumsum(distances)
         velocity_from_distances = np.diff(cumulative_distance)
@@ -712,7 +763,7 @@ class RotaryEncoder:
             "velocity": velocity_smoothed,
             "acceleration": acceleration,
         }
-        return data, cum_distances_bevore_frame
+        return data, cum_distances_bevore_frame, lap_start_frame
 
 
 class Treadmill_Setup(Setup):
@@ -769,11 +820,15 @@ class Treadmill_Setup(Setup):
         )
 
     def process_data(self, save: bool = True, overwrite: bool = False):
-        rotary_data, cum_distances_bevore_frame, first_lap_start = self.rotary_encoder.extract_data(
-            self.raw_data_path, wheel=self.treadmill.wheel
+        rotary_data, cum_distances_bevore_frame, lap_start_frame = (
+            self.rotary_encoder.extract_data(
+                self.raw_data_path, wheel=self.treadmill.wheel
+            )
         )
         treadmil_data = self.treadmill.extract_data(
-            rotary_data["distance"], cum_dist_bevore=cum_distances_bevore_frame, zero_position_frame=first_lap_start
+            rotary_data["distance"],
+            cum_dist_bevore=cum_distances_bevore_frame,
+            lap_start_frame=lap_start_frame,
         )
         data = {**rotary_data, **treadmil_data}
 
