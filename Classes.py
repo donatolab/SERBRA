@@ -157,7 +157,7 @@ class DataPlotterInterface:
         regenerate_plot=None,
         save_path=None,
     ):
-        self.fps = self.fps or fps or 30
+        self.plot_attributes["fps"] = self.plot_attributes["fps"] or fps
         self.plot_attributes["title"] = (
             self.plot_attributes["title"] or title or f"{self.path.stem} data"
         )
@@ -194,7 +194,7 @@ class DataPlotterInterface:
             self.plot_attributes["xticks"] or xticks or None
         )
         self.plot_attributes["num_ticks"] = (
-            self.plot_attributes["num_ticks"] or num_ticks or 50
+            self.plot_attributes["num_ticks"] or num_ticks or 100
         )
         self.plot_attributes["figsize"] = (
             self.plot_attributes["figsize"] or figsize or (20, 3)
@@ -220,18 +220,19 @@ class DataPlotterInterface:
         written_label_steps=2,
     ):
         num_frames = self.data.shape[0]
-        frame_interval = self.fps * seconds_interval
-        time = [
-            int(frame / frame_interval) * seconds_interval
-            for frame in range(num_frames)
-            if frame % frame_interval == 0
-        ]
-        steps = round(len(time) / (2 * self.plot_attributes["num_ticks"]))
-        time_shortened = time[::steps]
+        frame_interval = self.plot_attributes["fps"] * seconds_interval
+        times = []
+        for frame in range(num_frames):
+            if frame % frame_interval < 1:
+                time = int(frame / frame_interval) * seconds_interval
+                times.append(time)
+
+        steps = round(len(times) / self.plot_attributes["num_ticks"])
+        times_shortened = times[::steps]
         pos = np.arange(0, num_frames, frame_interval)[::steps]
         labels = [
-            time if num % written_label_steps == 0 else ""
-            for num, time in enumerate(time_shortened)
+            times if num % written_label_steps == 0 else ""
+            for num, times in enumerate(times_shortened)
         ]
         plt.xticks(pos, labels, rotation=40)
 
@@ -301,7 +302,7 @@ class DataPlotterInterface:
 
         if show:
             plt.show()
-            plt.close()
+        plt.close()
 
 
 class Dataset(DataPlotterInterface):
@@ -467,8 +468,13 @@ class BehaviorDataset(Dataset):
         super().__init__(
             key, path, data, raw_data_object, metadata, root_dir, task_id=task_id
         )
-        needed_attributes = ["setup"]
+        needed_attributes = ["setup", "fps"]
         check_needed_keys(metadata, needed_attributes)
+        self.plot_attributes["fps"] = (
+            self.metadata["imaging_fps"]
+            if "imaging_fps" in self.metadata.keys()
+            else self.metadata["fps"]
+        )
 
     def get_setup(self, setup_name):
         self.setup_name = self.metadata["setup"]
@@ -576,8 +582,6 @@ class Data_Stimulus(BehaviorDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        # TODO: only working for steffens treadmil introduce into yaml
-        # file no handling other types of stimuly besides track stimulus
         self.stimulus_sequence = self.metadata["stimulus_sequence"]
         self.simulus_length = self.metadata["stimulus_length"]
         self.stimulus_type = self.metadata["stimulus_type"]
@@ -824,6 +828,9 @@ class Data_Photon(NeuralDataset):
         )
         self.plot_attributes["ylable"] = "Neuron ID"
         self.plot_attributes["figsize"] = (20, 10)
+        if "fps" not in self.metadata.keys():
+            self.metadata["fps"] = self.setup.get_fps()
+            self.plot_attributes["fps"] = self.metadata["fps"]
 
     def process_raw_data(self):
         self.data = self.setup.process_raw_data()
@@ -873,6 +880,7 @@ class Data_Probe(Dataset):
         )
         # TODO: implement probe data loading
         raise NotImplementedError("Probe data loading not implemented.")
+
 
 class Datasets:
     """
@@ -947,27 +955,36 @@ class Datasets:
 class Datasets_Neural(Datasets):
     def __init__(self, root_dir, metadata={}, task_id=None):
         super().__init__(root_dir=root_dir, metadata=metadata, task_id=task_id)
-        # TODO: currently not able to manage individual analyzed sessions, needed?
-        self.photon = Data_Photon(
-            root_dir=root_dir, metadata=self.metadata, task_id=self.task_id
-        )
-        # TODO: implement probe data loading
-        # self.probe = Data_Probe(root_dir=root_dir, metadata=self.metadata, task_id=self.task_id)
-        # TODO: split into different datasets if needed
         self.photon_imaging_methods = ["femtonics", "thorlabs", "inscopix"]
         self.probe_imaging_methods = ["neuropixels", "tetrode"]
+        # TODO: split into different datasets if needed
+        imaging_type = self.define_imaging_type(self.metadata["setup"])
+        if imaging_type == "photon":
+            self.photon = Data_Photon(
+                root_dir=root_dir, metadata=self.metadata, task_id=self.task_id
+            )
+        else:
+            # TODO: implement probe data loading
+            self.probe = Data_Probe(
+                root_dir=root_dir, metadata=self.metadata, task_id=self.task_id
+            )
+
         if "fps" not in self.metadata.keys():
             # TODO: this is not implemented for probe data
-            self.metadata["fps"] = self.photon.setup.get_fps()
+            data_object = self.get_object(self.metadata["setup"])  # photon or probe
+            self.metadata["fps"] = data_object.metadata["fps"]
 
-    def get_object(self, data_source):
+    def define_imaging_type(self, data_source):
         if data_source in self.photon_imaging_methods:
             imaging_type = "photon"
         elif data_source in self.probe_imaging_methods:
             imaging_type = "probe"
         else:
             raise ValueError(f"Imaging type {data_source} not supported.")
+        return imaging_type
 
+    def get_object(self, data_source):
+        imaging_type = self.define_imaging_type(data_source)
         data_object = getattr(self, imaging_type)
         return data_object
 
@@ -983,13 +1000,13 @@ class Datasets_Behavior(Datasets):
         self.position = Data_Position(
             root_dir=root_dir, metadata=self.metadata, task_id=self.task_id
         )
-        self.stimulus = Data_Stimulus(
+        self.distance = Data_Distance(
             raw_data_object=self.position,
             root_dir=root_dir,
             metadata=self.metadata,
             task_id=self.task_id,
         )
-        self.distance = Data_Distance(
+        self.stimulus = Data_Stimulus(
             raw_data_object=self.position,
             root_dir=root_dir,
             metadata=self.metadata,

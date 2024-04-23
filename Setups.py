@@ -257,7 +257,7 @@ class Treadmill:
     def __init__(
         self,
         belt_len: int = 0.180,  # in m
-        belt_segment_len: List[int] = [30, 30, 30, 30, 30, 30],
+        belt_segment_len: List[int] = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3],  # in m
         belt_segment_seq: List[int] = [1, 2, 3, 4, 5, 6],
         belt_type: str = "A",
         wheel_radius=0.1,  # in meters
@@ -273,7 +273,6 @@ class Treadmill:
     def get_position_from_cumdist(
         cumulative_distance: np.ndarray,
         belt_len: List[int],
-        cum_dist_bevore=np.array([0]),
         lap_start_frame: float = 0,
     ):
         """
@@ -281,18 +280,12 @@ class Treadmill:
         output:
             position: position of the animal on the belt
         """
-        # FIXME: remove cum_dist_bevore, if decided to use lap distances,
-        # FIXME: also change value of lap_start_frame to fit the frames of cumulative_distance
-        # get real traveled distance
-        full_moved_distance = cumulative_distance + cum_dist_bevore[-1]
-        overall_distance_unfitted = np.concatenate(
-            [cum_dist_bevore, full_moved_distance]
-        )
-        overall_distance = overall_distance_unfitted + (
-            180 - overall_distance_unfitted[lap_start_frame]
+        # shift distance up, so lap_start is at 0
+        shifted_distance = cumulative_distance + (
+            180 - cumulative_distance[lap_start_frame]
         )
 
-        positions = np.zeros(len(overall_distance))
+        positions = np.zeros(len(shifted_distance))
         started_lap = 1
         ended_lap = 0
         undmapped_positions = True
@@ -300,24 +293,20 @@ class Treadmill:
             distance_min = ended_lap * belt_len
             distance_max = started_lap * belt_len
             distances_in_range = np.where(
-                (overall_distance >= distance_min) & (overall_distance < distance_max)
+                (shifted_distance >= distance_min) & (shifted_distance < distance_max)
             )[0]
 
             positions[distances_in_range] = (
-                overall_distance[distances_in_range] - distance_min
+                shifted_distance[distances_in_range] - distance_min
             )
 
-            if max(overall_distance) > distance_max:
+            if max(shifted_distance) > distance_max:
                 ended_lap += 1
                 started_lap += 1
             else:
                 undmapped_positions = False
 
-        positions_in_frame = positions[len(cum_dist_bevore) :]
-
-        # fit positions to lap signal occured after travelled distance
-
-        return positions_in_frame
+        return positions
 
     @staticmethod
     def get_stimulus_at_position(
@@ -338,7 +327,6 @@ class Treadmill:
     def extract_data(
         self,
         cumulative_distance: np.ndarray,
-        cum_dist_bevore: np.ndarray,
         lap_start_frame: float,
     ):
         """
@@ -352,7 +340,6 @@ class Treadmill:
         positions = self.get_position_from_cumdist(
             cumulative_distance,
             belt_len=self.belt_len,
-            cum_dist_bevore=cum_dist_bevore,
             lap_start_frame=lap_start_frame,
         )
 
@@ -460,6 +447,8 @@ class RotaryEncoder:
         click_distance: float,
         galvo_triggers_times: np.ndarray,
         lap_sync: np.ndarray,
+        track_length: float,  # in meters
+        mute_lap_detection_time=5,  # in seconds
     ):
         """
         Convert rotary encoder data to distance
@@ -475,26 +464,6 @@ class RotaryEncoder:
         galvo_frame_imaging_ratio = int(self.sample_rate / self.imaging_sample_rate)
         start_frame_time = galvo_triggers_times[0] - galvo_frame_imaging_ratio
 
-        # calculate distance moved before first frame
-        galvo_indices_bevore_frame = np.arange(
-            0,
-            start_frame_time,
-            galvo_frame_imaging_ratio,
-        )
-        if galvo_indices_bevore_frame[-1] != start_frame_time:
-            galvo_indices_bevore_frame = np.append(
-                galvo_indices_bevore_frame, start_frame_time
-            )
-
-        distances_bevore_frame = np.zeros(len(galvo_indices_bevore_frame) - 1)
-        old_idx = 0
-        for frame, idx in enumerate(galvo_indices_bevore_frame[1:]):
-            distances_bevore_frame[frame] = np.sum(at_time_moved[old_idx:idx])
-            old_idx = idx
-
-        # calculate distance moved before each frame
-        cum_distances_bevore_frame = np.cumsum(distances_bevore_frame)
-
         # calculate distance moved in each frame
         # reduce the distance to the galvo trigger times
         moved_distances_in_frame = np.zeros(len(galvo_triggers_times))
@@ -503,235 +472,87 @@ class RotaryEncoder:
             moved_distances_in_frame[frame] = np.sum(at_time_moved[old_idx:idx])
             old_idx = idx
 
-        lap_sync_in_frame = np.zeros(len(galvo_triggers_times))
-        old_idx = start_frame_time
-        for frame, idx in enumerate(galvo_triggers_times):
-            lap_sync_in_frame[frame] = np.mean(lap_sync[old_idx:idx])
-            old_idx = idx
-
         # get moved distance until start of track
         ## get first lab sync signal in frame
-        lap_start_times = np.where(lap_sync > 4.5)[0]
+        ## get unique lap start indices
+        lap_start_boolean = lap_sync > 4.5
+        mute_detection_sampling_frames = self.sample_rate * mute_lap_detection_time
+        unique_lap_start_boolean = lap_start_boolean.copy()
+
+        # get unique lap start signals
+        muted_sampling_frames = 0
+        for index, lap_start_bool in enumerate(lap_start_boolean):
+            if muted_sampling_frames == 0:
+                if lap_start_bool:
+                    muted_sampling_frames = mute_detection_sampling_frames
+            else:
+                muted_sampling_frames -= 1
+                unique_lap_start_boolean[index] = False
+        lap_start_indices = np.where(unique_lap_start_boolean)[0]
+
+        # get lap start signals in imaging frames
+        lap_sync_in_frame = np.full(len(galvo_triggers_times), False)
+        old_idx = start_frame_time
+        for lap_start_index in lap_start_indices:
+            for frame, idx in enumerate(galvo_triggers_times):
+                if old_idx < lap_start_index and lap_start_index < idx:
+                    lap_sync_in_frame[frame] = True
+                    old_idx = idx
+                    break
+                old_idx = idx
+
+        # get first lap start signal in imaging frame
         first_lap_start_time = 0
-        for lap_start_time in lap_start_times:
+        for lap_start_time in lap_start_indices:
             if lap_start_time > start_frame_time:
                 first_lap_start_time = lap_start_time
                 break
-        # get moved distance until first imaging lap
-        lap_start_frame = int(first_lap_start_time / galvo_frame_imaging_ratio)
+        lap_start_frame = len(np.where(galvo_triggers_times < first_lap_start_time)[0])
 
-        # ...............plotting ............
-        cum_dist = np.cumsum(moved_distances_in_frame)
-
-        positions = Treadmill.get_position_from_cumdist(
-            cum_dist,
-            belt_len=1.8,
-            cum_dist_bevore=cum_distances_bevore_frame,
-            lap_start_frame=lap_start_frame,
-        )
-
-        from datetime import datetime
-
-        seconds = np.arange(0, len(positions)) / self.imaging_sample_rate
-        # convert seconds to minutes
-        minutes = np.array(
-            [datetime.fromtimestamp(sec).strftime("%M:%S") for sec in seconds]
-        )
-        write_minutes = []
-        xticks_pos = []
-        for i, position in enumerate(positions):
-            if position - 0.008 < 0:
-                write_minutes.append(minutes[i])
-                xticks_pos.append(i)
-
-        print(xticks_pos)
-        # plt.figure(figsize=(30, 3))
-        # plt.plot(lap_sync)
-        # plt.xticks(xticks_pos, write_minutes)
-        # plt.show()
-
-        import matplotlib.pyplot as plt
-
-        plt.figure(figsize=(30, 3))
-        plt.plot(positions)
-        plt.xlim(0, len(positions))
-        plt.xticks(xticks_pos, write_minutes, rotation=90)
-        plt.show()
-
-        gdist = np.load(
-            r"d:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\temp_behavior_location\S1_position.npy"
-        )
-        gdist = gdist / 100
-        write_minutes = []
-        xticks_pos = []
-        for i, position in enumerate(gdist):
-            if position != 0 and position - 0.005 < 0:
-                write_minutes.append(minutes[i])
-                xticks_pos.append(i)
-
-        print(xticks_pos)
-
-        plt.figure(figsize=(30, 3))
-        plt.plot(gdist)
-        plt.xlim(0, len(gdist))
-        plt.xticks(xticks_pos, write_minutes, rotation=90)
-        plt.show()
-
-        # lap sync with compressed version of the data
-        write_minutes_lap_sync = []
-        xticks_pos_lap_sync = []
-        for i, position in enumerate(lap_sync_in_frame):
-            if position - 4.75 > 0:
-                if (
-                    len(write_minutes_lap_sync) > 0
-                    and write_minutes_lap_sync[-1] != minutes[i]
-                ):
-                    write_minutes_lap_sync.append(minutes[i])
-                    xticks_pos_lap_sync.append(i)
-                elif len(write_minutes_lap_sync) == 0:
-                    write_minutes_lap_sync.append(minutes[i])
-                    xticks_pos_lap_sync.append(i)
-
-        print(xticks_pos_lap_sync)
-
-        plt.figure(figsize=(30, 3))
-        plt.plot(lap_sync_in_frame)
-        plt.xlim(0, len(positions))
-        plt.xticks(xticks_pos_lap_sync, write_minutes_lap_sync, rotation=90)
-        plt.show()
-
-        # lap sync original
-        seconds_lap_sync = np.arange(0, len(lap_sync)) / self.sample_rate
-        # convert seconds_lap_sync to minutes
-        minutes_lap_sync = np.array(
-            [datetime.fromtimestamp(sec).strftime("%M:%S") for sec in seconds_lap_sync]
-        )
-        write_minutes_lap_sync_org = []
-        xticks_pos_lap_sync_org = []
-        for i, lap_frame in enumerate(lap_sync):
-            if lap_frame - 4.80 > 0:
-                if (
-                    len(write_minutes_lap_sync_org) > 0
-                    and write_minutes_lap_sync_org[-1] != minutes_lap_sync[i]
-                ):
-                    write_minutes_lap_sync_org.append(minutes_lap_sync[i])
-                    xticks_pos_lap_sync_org.append(i)
-                elif len(write_minutes_lap_sync_org) == 0:
-                    write_minutes_lap_sync_org.append(minutes_lap_sync[i])
-                    xticks_pos_lap_sync_org.append(i)
-
-        print(xticks_pos_lap_sync_org)
-
-        plt.figure(figsize=(30, 3))
-        plt.plot(lap_sync[start_frame_time:])
-        plt.xlim(0, len(lap_sync[start_frame_time:]))
-        plt.xticks(xticks_pos_lap_sync_org, write_minutes_lap_sync_org, rotation=90)
-        plt.show()
-        # ...........................
-
-        return moved_distances_in_frame, cum_distances_bevore_frame, lap_start_frame
-
-    def rotary_to_velocity(
-        self,
-        rotary_binarized: np.ndarray,
-        click_distance: float,
-        galvo_triggers_times: np.ndarray,
-    ):
-        """
-        This METHOD is DEPRECATED and should not be used anymore.
-        Convert rotary encoder data to velocity.
-        """
-
-        def remove_stationary_times(self, array, rotary_binarized):
-            # remove stationary times
-            stationary_times = np.where(array == 0)[0]
-            movement_values = np.delete(array, stationary_times)
-
-            if len(movement_values) == 0:
-                # create dummy array
-                movement_values = np.array([0])
-                movement_times = np.array([0])
-            else:
-                movement_times = np.arange(rotary_binarized.shape[0], dtype=np.int32)
-                movement_times = np.delete(movement_times, stationary_times)
-            return movement_values, movement_times
-
-        def calc_velocities(self, rotary_binarized, click_distance):
-            # get times of rotary encoder
-            rotation_clicks_at_times = np.where(rotary_binarized != 0)[0]
-
-            # calculate velocity
-            temp_velocities = np.zeros(len(rotary_binarized))
-            last_click_time = 0
-            for click_time in rotation_clicks_at_times:
-                #
-                forward_or_backward = rotary_binarized[click_time]  # can be +/- 1
-                # delta distance / delta time
-                temp_velocities[click_time] = (forward_or_backward * click_distance) / (
-                    (click_time - last_click_time) / self.sample_rate
-                )
-                last_click_time = click_time
-
-            velocities, vel_times = self.remove_stationary_times(
-                temp_velocities, rotary_binarized
+        # squeze moved distance based on lap sync to compensate for the fact that the wheel continues moving if mouse stops fast after running
+        lap_sync_frame_indices = np.where(lap_sync_in_frame == True)[0]
+        old_lap_sync_frame_index = lap_sync_frame_indices[0]
+        squeezed_moved_distance_in_frame = moved_distances_in_frame.copy()
+        squeez_ratios = np.zeros(len(lap_sync_frame_indices) - 1)
+        for i, lap_sync_frame_index in enumerate(lap_sync_frame_indices[1:]):
+            moved_distances_between_laps = np.sum(
+                moved_distances_in_frame[old_lap_sync_frame_index:lap_sync_frame_index]
             )
-            return velocities, vel_times
+            # check if lap sync was not detected by comparing with moved distance
+            # assuming maximal additional tracked distance distance is < 20%
+            max_additionall_distance_percentage = 0.2
+            probable_moved_distance = moved_distances_between_laps / (
+                1 + max_additionall_distance_percentage
+            )
+            probable_moved_laps = int(track_length / probable_moved_distance)
+            real_moved_distance = track_length * probable_moved_laps
 
-        def fill_gaps(self, array, times, time_threshold=0.5):
-            """
-            Fill in the rotary encoder when it's in an undefined state for > 0.5 sec. This is done for more accurate extrapolation
-            """
-            # refill in the rotary encoder when it's in an undefined state for > 0.5 sec
-            max_time = self.sample_rate * time_threshold
+            # squeez moved distances between laps to create more realistic data
+            squeez_ratio = real_moved_distance / moved_distances_between_laps
+            squeez_ratios[i] = squeez_ratio
+            squeezed_moved_distance_in_frame[
+                old_lap_sync_frame_index:lap_sync_frame_index
+            ] *= squeez_ratio
+            old_lap_sync_frame_index = lap_sync_frame_index
 
-            full = [array[0]]
-            times_full = [times[0]]
+        # squeez moved distances before and after first and last lap sync
+        mean_squeez_ratio = np.mean(squeez_ratios)
+        squeezed_moved_distance_in_frame[
+            0 : lap_sync_frame_indices[0]
+        ] *= mean_squeez_ratio
+        squeezed_moved_distance_in_frame[
+            lap_sync_frame_indices[-1] : -1
+        ] *= mean_squeez_ratio
 
-            prev_time = times[0]
-            for k, time in enumerate(times[1:]):  # , desc="refilling stationary times"
-                # if time between two rotary encoder values is larger than threshold
-                # create array of zeros for the time between the two rotary encoder values
-                if (time - prev_time) >= max_time:
-                    zero_array = np.arange(prev_time, time, max_time)[1:]
-                    times_full.append(zero_array)
-                    full.append(zero_array * 0)
-                else:
-                    # append the velocity and time
-                    times_full.append(time)
-                    full.append(array[k])
-                prev_time = time
-            # convert lists to numpy arrays
-            times_full = np.hstack(times_full)
-            array_full = np.hstack(full)
-            return array_full, times_full
+        return squeezed_moved_distance_in_frame, lap_start_frame
 
-        def extrapolate_fit(self, times, values, galvo_triggers_times):
-            if values.shape[0] != 0:
-                # create an extrapolation function
-                F = interp1d(x=times, y=values, fill_value="extrapolate")
-
-                # extrapolate the velocity to fill gaps of no velocity
-                # resample the fit function at the correct galvo_tirgger times
-                values_extra = F(galvo_triggers_times)
-            else:
-                values_extra = np.zeros(len(galvo_triggers_times))
-            return values_extra
-
-        # extract velocity from rotary encoder
-        velocities, vel_times = self.calc_velocities(rotary_binarized, click_distance)
-
-        # fill in the gaps in the velocity data
-        velocity_full, vel_times_full = self.fill_gaps(velocities, vel_times)
-
-        velocity_extra = self.extrapolate_fit(
-            times=vel_times_full,
-            values=velocity_full,
-            galvo_triggers_times=galvo_triggers_times,
-        )
-
-        return velocity_extra
-
-    def extract_data(self, fpath: np.ndarray, wheel: Wheel):
+    def extract_data(
+        self,
+        fpath: np.ndarray,
+        wheel: Wheel,
+        track_length: float,  # in meters
+        mute_lap_detection_time: float = 5,  # in seconds
+    ):
         data = self.extract_data_from_matlab_file(fpath)
 
         rotary_binarized, lap_sync, galvo_sync = self.convert_wheel_data(data)
@@ -740,10 +561,13 @@ class RotaryEncoder:
         galvo_triggers_times = self.galvo_trigger_times(galvo_sync)
 
         ## get distance of the wheel surface
-        distances, cum_distances_bevore_frame, lap_start_frame = (
-            self.rotary_to_distances(
-                rotary_binarized, wheel.click_distance, galvo_triggers_times, lap_sync
-            )
+        distances, lap_start_frame = self.rotary_to_distances(
+            rotary_binarized=rotary_binarized,
+            click_distance=wheel.click_distance,
+            galvo_triggers_times=galvo_triggers_times,
+            lap_sync=lap_sync,
+            track_length=track_length,
+            mute_lap_detection_time=mute_lap_detection_time,
         )
         cumulative_distance = np.cumsum(distances)
         velocity_from_distances = np.diff(cumulative_distance)
@@ -763,7 +587,7 @@ class RotaryEncoder:
             "velocity": velocity_smoothed,
             "acceleration": acceleration,
         }
-        return data, cum_distances_bevore_frame, lap_start_frame
+        return data, lap_start_frame
 
 
 class Treadmill_Setup(Setup):
@@ -802,7 +626,6 @@ class Treadmill_Setup(Setup):
             "stimulus_sequence",
             "stimulus_length",
             "environment_dimensions",
-            "fps",
             "imaging_fps",
         ]
         self.raw_data_path = self.define_raw_data_path()
@@ -820,14 +643,14 @@ class Treadmill_Setup(Setup):
         )
 
     def process_data(self, save: bool = True, overwrite: bool = False):
-        rotary_data, cum_distances_bevore_frame, lap_start_frame = (
-            self.rotary_encoder.extract_data(
-                self.raw_data_path, wheel=self.treadmill.wheel
-            )
+        rotary_data, lap_start_frame = self.rotary_encoder.extract_data(
+            self.raw_data_path,
+            wheel=self.treadmill.wheel,
+            track_length=self.treadmill.belt_len,
+            mute_lap_detection_time=5,
         )
         treadmil_data = self.treadmill.extract_data(
             rotary_data["distance"],
-            cum_dist_bevore=cum_distances_bevore_frame,
             lap_start_frame=lap_start_frame,
         )
         data = {**rotary_data, **treadmil_data}
