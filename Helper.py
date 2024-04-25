@@ -257,6 +257,10 @@ def moving_average(data, window_size=30):
     weights = np.ones(window_size) / window_size
     return np.convolve(data, weights, "valid")
 
+def smooth_array(data, window_size=5):
+    weights = np.ones(window_size) / window_size
+    return np.convolve(data, weights, "same")
+
 
 def continuouse_to_discrete(continuouse_array, lengths: list):
     """
@@ -458,15 +462,31 @@ def check_correct_metadata(string_or_list, name_parts):
     return success
 
 
-# date
-def num_to_date(date_string):
-    if type(date_string) != str:
-        date_string = str(date_string)
-    date = datetime.strptime(date_string, "%Y%m%d")
-    return date
-
-
 # array
+def bin_array(arr, bin_size, min_bin=None, max_bin=None):
+    """
+    Bin an array of floats based on a given bin size.
+
+    Parameters:
+    arr (numpy.ndarray): Input array of floats.
+    bin_size (float): Size of each bin.
+
+    Returns:
+    numpy.ndarray: Binned array. starting at bin 0 to n-1
+    """
+    min_bin = min_bin or arr.min()
+    max_bin = max_bin or arr.max()
+    # Calculate the number of bins
+    num_bins = int(np.ceil((max_bin - min_bin) / bin_size))
+
+    # Calculate the edges of the bins
+    bins_edges = np.linspace(min_bin, min_bin + num_bins * bin_size, num_bins + 1)
+
+    # Bin the array
+    binned_array = np.digitize(arr, bins_edges) - 1
+    return binned_array
+
+
 def fill_continuous_array(data_array, fps, time_gap):
     frame_gap = fps * time_gap
     # Find indices where values change
@@ -709,9 +729,62 @@ def load_matlab_metadata(mat_fpath):
         print(f"{attribute:>12}: {str(value)}")
 
 
+# date time
+def num_to_date(date_string):
+    if type(date_string) != str:
+        date_string = str(date_string)
+    date = datetime.strptime(date_string, "%Y%m%d")
+    return date
+
+
+def range_to_seconds(end: int, fps: float, start: int = 0):
+    return np.arange(start, end) / fps
+
+
+def second_to_time(second: float, striptime_format: str = "%M:%S"):
+    return datetime.fromtimestamp(second).strftime("%M:%S")
+
+
+def seconds_to_times(seconds: List[float]):
+    if seconds[-1] > 60 * 60:  # if more than 1 hour
+        times = np.full(len(seconds), "00:00:00")
+        striptime_format = "%H:%M:%S"
+    else:
+        times = np.full(len(seconds), "00:00")
+        striptime_format = "%M:%S"
+
+    for i, sec in enumerate(seconds):
+        times[i] = second_to_time(sec, striptime_format)
+    return times
+
+
+def range_to_times(end: int, fps: float, start: int = 0):
+    seconds = range_to_seconds(end, fps, start)
+    times = seconds_to_times(seconds)
+    return times
+
+
+def range_to_times_xlables_xpos(
+    end: int, fps: float, start: int = 0, seconds_per_label: float = 30
+):
+    seconds = range_to_seconds(end, fps, start)
+    if seconds[-1] > 60 * 60:  # if more than 1 hour
+        striptime_format = "%H:%M:%S"
+    else:
+        striptime_format = "%M:%S"
+    minutes = seconds_to_times(seconds)
+    xticks = [minutes[0]]
+    xpos = [0]
+    for i, minute in enumerate(minutes[1:]):
+        time_before = datetime.strptime(xticks[-1], striptime_format)
+        time_current = datetime.strptime(minute, striptime_format)
+        if (time_current - time_before).seconds > seconds_per_label:
+            xticks.append(minute)
+            xpos.append(i + 1)
+    return xticks, xpos
+
+
 # decorator functions
-
-
 def timer(func):
     # This function shows the execution time of
     # the function object passed

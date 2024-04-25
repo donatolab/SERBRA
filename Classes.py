@@ -166,12 +166,15 @@ class DataPlotterInterface:
             if self.plot_attributes["title"][-4:] == "data"
             else self.plot_attributes["title"] + " data"
         )
+
         descriptive_metadata_keys = [
             "area",
             "stimulus_type",
             "method",
-            "processing_software",
+            "preprocessing_software",
+            "setup",
         ]
+
         self.plot_attributes["title"] += get_str_from_dict(
             dictionary=self.metadata, keys=descriptive_metadata_keys
         )
@@ -217,24 +220,22 @@ class DataPlotterInterface:
     def set_xticks_plot(
         self,
         seconds_interval=5,
-        written_label_steps=2,
     ):
         num_frames = self.data.shape[0]
-        frame_interval = self.plot_attributes["fps"] * seconds_interval
-        times = []
-        for frame in range(num_frames):
-            if frame % frame_interval < 1:
-                time = int(frame / frame_interval) * seconds_interval
-                times.append(time)
 
-        steps = round(len(times) / self.plot_attributes["num_ticks"])
-        times_shortened = times[::steps]
-        pos = np.arange(0, num_frames, frame_interval)[::steps]
-        labels = [
-            times if num % written_label_steps == 0 else ""
-            for num, times in enumerate(times_shortened)
-        ]
-        plt.xticks(pos, labels, rotation=40)
+        xticks, xpos = range_to_times_xlables_xpos(
+            end=num_frames,
+            fps=self.plot_attributes["fps"],
+            seconds_per_label=seconds_interval,
+        )
+
+        # reduce number of xticks
+        if len(xpos) > self.plot_attributes["num_ticks"]:
+            steps = round(len(xpos) / self.plot_attributes["num_ticks"])
+            xticks = xticks[::steps]
+            xpos = xpos[::steps]
+
+        plt.xticks(xpos, xticks, rotation=40)
 
     def plot(
         self,
@@ -249,7 +250,6 @@ class DataPlotterInterface:
         seconds_interval=5,
         fps=None,
         num_ticks=50,
-        written_label_steps=2,
         save_path=None,
         regenerate_plot=None,
         show=False,
@@ -291,7 +291,6 @@ class DataPlotterInterface:
             else:
                 self.set_xticks_plot(
                     seconds_interval=seconds_interval,
-                    written_label_steps=written_label_steps,
                 )
             plt.savefig(self.plot_attributes["save_path"], dpi=dpi)
         else:
@@ -302,7 +301,7 @@ class DataPlotterInterface:
 
         if show:
             plt.show()
-        plt.close()
+            plt.close()
 
 
 class Dataset(DataPlotterInterface):
@@ -322,6 +321,7 @@ class Dataset(DataPlotterInterface):
         self.path: Path = path
         self.data_dir = None
         self.data: np.ndarray = data
+        self.binned_data: np.ndarray = None
         self.key = key
         self.task_id = task_id
         self.raw_data_object = raw_data_object
@@ -375,6 +375,7 @@ class Dataset(DataPlotterInterface):
         self.data = self.correct_data(self.data)
         if plot:
             self.plot(regenerate_plot=regenerate_plot)
+        self.binned_data = self.bin_data(self.data)
         return self.data
 
     def create_dataset(self, raw_data_object=None):
@@ -403,6 +404,11 @@ class Dataset(DataPlotterInterface):
         )
 
     def correct_data(self, data):
+        return data
+
+    def bin_data(self, data, bin_size=None):
+        if bin_size:
+            data = (data, bin_size)
         return data
 
     @staticmethod
@@ -559,6 +565,13 @@ class Data_Position(BehaviorDataset):
         )
         self.plot_attributes["ylable"] = "position cm"
         self.environment_dimensions = self.metadata["environment_dimensions"]
+        self.raw_positions = None
+
+    def bin_data(self, data, bin_size=0.01):  # 1cm
+        dimensions = make_list_ifnot(self.metadata["environment_dimensions"])
+        max_bin = max(dimensions)
+        binned_data = bin_array(data, bin_size=bin_size, min_bin=0, max_bin=max_bin)
+        return binned_data
 
     def create_dataset(self, raw_data_object=None):
         data = self.process_raw_data()
@@ -600,11 +613,13 @@ class Data_Stimulus(BehaviorDataset):
             stimulus_type_at_frame = self.stimulus_by_time(stimulus_raw_data)
         elif self.stimulus_by == "seconds":
             stimulus_type_at_frame = self.stimulus_by_time(
-                stimulus_raw_data, time_to_frame_multiplier=self.fps
+                stimulus_raw_data,
+                time_to_frame_multiplier=self.self.metadata["imaging_fps"],
             )
         elif self.stimulus_by == "minutes":
             stimulus_type_at_frame = self.stimulus_by_time(
-                stimulus_raw_data, time_to_frame_multiplier=60 * self.fps
+                stimulus_raw_data,
+                time_to_frame_multiplier=60 * self.self.metadata["imaging_fps"],
             )
         self.data = stimulus_type_at_frame
         return self.data
@@ -648,6 +663,10 @@ class Data_Distance(BehaviorDataset):
         self.environment_dimensions = make_list_ifnot(
             self.metadata["environment_dimensions"]
         )
+
+    def bin_data(self, data, bin_size=0.01):  # 1cm
+        binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
+        return binned_data
 
     def process_raw_data(self):
         track_positions = self.raw_data_object.data
@@ -694,7 +713,11 @@ class Data_Velocity(BehaviorDataset):
             task_id=task_id,
         )
         self.raw_velocitys = None
-        self.plot_attributes["ylable"] = "velocity cm/s"
+        self.plot_attributes["ylable"] = "velocity m/s"
+
+    def bin_data(self, data, bin_size=0.005):  # 0.005m/s
+        binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
+        return binned_data
 
     def process_raw_data(self):
         """
@@ -707,15 +730,15 @@ class Data_Velocity(BehaviorDataset):
             raise ValueError(f"Raw data type {raw_data_type} not supported.")
         self.raw_velocitys = calculate_derivative(walked_distances)
         smoothed_velocity = butter_lowpass_filter(
-            self.raw_velocitys, cutoff=2, fs=self.fps, order=2
+            self.raw_velocitys, cutoff=2, fs=self.self.metadata["imaging_fps"], order=2
         )
         # smoothed_velocity = moving_average(self.raw_velocitys)
         global_logger
         print(
-            f"Calculating smooth velocity based on butter_lowpass_filter 2Hz, {self.fps}fps, 2nd order."
+            f"Calculating smooth velocity based on butter_lowpass_filter 2Hz, {self.self.metadata['imaging_fps']}fps, 2nd order."
         )
         # change value/frame to value/second
-        self.data = smoothed_velocity * self.fps
+        self.data = smoothed_velocity
         return self.data
 
 
@@ -731,7 +754,11 @@ class Data_Acceleration(BehaviorDataset):
             task_id=task_id,
         )
         self.raw_acceleration = None
-        self.plot_attributes["ylable"] = "acceleration cm/s^2"
+        self.plot_attributes["ylable"] = "acceleration m/s^2"
+
+    def bin_data(self, data, bin_size=0.0005):  # 0.0005m/s
+        binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
+        return binned_data
 
     def process_raw_data(self):
         """
@@ -740,11 +767,14 @@ class Data_Acceleration(BehaviorDataset):
         velocity = self.raw_data_object.data
         self.raw_acceleration = calculate_derivative(velocity)
         smoothed_acceleration = butter_lowpass_filter(
-            self.raw_acceleration, cutoff=2, fs=self.fps, order=2
+            self.raw_acceleration,
+            cutoff=2,
+            fs=self.self.metadata["imaging_fps"],
+            order=2,
         )
         global_logger
         print(
-            f"Calculating smooth acceleration based on butter_lowpass_filter 2Hz, {self.fps}fps, 2nd order."
+            f"Calculating smooth acceleration based on butter_lowpass_filter 2Hz, {self.self.metadata['imaging_fps']}fps, 2nd order."
         )
         self.data = smoothed_acceleration
         return self.data
@@ -764,7 +794,7 @@ class Data_Moving(BehaviorDataset):
         self.plot_attributes["ylable"] = "Movement State"
         self.plot_attributes["ylimits"] = (-0.1, 1.1)
         self.plot_attributes["yticks"] = [[0, 1], ["Stationary", "Moving"]]
-        self.velocity_threshold = 2  # cm/s
+        self.velocity_threshold = 0.02  # m/s
         self.brain_processing_delay = {
             "CA1": 2,  # seconds
             "CA3": 2,
@@ -772,7 +802,6 @@ class Data_Moving(BehaviorDataset):
             "S1": None,
             "V1": None,
         }
-        # FIXME: move processing to setup
         needed_attributes = ["setup"]
         check_needed_keys(metadata, needed_attributes)
 
@@ -787,7 +816,7 @@ class Data_Moving(BehaviorDataset):
         if not processing_movement_lag:
             raise NotImplementedError(f"{area} processing lag not implemented.")
         processing_movement_frames = fill_continuous_array(
-            data, fps=self.fps, time_gap=processing_movement_lag
+            data, fps=self.metadata["imaging_fps"], time_gap=processing_movement_lag
         )
         return processing_movement_frames
 
@@ -802,7 +831,7 @@ class Data_Photon(NeuralDataset):
         - data (np.ndarray): The binariced traces.
         - method (str): The method used to record the data.
         - preprocessing_software (str): The software used to preprocess the data.
-            - raw fluoresence traces can be found inside preprocessing object #TODO: implement example
+            - raw fluoresence traces can be found inside preprocessing object
         - setup (str): The setup used to record the data.
         - setup.data = raw_data_object
     """
@@ -823,8 +852,20 @@ class Data_Photon(NeuralDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
+        descriptive_metadata_keys = [
+            "area",
+            "stimulus_type",
+            "method",
+            "setup",
+            "preprocessing_software",
+        ]
+
+        informative_metadata = get_str_from_dict(
+            dictionary=self.metadata, keys=descriptive_metadata_keys
+        )
+
         self.plot_attributes["title"] = (
-            f"Raster Plot of Binarized {self.key} Data: : {self.metadata}"
+            f"Raster Plot of Binarized {self.key} Data: {informative_metadata}"
         )
         self.plot_attributes["ylable"] = "Neuron ID"
         self.plot_attributes["figsize"] = (20, 10)
@@ -911,12 +952,15 @@ class Datasets:
         data = data_object.load(fpath, regenerate_plot=regenerate_plot)
         return data
 
-    def get_multi_data(self, sources, shuffle=False, idx_to_keep=None, split_ratio=1):
+    def get_multi_data(
+        self, sources, shuffle=False, idx_to_keep=None, split_ratio=1, binned=True
+    ):
         sources = make_list_ifnot(sources)
         concatenated_data = None
         for source in sources:
             dataset_object = getattr(self, source)
             data = dataset_object.data
+            # data = dataset_object.binned_data if binned else dataset_object.data
             data = np.array([data]).transpose() if len(data.shape) == 1 else data
             if type(concatenated_data) != np.ndarray:
                 concatenated_data = data
@@ -958,8 +1002,8 @@ class Datasets_Neural(Datasets):
         self.photon_imaging_methods = ["femtonics", "thorlabs", "inscopix"]
         self.probe_imaging_methods = ["neuropixels", "tetrode"]
         # TODO: split into different datasets if needed
-        imaging_type = self.define_imaging_type(self.metadata["setup"])
-        if imaging_type == "photon":
+        self.imaging_type = self.define_imaging_type(self.metadata["setup"])
+        if self.imaging_type == "photon":
             self.photon = Data_Photon(
                 root_dir=root_dir, metadata=self.metadata, task_id=self.task_id
             )
@@ -1482,9 +1526,7 @@ class Task:
         )
         neural_data_train, neural_data_test = self.get_training_data(
             datasets_object=self.neural,
-            data_types=self.neural_metadata[
-                "preprocessing_software"
-            ],  # e.g. ["femtonics"], iscopix
+            data_types=self.neural.imaging_type,
             data=neural_data,
             movement_state=movement_state,
             shuffled=shuffled,

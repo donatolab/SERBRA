@@ -475,7 +475,7 @@ class RotaryEncoder:
         # get moved distance until start of track
         ## get first lab sync signal in frame
         ## get unique lap start indices
-        lap_start_boolean = lap_sync > 4.5
+        lap_start_boolean = lap_sync > 3.5
         mute_detection_sampling_frames = self.sample_rate * mute_lap_detection_time
         unique_lap_start_boolean = lap_start_boolean.copy()
 
@@ -512,39 +512,156 @@ class RotaryEncoder:
         # squeze moved distance based on lap sync to compensate for the fact that the wheel continues moving if mouse stops fast after running
         lap_sync_frame_indices = np.where(lap_sync_in_frame == True)[0]
         old_lap_sync_frame_index = lap_sync_frame_indices[0]
-        squeezed_moved_distance_in_frame = moved_distances_in_frame.copy()
-        squeez_ratios = np.zeros(len(lap_sync_frame_indices) - 1)
+        fited_moved_distance_in_frame = moved_distances_in_frame.copy()
+        fit_ratios = np.zeros(len(lap_sync_frame_indices) - 1)
         for i, lap_sync_frame_index in enumerate(lap_sync_frame_indices[1:]):
             moved_distances_between_laps = np.sum(
                 moved_distances_in_frame[old_lap_sync_frame_index:lap_sync_frame_index]
             )
             # check if lap sync was not detected by comparing with moved distance
-            # assuming maximal additional tracked distance distance is < 20%
-            max_additionall_distance_percentage = 0.2
-            probable_moved_distance = moved_distances_between_laps / (
-                1 + max_additionall_distance_percentage
-            )
-            probable_moved_laps = int(track_length / probable_moved_distance)
+            # assuming maximal additional tracked distance distance is < 5%
+            max_moved_distance_difference = 0.1
+            probable_moved_laps = round(track_length / moved_distances_between_laps)
             real_moved_distance = track_length * probable_moved_laps
 
-            # squeez moved distances between laps to create more realistic data
-            squeez_ratio = real_moved_distance / moved_distances_between_laps
-            squeez_ratios[i] = squeez_ratio
-            squeezed_moved_distance_in_frame[
+            # fit moved distances between laps to create more realistic data
+            fit_ratio = real_moved_distance / moved_distances_between_laps
+            fit_ratios[i] = fit_ratio
+            fited_moved_distance_in_frame[
                 old_lap_sync_frame_index:lap_sync_frame_index
-            ] *= squeez_ratio
+            ] *= fit_ratio
             old_lap_sync_frame_index = lap_sync_frame_index
 
-        # squeez moved distances before and after first and last lap sync
-        mean_squeez_ratio = np.mean(squeez_ratios)
-        squeezed_moved_distance_in_frame[
-            0 : lap_sync_frame_indices[0]
-        ] *= mean_squeez_ratio
-        squeezed_moved_distance_in_frame[
-            lap_sync_frame_indices[-1] : -1
-        ] *= mean_squeez_ratio
+        # fit moved distances before and after first and last lap sync
+        mean_fit_ratio = np.mean(fit_ratios)
+        fited_moved_distance_in_frame[0 : lap_sync_frame_indices[0]] *= mean_fit_ratio
+        fited_moved_distance_in_frame[lap_sync_frame_indices[-1] : -1] *= mean_fit_ratio
 
-        return squeezed_moved_distance_in_frame, lap_start_frame
+        """###########################################
+        # ...............plotting ............
+        cum_dist = np.cumsum(moved_distances_in_frame)
+
+        positions = Treadmill.get_position_from_cumdist(
+            cum_dist,
+            belt_len=1.8,
+            lap_start_frame=lap_start_frame,
+        )
+
+        seconds = np.arange(0, len(positions)) / self.imaging_sample_rate
+        # convert seconds to minutes
+        minutes = np.array(
+            [datetime.fromtimestamp(sec).strftime("%M:%S") for sec in seconds]
+        )
+        write_minutes = []
+        xticks_pos = []
+        for i, position in enumerate(positions):
+            if position - 0.008 < 0:
+                write_minutes.append(minutes[i])
+                xticks_pos.append(i)
+
+        print(xticks_pos)
+        # plt.figure(figsize=(30, 3))
+        # plt.plot(lap_sync)
+        # plt.xticks(xticks_pos, write_minutes)
+        # plt.show()
+
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(30, 3))
+        plt.plot(positions)
+        plt.xlim(0, len(positions))
+        plt.xticks(xticks_pos, write_minutes, rotation=90)
+        plt.show()
+
+        gdist = np.load(
+            r"d:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\temp_behavior_location\S1_position.npy"
+        )
+        #gdist = np.load(
+        #    r"d:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\temp_behavior_location\S1_distance.npy"
+        #)
+        gdist = gdist / 100
+        write_minutes = []
+        xticks_pos = []
+        for i, position in enumerate(gdist):
+            if position != 0 and position - 0.01 < 0:
+                write_minutes.append(minutes[i])
+                xticks_pos.append(i)
+
+        print(xticks_pos)
+
+        plt.figure(figsize=(30, 3))
+        plt.plot(gdist)
+        plt.xlim(0, len(gdist))
+        plt.xticks(xticks_pos, write_minutes, rotation=90)
+        plt.show()
+
+        # lap sync with compressed version of the data
+        write_minutes_lap_sync = []
+        xticks_pos_lap_sync = []
+        for i, lap_signal in enumerate(lap_sync_in_frame):
+            if lap_signal:
+                write_minutes_lap_sync.append(minutes[i])
+                xticks_pos_lap_sync.append(i)
+
+        print(xticks_pos_lap_sync)
+
+        plt.figure(figsize=(30, 3))
+        plt.plot(lap_sync_in_frame)
+        plt.xlim(0, len(positions))
+        plt.xticks(xticks_pos_lap_sync, write_minutes_lap_sync, rotation=90)
+        plt.show()
+
+        # boolean lap signal
+        plt.figure(figsize=(30, 3))
+        plt.plot(lap_start_boolean)
+        plt.xlim(0, len(lap_start_boolean))
+        # plt.xticks(xticks_pos_lap_sync, write_minutes_lap_sync, rotation=90)
+        plt.show()
+
+        # boolean lap signal
+        plt.figure(figsize=(30, 3))
+        plt.plot(lap_start_boolean)
+        plt.xlim(0, len(lap_start_boolean))
+        # plt.xticks(xticks_pos_lap_sync, write_minutes_lap_sync, rotation=90)
+        plt.show()
+
+        # fited stuff
+        cum_dist = np.cumsum(fited_moved_distance_in_frame)
+
+        positions = Treadmill.get_position_from_cumdist(
+            cum_dist,
+            belt_len=1.8,
+            lap_start_frame=lap_start_frame,
+        )
+
+        seconds = np.arange(0, len(positions)) / self.imaging_sample_rate
+        # convert seconds to minutes
+        minutes = np.array(
+            [datetime.fromtimestamp(sec).strftime("%M:%S") for sec in seconds]
+        )
+        write_minutes = []
+        xticks_pos = []
+        for i, position in enumerate(positions):
+            if position - 0.008 < 0:
+                write_minutes.append(minutes[i])
+                xticks_pos.append(i)
+
+        print(xticks_pos)
+        plt.figure(figsize=(30, 3))
+        plt.plot(positions)
+        plt.xlim(0, len(positions))
+        plt.xticks(xticks_pos, write_minutes, rotation=90)
+        plt.show()
+
+        # original lap_sync lap signal
+        plt.figure(figsize=(30, 3))
+        plt.plot(lap_sync[lap_start_indices[0] :])
+        plt.xlim(0, len(lap_sync[lap_start_indices[0] :]))
+        # plt.xticks(xticks_pos_lap_sync, write_minutes_lap_sync, rotation=90)
+        plt.show()
+
+        # ..........................."""
+        return fited_moved_distance_in_frame, lap_start_frame
 
     def extract_data(
         self,
@@ -570,7 +687,9 @@ class RotaryEncoder:
             mute_lap_detection_time=mute_lap_detection_time,
         )
         cumulative_distance = np.cumsum(distances)
-        velocity_from_distances = np.diff(cumulative_distance)
+        velocity_from_distances = (
+            np.diff(cumulative_distance) * self.imaging_sample_rate
+        )
 
         ## get velocity m/s of the wheel surface
         # velocity = self.rotary_to_velocity(
