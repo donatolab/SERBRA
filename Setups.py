@@ -1049,6 +1049,11 @@ class Suite2p(Preprocessing):
             "cell_geldrying": "cell_drying.npy",
             "binary": "data.bin",
         }
+        
+        self.ops_settings = {"tau": 1, #0.7 for GCaMP6f,   1.0 for GCaMP6m,    1.25-1.5 for GCaMP6s
+                             "max_overlap": 0.75, # percentage of allowed overlap between cells
+                             }
+
 
     def process_data(self, raw_data, task_name=None, save=True):
         raise NotImplementedError(
