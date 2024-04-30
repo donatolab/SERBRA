@@ -257,6 +257,7 @@ def moving_average(data, window_size=30):
     weights = np.ones(window_size) / window_size
     return np.convolve(data, weights, "valid")
 
+
 def smooth_array(data, window_size=5):
     weights = np.ones(window_size) / window_size
     return np.convolve(data, weights, "same")
@@ -463,6 +464,16 @@ def check_correct_metadata(string_or_list, name_parts):
 
 
 # array
+def sort_arr_by_peak(arr, axis=1, sorting_indices=None):
+    if sorting_indices is not None:
+        indices = sorting_indices
+    else:
+        maxes = np.argmax(arr, axis=axis)
+        indices = np.argsort(maxes)
+    sorted_arr = arr[indices]
+    return sorted_arr, indices
+
+
 def bin_array(arr, bin_size, min_bin=None, max_bin=None):
     """
     Bin an array of floats based on a given bin size.
