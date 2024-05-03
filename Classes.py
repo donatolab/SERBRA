@@ -1,24 +1,18 @@
 # import
-import os
 from pathlib import Path
 
 # setups and preprocessing software
 from Setups import *
 from Helper import *
 from Visualizer import *
+from Models import Models
+from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
 
 # type hints
 from typing import List, Union, Dict, Any, Tuple, Optional
 
 # calculations
 import numpy as np
-from scipy.signal import butter, filtfilt  # , lfilter, freqz
-import sklearn
-import pandas as pd
-
-from cebra import CEBRA
-import cebra
-import cebra.integrations.sklearn.utils as sklearn_utils
 import torch
 
 # pip install binarize2pcalcium
@@ -32,45 +26,6 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.backends.cudnn.deterministic = True
-
-
-def decode(
-    embedding_train,
-    embedding_test,
-    label_train,
-    label_test,
-    n_neighbors=36,
-    metric="cosine",
-):
-    # TODO: Improve decoder
-    # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
-    decoder = cebra.KNNDecoder(n_neighbors=n_neighbors, metric=metric)
-    label_train = Dataset.force_2d(label_train)
-    # label_train = Dataset.force_1_dim_larger(label_train)
-
-    label_test = Dataset.force_2d(label_test)
-    # label_test = force_1_dim_larger(label_test)
-
-    embedding_train, label_train = Datasets.force_equal_dimensions(
-        embedding_train, label_train
-    )
-
-    decoder.fit(embedding_train, label_train[:, 0])
-
-    pred = decoder.predict(embedding_test)
-
-    prediction = np.stack([pred], axis=1)
-
-    test_score = 0  # sklearn.metrics.r2_score(label_test, prediction)
-    # test_score = sklearn.metrics.r2_score(label_test[:,:2], prediction)
-
-    # pos_test_err = np.median(abs(prediction - label_test))
-    ########################################################
-    pos_test_err = np.mean(abs(prediction - label_test))
-    ########################################################
-    pos_test_score = sklearn.metrics.r2_score(label_test[:, 0], prediction[:, 0])
-
-    return test_score, pos_test_err, pos_test_score
 
 
 def load_all_animals(
@@ -116,961 +71,6 @@ def load_all_animals(
         animals_dict[animal_id] = animal
     animals_dict = sort_dict(animals_dict)
     return animals_dict
-
-
-class DataPlotterInterface:
-    def __init__(self):
-        self.data = None
-        self.metadata = None
-        self.plot_attributes = {
-            "title": None,
-            "ylable": None,
-            "ylimits": None,
-            "yticks": None,
-            "xlable": None,
-            "xlimits": None,
-            "xticks": None,
-            "num_ticks": None,
-            "figsize": None,
-            "save_path": None,
-        }
-
-    def set_plot_parameter(
-        self,
-        fps=None,
-        title=None,
-        ylable=None,
-        ylimits=None,
-        yticks=None,
-        xlable=None,
-        xticks=None,
-        num_ticks=None,
-        xlimits=None,
-        figsize=None,
-        regenerate_plot=None,
-        save_path=None,
-    ):
-        self.plot_attributes["fps"] = self.plot_attributes["fps"] or fps
-        self.plot_attributes["title"] = (
-            self.plot_attributes["title"] or title or f"{self.path.stem} data"
-        )
-        self.plot_attributes["title"] = (
-            self.plot_attributes["title"]
-            if self.plot_attributes["title"][-4:] == "data"
-            else self.plot_attributes["title"] + " data"
-        )
-
-        descriptive_metadata_keys = [
-            "area",
-            "stimulus_type",
-            "method",
-            "preprocessing_software",
-            "setup",
-        ]
-
-        self.plot_attributes["title"] += get_str_from_dict(
-            dictionary=self.metadata, keys=descriptive_metadata_keys
-        )
-        self.plot_attributes["ylable"] = (
-            self.plot_attributes["ylable"] or ylable or self.key
-        )
-        self.plot_attributes["ylimits"] = (
-            self.plot_attributes["ylimits"] or ylimits or None
-        )
-        self.plot_attributes["yticks"] = (
-            self.plot_attributes["yticks"] or yticks or None
-        )
-        self.plot_attributes["xlable"] = (
-            self.plot_attributes["xlable"] or xlable or "seconds"
-        )
-        self.plot_attributes["xlimits"] = (
-            self.plot_attributes["xlimits"] or xlimits or (0, len(self.data))
-        )
-        self.plot_attributes["xticks"] = (
-            self.plot_attributes["xticks"] or xticks or None
-        )
-        self.plot_attributes["num_ticks"] = (
-            self.plot_attributes["num_ticks"] or num_ticks or 100
-        )
-        self.plot_attributes["figsize"] = (
-            self.plot_attributes["figsize"] or figsize or (20, 3)
-        )
-        self.regenerate_plot = regenerate_plot or False
-        self.plot_attributes["save_path"] = (
-            self.plot_attributes["save_path"]
-            or save_path
-            or self.path.parent.parent.parent.joinpath(
-                "figures", self.path.stem + ".png"
-            )
-        )
-        # create plot dir if missing
-        if not self.plot_attributes["save_path"].parent.exists():
-            self.plot_attributes["save_path"].parent.mkdir(parents=True, exist_ok=True)
-
-    def set_data_plot(self):
-        plt.plot(self.data)
-
-    def set_xticks_plot(
-        self,
-        seconds_interval=5,
-    ):
-        num_frames = self.data.shape[0]
-
-        xticks, xpos = range_to_times_xlables_xpos(
-            end=num_frames,
-            fps=self.plot_attributes["fps"],
-            seconds_per_label=seconds_interval,
-        )
-
-        # reduce number of xticks
-        if len(xpos) > self.plot_attributes["num_ticks"]:
-            steps = round(len(xpos) / self.plot_attributes["num_ticks"])
-            xticks = xticks[::steps]
-            xpos = xpos[::steps]
-
-        plt.xticks(xpos, xticks, rotation=40)
-
-    def plot(
-        self,
-        figsize=None,
-        title=None,
-        xlable=None,
-        xlimits=None,
-        xticks=None,
-        ylable=None,
-        ylimits=None,
-        yticks=None,
-        seconds_interval=5,
-        fps=None,
-        num_ticks=50,
-        save_path=None,
-        regenerate_plot=None,
-        show=False,
-        dpi=300,
-    ):
-        self.set_plot_parameter(
-            fps=fps,
-            ylimits=ylimits,
-            yticks=yticks,
-            ylable=ylable,
-            xlable=xlable,
-            xlimits=xlimits,
-            xticks=xticks,
-            num_ticks=num_ticks,
-            title=title,
-            figsize=figsize,
-            regenerate_plot=regenerate_plot,
-            save_path=save_path,
-        )
-
-        plt.figure(figsize=self.plot_attributes["figsize"])
-        if regenerate_plot or not save_file_present(self.plot_attributes["save_path"]):
-            plt.title(self.plot_attributes["title"])
-            plt.ylabel(self.plot_attributes["ylable"])
-            if self.plot_attributes["ylimits"]:
-                plt.ylim(self.plot_attributes["ylimits"])
-            if self.plot_attributes["yticks"]:
-                plt.yticks(
-                    self.plot_attributes["yticks"][0], self.plot_attributes["yticks"][1]
-                )
-            plt.xlabel(self.plot_attributes["xlable"])
-            plt.tight_layout()
-            plt.xlim(self.plot_attributes["xlimits"])
-
-            self.set_data_plot()
-
-            if self.plot_attributes["xticks"]:
-                plt.xticks(self.plot_attributes["xticks"])
-            else:
-                self.set_xticks_plot(
-                    seconds_interval=seconds_interval,
-                )
-            plt.savefig(self.plot_attributes["save_path"], dpi=dpi)
-        else:
-            # Load the image
-            image = plt.imread(self.plot_attributes["save_path"])
-            plt.imshow(image)
-            plt.axis("off")
-
-        if show:
-            plt.show()
-            plt.close()
-
-
-class Dataset(DataPlotterInterface):
-    def __init__(
-        self,
-        key,
-        path=None,
-        data=None,
-        raw_data_object=None,
-        metadata=None,
-        root_dir=None,
-        task_id=None,
-    ):
-        # initialize plotting parameters
-        super().__init__()
-        self.root_dir: Path = root_dir
-        self.path: Path = path
-        self.data_dir = None
-        self.data: np.ndarray = data
-        self.binned_data: np.ndarray = None
-        self.key = key
-        self.task_id = task_id
-        self.raw_data_object = raw_data_object
-        self.metadata = metadata
-        self.fps = None if "fps" not in self.metadata.keys() else self.metadata["fps"]
-        self.setup = self.get_setup(self.metadata["setup"])
-
-    def get_setup(self, setup_name, preprocessing_name, method_name):
-        raise NotImplementedError(
-            f"ERROR: Function get_setup is not defined for {self.__class__}."
-        )
-
-    def load(
-        self,
-        path=None,
-        save=True,
-        regenerate=False,
-        plot=True,
-        regenerate_plot=False,
-    ):
-        if not type(self.data) == np.ndarray:
-            self.path = path if path else self.path
-            self.data_dir = self.path.parent
-            # if no raw data exists, regeneration is not possible
-            if not self.raw_data_object and regenerate:
-                global_logger.warning(f"No raw data given. Regeneration not possible.")
-                global_logger.info(f"Loading old data.")
-                print(
-                    f"No raw data given. Regeneration not possible. Loading old data."
-                )
-                regenerate = False
-
-            # Check if the file exists, and if it does, load the data, else create the dataset
-            if path.exists() and not regenerate:
-                global_logger.info(f"Loading {self.path}")
-                print(f"Loading {self.path}")
-                # ... and similarly load the .h5 file, providing the columns to keep
-                # continuous_label = cebra.load_data(file="auxiliary_behavior_data.h5", key="auxiliary_variables", columns=["continuous1", "continuous2", "continuous3"])
-                # discrete_label = cebra.load_data(file="auxiliary_behavior_data.h5", key="auxiliary_variables", columns=["discrete"]).flatten()
-                self.data = cebra.load_data(file=self.path)
-                data_dimensions = self.data.shape
-                if len(data_dimensions) == 2:
-                    # format of data should be [num_time_points, num_cells]
-                    self.data = self.force_1_dim_larger(data=self.data)
-            else:
-                global_logger.warning(f"No {self.key} data found at {self.path}.")
-                print(f"No {self.key} data found at {self.path}.")
-                self.create_dataset(self.raw_data_object)
-                if save:
-                    np.save(self.path, self.data)
-        self.data = self.correct_data(self.data)
-        if plot:
-            self.plot(regenerate_plot=regenerate_plot)
-        self.binned_data = self.bin_data(self.data)
-        return self.data
-
-    def create_dataset(self, raw_data_object=None):
-        raw_data_object = raw_data_object or self.raw_data_object
-        if self.raw_data_object:
-            global_logger.info(
-                f"Creating {self.key} dataset based on raw data from {raw_data_object.key}."
-            )
-            print(
-                f"Creating {self.key} dataset based on raw data from {raw_data_object.key}."
-            )
-            data = self.process_raw_data()
-            return data
-        else:
-            global_logger.warning(
-                f"No raw data given. Creation not possible. Skipping."
-            )
-            print(f"No raw data given. Creation not possible. Skipping.")
-
-    def process_raw_data(self):
-        global_logger.critical(
-            f"Function for creating {self.key} dataset from raw data is not defined."
-        )
-        raise NotImplementedError(
-            f"ERROR: Function for creating {self.key} dataset from raw data is not defined."
-        )
-
-    def correct_data(self, data):
-        return data
-
-    def bin_data(self, data, bin_size=None):
-        if bin_size:
-            data = (data, bin_size)
-        return data
-
-    @staticmethod
-    def split(data, split_ratio=0.8):
-        split_index = int(len(data) * split_ratio)
-        data_train = data[:split_index]
-        data_test = data[split_index:]
-        return data_train, data_test
-
-    @staticmethod
-    def shuffle(data):
-        return sklearn.utils.shuffle(data)
-
-    @staticmethod
-    def filter_by_idx(data, idx_to_keep=None):
-        if isinstance(idx_to_keep, np.ndarray) or isinstance(idx_to_keep, list):
-            data_unfiltered, idx_to_keep = Datasets.force_equal_dimensions(
-                data, idx_to_keep
-            )
-            data_filtered = data_unfiltered[idx_to_keep]
-            return data_filtered
-        else:
-            global_logger
-            print(f"No idx_to_keep given. Returning unfiltered data.")
-            return data
-
-    @staticmethod
-    def force_1_dim_larger(data: np.ndarray):
-        if len(data.shape) == 1 or data.shape[0] < data.shape[1]:
-            global_logger.warning(
-                f"Data is probably transposed. Needed Shape [Time, cells] Transposing..."
-            )
-            print(
-                "Data is probably transposed. Needed Shape [Time, cells] Transposing..."
-            )
-            return data.T  # Transpose the array if the condition is met
-        else:
-            return data  # Return the original array if the condition is not met
-
-    @staticmethod
-    def force_2d(data: np.ndarray):
-        data_2d = data
-        dimensions = len(data.shape)
-        if dimensions == 1:
-            data_2d = np.array([data])
-            data_2d = data_2d.T
-        elif dimensions > 2:
-            raise ValueError("Data has more than 2 dimensions.")
-        return data_2d
-
-
-class BehaviorDataset(Dataset):
-    def __init__(
-        self,
-        key,
-        path=None,
-        data=None,
-        raw_data_object=None,
-        metadata=None,
-        root_dir=None,
-        task_id=None,
-    ):
-        super().__init__(
-            key, path, data, raw_data_object, metadata, root_dir, task_id=task_id
-        )
-        needed_attributes = ["setup", "fps"]
-        check_needed_keys(metadata, needed_attributes)
-        self.plot_attributes["fps"] = (
-            self.metadata["imaging_fps"]
-            if "imaging_fps" in self.metadata.keys()
-            else self.metadata["fps"]
-        )
-
-    def get_setup(self, setup_name):
-        self.setup_name = self.metadata["setup"]
-        if setup_name == "active_avoidance":
-            setup = Active_Avoidance(
-                key=self.key,
-                root_dir=self.root_dir,
-                metadata=self.metadata,
-            )
-        elif setup_name == "box":
-            setup = Box(
-                key=self.key,
-                root_dir=self.root_dir,
-                metadata=self.metadata,
-            )
-        elif setup_name == "treadmill":
-            setup = Treadmill_Setup(
-                key=self.key,
-                root_dir=self.root_dir,
-                metadata=self.metadata,
-            )
-        elif setup_name == "trackball":
-            setup = Trackball_Setup(
-                key=self.key,
-                root_dir=self.root_dir,
-                metadata=self.metadata,
-            )
-        elif setup_name == "openfield":
-            setup = Openfield_Setup(
-                key=self.key,
-                root_dir=self.root_dir,
-                metadata=self.metadata,
-            )
-        elif setup_name == "vr_treadmill":
-            setup = VR_Wheel(
-                key=self.key,
-                root_dir=self.root_dir,
-                metadata=self.metadata,
-            )
-        elif setup_name == "wheel":
-            setup = Rotary_Wheel(
-                key=self.key,
-                root_dir=self.root_dir,
-                metadata=self.metadata,
-            )
-        else:
-            raise ValueError(f"Behavior setup {setup_name} not supported.")
-        return setup
-
-
-class NeuralDataset(Dataset):
-    def __init__(
-        self,
-        key,
-        path=None,
-        data=None,
-        raw_data_object=None,
-        metadata=None,
-        root_dir=None,
-        task_id=None,
-    ):
-        super().__init__(
-            key, path, data, raw_data_object, metadata, root_dir, task_id=task_id
-        )
-        needed_attributes = ["method", "preprocessing_software", "setup"]
-        check_needed_keys(metadata, needed_attributes)
-
-    def process_raw_data(self):
-        self.setup.preprocess.process_data()
-
-
-class Data_Position(BehaviorDataset):
-    def __init__(
-        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
-    ):
-        super().__init__(
-            key="position",
-            raw_data_object=raw_data_object,
-            metadata=metadata,
-            root_dir=root_dir,
-            task_id=task_id,
-        )
-        self.plot_attributes["ylable"] = "position cm"
-        self.environment_dimensions = self.metadata["environment_dimensions"]
-        self.raw_positions = None
-
-    def bin_data(self, data, bin_size=0.01):  # 1cm
-        dimensions = make_list_ifnot(self.metadata["environment_dimensions"])
-        max_bin = max(dimensions)
-        binned_data = bin_array(data, bin_size=bin_size, min_bin=0, max_bin=max_bin)
-        return binned_data
-
-    def create_dataset(self, raw_data_object=None):
-        data = self.process_raw_data()
-        return data
-
-    def process_raw_data(self):
-        self.data = self.setup.process_data(self.task_id)
-        return self.data
-
-    # FIXME: why is this data 1 datapoint smaller than neural data?
-
-
-class Data_Stimulus(BehaviorDataset):
-    def __init__(
-        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
-    ):
-        super().__init__(
-            key="stimulus",
-            raw_data_object=raw_data_object,
-            metadata=metadata,
-            root_dir=root_dir,
-            task_id=task_id,
-        )
-        self.stimulus_sequence = self.metadata["stimulus_sequence"]
-        self.simulus_length = self.metadata["stimulus_length"]
-        self.stimulus_type = self.metadata["stimulus_type"]
-        self.stimulus_by = self.metadata["stimulus_by"]
-        self.fps = self.metadata["fps"] if "fps" in self.metadata.keys() else None
-
-    def process_raw_data(self):
-        """ "
-        Returns:
-            - data: Numpy array composed of stimulus type at frames.
-        """
-        stimulus_raw_data = self.raw_data_object.data  # e.g. Position on a track/time
-        if self.stimulus_by == "location":
-            stimulus_type_at_frame = self.stimulus_by_location(stimulus_raw_data)
-        elif self.stimulus_by == "frames":
-            stimulus_type_at_frame = self.stimulus_by_time(stimulus_raw_data)
-        elif self.stimulus_by == "seconds":
-            stimulus_type_at_frame = self.stimulus_by_time(
-                stimulus_raw_data,
-                time_to_frame_multiplier=self.self.metadata["imaging_fps"],
-            )
-        elif self.stimulus_by == "minutes":
-            stimulus_type_at_frame = self.stimulus_by_time(
-                stimulus_raw_data,
-                time_to_frame_multiplier=60 * self.self.metadata["imaging_fps"],
-            )
-        self.data = stimulus_type_at_frame
-        return self.data
-
-    def stimulus_by_location(self, stimulus_raw_data):
-        """
-        location on a treadmill
-        """
-        # TODO: implement stimulus by location in 2D and 3D
-        stimulus_type_indexes = continuouse_to_discrete(
-            stimulus_raw_data, self.simulus_length
-        )
-        stimulus_type_at_frame = np.array(self.stimulus_sequence)[
-            stimulus_type_indexes % len(self.stimulus_sequence)
-        ]
-        return stimulus_type_at_frame
-
-    def stimulus_by_time(self, stimulus_raw_data, time_to_frame_multiplier=1):
-        """
-        time in frames in an experiment
-        """
-        stimulus_type_at_frame = []
-        for stimulus, duration in zip(self.stimulus_sequence, self.simulus_length):
-            stimulus_type_at_frame += [stimulus] * int(
-                duration * time_to_frame_multiplier
-            )
-        return np.array(stimulus_type_at_frame)
-
-
-class Data_Distance(BehaviorDataset):
-    def __init__(
-        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
-    ):
-        super().__init__(
-            key="distance",
-            raw_data_object=raw_data_object,
-            metadata=metadata,
-            root_dir=root_dir,
-            task_id=task_id,
-        )
-        self.environment_dimensions = make_list_ifnot(
-            self.metadata["environment_dimensions"]
-        )
-
-    def bin_data(self, data, bin_size=0.01):  # 1cm
-        binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
-        return binned_data
-
-    def process_raw_data(self):
-        track_positions = self.raw_data_object.data
-        if len(self.environment_dimensions) == 1:
-            self.data = self.process_1D_data(track_positions)
-        elif len(self.environment_dimensions) == 2:
-            self.data = self.process_2D_data(track_positions)
-        elif len(self.environment_dimensions) == 3:
-            self.data = self.process_3D_data(track_positions)
-        return self.data
-
-    def process_1D_data(self, track_positions):
-        """
-        calculating velocity based on velocity data in raw_data_object
-        """
-        return calc_cumsum_distances(track_positions, self.environment_dimensions)
-
-    def process_2D_data(self, track_positions):
-        """
-        calculating velocity based on velocity data in raw_data_object
-        """
-        # TODO: implement 2D distance calculation
-        raise NotImplementedError("2D distance calculation not implemented.")
-        return calc_cumsum_distances(track_positions, self.environment_dimensions)
-
-    def process_3D_data(self, track_positions):
-        """
-        calculating velocity based on velocity data in raw_data_object
-        """
-        # TODO: implement 3D distance calculation
-        raise NotImplementedError("3D distance calculation not implemented.")
-        return calc_cumsum_distances(track_positions, self.environment_dimensions)
-
-
-class Data_Velocity(BehaviorDataset):
-    def __init__(
-        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
-    ):
-        super().__init__(
-            key="velocity",
-            raw_data_object=raw_data_object,
-            metadata=metadata,
-            root_dir=root_dir,
-            task_id=task_id,
-        )
-        self.raw_velocitys = None
-        self.plot_attributes["ylable"] = "velocity m/s"
-
-    def bin_data(self, data, bin_size=0.005):  # 0.005m/s
-        binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
-        return binned_data
-
-    def process_raw_data(self):
-        """
-        calculating velocity based on velocity data in raw_data_object
-        """
-        raw_data_type = self.raw_data_object.key
-        if raw_data_type == "distance":
-            walked_distances = self.raw_data_object.data
-        else:
-            raise ValueError(f"Raw data type {raw_data_type} not supported.")
-        self.raw_velocitys = calculate_derivative(walked_distances)
-        smoothed_velocity = butter_lowpass_filter(
-            self.raw_velocitys, cutoff=2, fs=self.self.metadata["imaging_fps"], order=2
-        )
-        # smoothed_velocity = moving_average(self.raw_velocitys)
-        global_logger
-        print(
-            f"Calculating smooth velocity based on butter_lowpass_filter 2Hz, {self.self.metadata['imaging_fps']}fps, 2nd order."
-        )
-        # change value/frame to value/second
-        self.data = smoothed_velocity
-        return self.data
-
-
-class Data_Acceleration(BehaviorDataset):
-    def __init__(
-        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
-    ):
-        super().__init__(
-            key="acceleration",
-            raw_data_object=raw_data_object,
-            metadata=metadata,
-            root_dir=root_dir,
-            task_id=task_id,
-        )
-        self.raw_acceleration = None
-        self.plot_attributes["ylable"] = "acceleration m/s^2"
-
-    def bin_data(self, data, bin_size=0.0005):  # 0.0005m/s
-        binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
-        return binned_data
-
-    def process_raw_data(self):
-        """
-        calculating acceleration based on velocity data in raw_data_object
-        """
-        velocity = self.raw_data_object.data
-        self.raw_acceleration = calculate_derivative(velocity)
-        smoothed_acceleration = butter_lowpass_filter(
-            self.raw_acceleration,
-            cutoff=2,
-            fs=self.self.metadata["imaging_fps"],
-            order=2,
-        )
-        global_logger
-        print(
-            f"Calculating smooth acceleration based on butter_lowpass_filter 2Hz, {self.self.metadata['imaging_fps']}fps, 2nd order."
-        )
-        self.data = smoothed_acceleration
-        return self.data
-
-
-class Data_Moving(BehaviorDataset):
-    def __init__(
-        self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
-    ):
-        super().__init__(
-            key="moving",
-            raw_data_object=raw_data_object,
-            metadata=metadata,
-            root_dir=root_dir,
-            task_id=task_id,
-        )
-        self.plot_attributes["ylable"] = "Movement State"
-        self.plot_attributes["ylimits"] = (-0.1, 1.1)
-        self.plot_attributes["yticks"] = [[0, 1], ["Stationary", "Moving"]]
-        self.velocity_threshold = 0.02  # m/s
-        self.brain_processing_delay = {
-            "CA1": 2,  # seconds
-            "CA3": 2,
-            "M1": None,
-            "S1": None,
-            "V1": None,
-        }
-        needed_attributes = ["setup"]
-        check_needed_keys(metadata, needed_attributes)
-
-    def process_raw_data(self):
-        velocities = self.raw_data_object.data
-        moving_frames = velocities > self.velocity_threshold
-        self.data = self.fit_moving_to_brainarea(moving_frames, self.metadata["area"])
-        return self.data
-
-    def fit_moving_to_brainarea(self, data, area):
-        processing_movement_lag = self.brain_processing_delay[area]  # seconds
-        if not processing_movement_lag:
-            raise NotImplementedError(f"{area} processing lag not implemented.")
-        processing_movement_frames = fill_continuous_array(
-            data, fps=self.metadata["imaging_fps"], time_gap=processing_movement_lag
-        )
-        return processing_movement_frames
-
-    def correct_data(self, data):
-        return self.fit_moving_to_brainarea(data, self.metadata["area"])
-
-
-class Data_Photon(NeuralDataset):
-    """
-    Dataset class for managing photon data.
-    Attributes:
-        - data (np.ndarray): The binariced traces.
-        - method (str): The method used to record the data.
-        - preprocessing_software (str): The software used to preprocess the data.
-            - raw fluoresence traces can be found inside preprocessing object
-        - setup (str): The setup used to record the data.
-        - setup.data = raw_data_object
-    """
-
-    def __init__(
-        self,
-        path=None,
-        raw_data_object=None,
-        metadata=None,
-        root_dir=None,
-        task_id=None,
-    ):
-        super().__init__(
-            key="photon",
-            path=path,
-            raw_data_object=raw_data_object,
-            metadata=metadata,
-            root_dir=root_dir,
-            task_id=task_id,
-        )
-        descriptive_metadata_keys = [
-            "area",
-            "stimulus_type",
-            "method",
-            "setup",
-            "preprocessing_software",
-        ]
-
-        informative_metadata = get_str_from_dict(
-            dictionary=self.metadata, keys=descriptive_metadata_keys
-        )
-
-        self.plot_attributes["title"] = (
-            f"Raster Plot of Binarized {self.key} Data: {informative_metadata}"
-        )
-        self.plot_attributes["ylable"] = "Neuron ID"
-        self.plot_attributes["figsize"] = (20, 10)
-        if "fps" not in self.metadata.keys():
-            self.metadata["fps"] = self.setup.get_fps()
-            self.plot_attributes["fps"] = self.metadata["fps"]
-
-    def process_raw_data(self):
-        self.data = self.setup.process_raw_data()
-        return self.data
-
-    def set_data_plot(self):
-        binarized_data = self.data
-        num_time_steps, num_neurons = binarized_data.shape
-        # Find spike indices for each neuron
-        spike_indices = np.nonzero(binarized_data)
-        # Creating an empty image grid
-        image = np.zeros((num_neurons, num_time_steps))
-        # Marking spikes as pixels in the image grid
-        image[spike_indices[1], spike_indices[0]] = 1
-        # Plotting the raster plot using pixels
-        plt.imshow(image, cmap="gray", aspect="auto", interpolation="none")
-        plt.gca().invert_yaxis()  # Invert y-axis for better visualization of trials/neurons
-
-    def get_setup(self, setup_name):
-        if setup_name == "femtonics":
-            setup = Femtonics(
-                key=self.key,
-                root_dir=self.root_dir,
-                metadata=self.metadata,
-            )
-        elif setup_name == "thorlabs":
-            setup = Thorlabs(
-                key=self.key,
-                root_dir=self.root_dir,
-                metadata=self.metadata,
-            )
-        elif setup_name == "inscopix":
-            setup = Inscopix(
-                key=self.key,
-                root_dir=self.root_dir,
-                metadata=self.metadata,
-            )
-        else:
-            raise ValueError(f"Imaging setup {setup_name} not supported.")
-        return setup
-
-
-class Data_Probe(Dataset):
-    def __init__(self, path=None, raw_data_object=None, metadata=None):
-        super().__init__(
-            key="probe", path=path, raw_data_object=raw_data_object, metadata=metadata
-        )
-        # TODO: implement probe data loading
-        raise NotImplementedError("Probe data loading not implemented.")
-
-
-class Datasets:
-    """
-    Dataset class for managing multiple datasets. Getting correct data paths and loading data.
-    """
-
-    def __init__(self, root_dir, metadata={}, task_id=None):
-        if "data_dir" in metadata.keys():
-            self.data_dir = Path(root_dir).joinpath(metadata["data_dir"])
-        else:
-            self.data_dir = Path(root_dir)
-        self.metadata = metadata
-        self.task_id = task_id
-
-    def get_object(self, data_source):
-        raise NotImplementedError(
-            f"ERROR: Function get_object is not defined for {self.__class__}."
-        )
-
-    def load(self, task_id, data_source, regenerate_plot=False):
-        """
-        Load data from a specific data source.
-            data_object is a object inhereting the Dataset attributes and functions.
-        """
-        # build path to data
-        data_object = self.get_object(data_source)
-        fpath = data_object.setup.get_data_path(task_id)
-        data = data_object.load(fpath, regenerate_plot=regenerate_plot)
-        return data
-
-    def get_multi_data(
-        self, sources, shuffle=False, idx_to_keep=None, split_ratio=1, binned=True
-    ):
-        sources = make_list_ifnot(sources)
-        concatenated_data = None
-        for source in sources:
-            dataset_object = getattr(self, source)
-            data = dataset_object.data
-            # data = dataset_object.binned_data if binned else dataset_object.data
-            data = np.array([data]).transpose() if len(data.shape) == 1 else data
-            if type(concatenated_data) != np.ndarray:
-                concatenated_data = data
-            else:
-                concatenated_data, data = self.force_equal_dimensions(
-                    concatenated_data, data
-                )
-                concatenated_data = np.concatenate([concatenated_data, data], axis=1)
-        concatenated_data_filtered = Dataset.filter_by_idx(
-            concatenated_data, idx_to_keep=idx_to_keep
-        )
-        concatenated_data_shuffled = (
-            Dataset.shuffle(concatenated_data_filtered)
-            if shuffle
-            else concatenated_data_filtered
-        )
-        concatenated_data_tain, concatenated_data_test = Dataset.split(
-            concatenated_data_shuffled, split_ratio
-        )
-        return concatenated_data_tain, concatenated_data_test
-
-    @staticmethod
-    def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
-        """
-        Force two arrays to have the same dimensions.
-        By cropping the larger array to the size of the smaller array.
-        """
-        shape_0_diff = array1.shape[0] - array2.shape[0]
-        if shape_0_diff > 0:
-            array1 = array1[:-shape_0_diff]
-        elif shape_0_diff < 0:
-            array2 = array2[:shape_0_diff]
-        return array1, array2
-
-
-class Datasets_Neural(Datasets):
-    def __init__(self, root_dir, metadata={}, task_id=None):
-        super().__init__(root_dir=root_dir, metadata=metadata, task_id=task_id)
-        self.photon_imaging_methods = ["femtonics", "thorlabs", "inscopix"]
-        self.probe_imaging_methods = ["neuropixels", "tetrode"]
-        # TODO: split into different datasets if needed
-        self.imaging_type = self.define_imaging_type(self.metadata["setup"])
-        if self.imaging_type == "photon":
-            self.photon = Data_Photon(
-                root_dir=root_dir, metadata=self.metadata, task_id=self.task_id
-            )
-        else:
-            # TODO: implement probe data loading
-            self.probe = Data_Probe(
-                root_dir=root_dir, metadata=self.metadata, task_id=self.task_id
-            )
-
-        if "fps" not in self.metadata.keys():
-            # TODO: this is not implemented for probe data
-            data_object = self.get_object(self.metadata["setup"])  # photon or probe
-            self.metadata["fps"] = data_object.metadata["fps"]
-
-    def define_imaging_type(self, data_source):
-        if data_source in self.photon_imaging_methods:
-            imaging_type = "photon"
-        elif data_source in self.probe_imaging_methods:
-            imaging_type = "probe"
-        else:
-            raise ValueError(f"Imaging type {data_source} not supported.")
-        return imaging_type
-
-    def get_object(self, data_source):
-        imaging_type = self.define_imaging_type(data_source)
-        data_object = getattr(self, imaging_type)
-        return data_object
-
-
-class Datasets_Behavior(Datasets):
-    def __init__(self, root_dir, metadata={}, task_id=None):
-        super().__init__(root_dir=root_dir, metadata=metadata, task_id=task_id)
-        self.data_dir = (
-            self.data_dir
-            if not self.data_dir == root_dir
-            else self.data_dir.joinpath("TRD-2P")
-        )
-        self.position = Data_Position(
-            root_dir=root_dir, metadata=self.metadata, task_id=self.task_id
-        )
-        self.distance = Data_Distance(
-            raw_data_object=self.position,
-            root_dir=root_dir,
-            metadata=self.metadata,
-            task_id=self.task_id,
-        )
-        self.stimulus = Data_Stimulus(
-            raw_data_object=self.position,
-            root_dir=root_dir,
-            metadata=self.metadata,
-            task_id=self.task_id,
-        )
-        self.velocity = Data_Velocity(
-            raw_data_object=self.distance,
-            root_dir=root_dir,
-            metadata=self.metadata,
-            task_id=self.task_id,
-        )
-        self.acceleration = Data_Acceleration(
-            raw_data_object=self.velocity,
-            root_dir=root_dir,
-            metadata=self.metadata,
-            task_id=self.task_id,
-        )
-        self.moving = Data_Moving(
-            raw_data_object=self.velocity,
-            root_dir=root_dir,
-            metadata=self.metadata,
-            task_id=self.task_id,
-        )
-
-    def get_object(self, data_source):
-        data_object = getattr(self, data_source)
-        return data_object
 
 
 class Animal:
@@ -1397,7 +397,8 @@ class Task:
             self.model_dir, model_id=self.name, model_settings=model_settings
         )
 
-    def get_training_data(
+    # Cebra
+    def get_multi_data(
         self,
         datasets_object: Datasets,
         data_types,
@@ -1406,15 +407,7 @@ class Task:
         shuffled=False,
         split_ratio=1,
     ):
-        # get movement state data
-        if movement_state == "all":
-            idx_to_keep = None
-        elif movement_state == "moving":
-            idx_to_keep = self.behavior.moving.data
-        elif movement_state == "stationary":
-            idx_to_keep = self.behavior.moving.data == False
-        else:
-            raise ValueError(f"Movement state {movement_state} not supported.")
+        idx_to_keep = self.behavior.moving.get_idx_to_keep(movement_state)
 
         # get data
         if not isinstance(data, np.ndarray):
@@ -1517,7 +510,7 @@ class Task:
         neural_data_types = (
             neural_data_types or self.neural_metadata["preprocessing_software"]
         )
-        neural_data_train, neural_data_test = self.get_training_data(
+        neural_data_train, neural_data_test = self.get_multi_data(
             datasets_object=self.neural,
             data_types=self.neural.imaging_type,
             data=neural_data,
@@ -1528,7 +521,7 @@ class Task:
 
         # get behavior data
         if behavior_data_types:
-            behavior_data_train, behavior_data_test = self.get_training_data(
+            behavior_data_train, behavior_data_test = self.get_multi_data(
                 datasets_object=self.behavior,
                 data_types=behavior_data_types,  # e.g. ["position", "cam"]
                 data=behavior_data,
@@ -1559,7 +552,7 @@ class Task:
                         )
                     )
                     model.fit(neural_data_train, behavior_data_train)
-                model.fitted = models_class.fitted(model)
+                model.fitted = models_class.is_fitted(model)
                 model.save(model.save_path)
         else:
 
@@ -1785,134 +778,100 @@ class Task:
         # TODO: implement consistency task plot
         pass
 
-
-class Models:
-    def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
-        if not model_settings:
-            model_settings = kwargs
-        self.cebras = Cebras(model_dir, model_id, model_settings)
-
-    def train(self):
-        # TODO: move train_model function from task class
-        pass
-
-    def set_model_name(self):
-        # TODO: move set_model_name function from task class
-        pass
-
-    def get_model(self):
-        # TODO: move get_model function from task class
-        pass
-
-
-class Cebras:
-    def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
-        self.model_id = model_id
-        self.model_dir = Path(model_dir)
-        if not model_settings:
-            model_settings = kwargs
-        self.model_settings = model_settings
-        self.models = {}
-        self.time_model = self.time()
-        self.behavior_model = self.behavior()
-        self.hybrid_model = self.hybrid()
-
-    def get_models(
+    # Place Cells
+    def get_rate_map(
         self,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str):
+        movement_state="moving",
+        norm_occupancy=True,
+        smooth=True,
+        window_size=2,
     ):
-        filtered_models = filter_dict_by_properties(
-            self.models, model_naming_filter_include, model_naming_filter_exclude
+        """
+        Plots the rate maps of the place cells.
+        """
+        idx_to_keep = self.behavior.moving.get_idx_to_keep(movement_state)
+        activity = Dataset.filter_by_idx(
+            self.neural.photon.data, idx_to_keep=idx_to_keep
         )
-        return filtered_models
-
-    def embedd_into_model(self, model, data):
-        # TODO: embedd data into model, may create train and test embeddings, integrate this function into model?
-        pass
-
-    def define_parameter_save_path(self, model):
-        dir_exist_create(self.model_dir)
-        save_path = self.model_dir.joinpath(
-            f"cebra_{model.name}_iter-{model.max_iterations}_dim-{model.output_dimension}_model-{self.model_id}.pt"
+        binned_pos = Dataset.filter_by_idx(
+            self.behavior.position.binned_data, idx_to_keep=idx_to_keep
         )
-        return save_path
+        fps = self.behavior_metadata["imaging_fps"]
 
-    def fitted(self, model):
-        return sklearn_utils.check_fitted(model)
-
-    def create_defaul_model(self):
-        default_model = CEBRA(
-            model_architecture="offset10-model",
-            batch_size=512,
-            learning_rate=3e-4,
-            temperature=1,
-            output_dimension=3,
-            max_iterations=5000,
-            distance="cosine",
-            conditional="time_delta",
-            device="cuda_if_available",
-            verbose=True,
-            time_offsets=10,
+        rate_map, time_map = self.models.place_cell.get_maps(
+            activity=activity,
+            binned_pos=binned_pos,
+            fps=fps,
+            norm_occupancy=norm_occupancy,
+            smooth=smooth,
+            window_size=window_size,
         )
-        return default_model
+        return rate_map, time_map
 
-    def init_model(self, model_settings_dict):
-        default_model = self.create_defaul_model()
-        if len(model_settings_dict) == 0:
-            model_settings_dict = self.model_settings
-        initial_model = define_cls_attributes(
-            default_model, model_settings_dict, override=True
+    def plot_rate_map(
+        self,
+        movement_state="moving",
+        norm_occupancy=True,
+        norm_rate=True,
+        smooth=True,
+        window_size=2,
+        sorting_indices=None,
+    ):
+        """
+        Plots the rate maps of the place cells.
+        """
+        rate_map, time_map = self.get_rate_map(
+            movement_state=movement_state,
+            norm_occupancy=norm_occupancy,
+            smooth=smooth,
+            window_size=window_size,
         )
-        initial_model.fitted = False
-        return initial_model
 
-    def load_fitted_model(self, model):
-        fitted_model_path = model.save_path
-        if fitted_model_path.exists():
-            fitted_model = CEBRA.load(fitted_model_path)
-            if fitted_model.get_params() == model.get_params():
-                fitted_full_model = define_cls_attributes(fitted_model, model.__dict__)
-                model = fitted_full_model
-                global_logger.info(f"Loaded matching model {fitted_model_path}")
-                print(f"Loaded matching model {fitted_model_path}")
-            else:
-                global_logger.error(
-                    f"Loaded model parameters do not match to initialized model. Not loading {fitted_model_path}"
-                )
-        model.fitted = self.fitted(model)
-        return model
+        only_moving = True if movement_state == "moving" else False
+        additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']}"
+        if only_moving:
+            additional_title += " (Moving only)"
 
-    def model_settings_start(self, name, model_settings_dict):
-        model = self.init_model(model_settings_dict)
-        model.name = name
-        return model
-
-    def model_settings_end(self, model):
-        model.save_path = self.define_parameter_save_path(model)
-        model = self.load_fitted_model(model)
-        self.models[model.name] = model
-        return model
-
-    def time(self, name="time", model_settings=None, **kwargs):
-        model_settings = model_settings or kwargs
-        model = self.model_settings_start(name, model_settings)
-        model.temperature = (
-            1.12 if kwargs.get("temperature") is None else model.temperature
+        sorted_rate_map, sorting_indices = Vizualizer.plot_cell_activites_heatmap(
+            rate_map,
+            additional_title=additional_title,
+            norm_rate=norm_rate,
+            sorting_indices=sorting_indices,
         )
-        model.conditional = "time" if kwargs.get("time") is None else model.conditional
-        model = self.model_settings_end(model)
-        return model
 
-    def behavior(self, name="behavior", model_settings=None, **kwargs):
-        model_settings = model_settings or kwargs
-        model = self.model_settings_start(name, model_settings)
-        model = self.model_settings_end(model)
-        return model
+        return rate_map, time_map
 
-    def hybrid(self, name="hybrid", model_settings=None, **kwargs):
-        model_settings = model_settings or kwargs
-        model = self.model_settings_start(name, model_settings)
-        model.hybrid = True if kwargs.get("hybrid") is None else model.hybrid
-        model = self.model_settings_end(model)
-        return model
+    def plot_place_cell_si_scores(
+        self,
+        movement_state="moving",
+        norm_occupancy=True,
+        smooth=True,
+        window_size=2,
+        n_tests=1000,
+        colors=["red", "tab:blue"],
+    ):
+        """
+        Plots the spatial information scores of the place cells.
+        """
+        method = "skaggs"  # FIXME: remove after finished with searching best method
+
+        rate_map, time_map = self.get_rate_map(
+            movement_state=movement_state,
+            norm_occupancy=norm_occupancy,
+            smooth=smooth,
+            window_size=window_size,
+        )
+        zscore, si_rate, si_content = (
+            self.models.place_cell.si_model.compute_si_zscores(
+                rate_map,
+                time_map,
+                n_tests=n_tests,
+                spatial_information_method=method,
+            )
+        )
+        Vizualizer.plot_zscore(zscore, color=colors, additional_title=method)
+        Vizualizer.plot_si_rates(
+            si_rate, zscore=zscore, color=colors, additional_title=method
+        )
+
+        return zscore, si_rate, si_content

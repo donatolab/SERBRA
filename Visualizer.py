@@ -1,5 +1,5 @@
 from Helper import *
-from Classes import Datasets
+from Datasets import Datasets
 
 # Plotting
 import matplotlib.pyplot as plt
@@ -8,7 +8,8 @@ from matplotlib.ticker import MaxNLocator
 import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
-from pySankey.sankey import sankey
+
+# from pySankey.sankey import sankey
 
 import cebra
 import pandas as pd
@@ -632,13 +633,52 @@ class Vizualizer:
         plt.show()
         plt.close()
 
+    @staticmethod
+    def plot_traces_shifted(
+        traces, figsize_x=20, labels=None, additional_title=None, savepath=None
+    ):
+        """
+        Plots traces shifted up by 10 for each trace
+        """
+        title = "Activity"
+        if additional_title:
+            title += f" {additional_title}"
+
+        lines_per_y = 1
+        y_size = int(len(traces) / lines_per_y)
+        figsize = (figsize_x, y_size / 2)
+        fig, ax = plt.subplots()
+        fig.set_size_inches(figsize)
+        neg_counter = 0
+        for i, trace in enumerate(traces):
+            if np.isnan(trace).any():
+                neg_counter += 1
+                continue
+            if np.sum(trace) == 0:
+                continue
+            trace = normalize_vector_01(trace)
+            if labels is not None:
+                label = f"{labels[i]:.3f}"
+                ax.plot(trace + (i - neg_counter) / lines_per_y, label=label)
+            ax.plot(trace + (i - neg_counter) / lines_per_y)
+        plt.ylim(-1, y_size)
+        plt.xlim(0, traces.shape[1])
+        plt.title(title)
+        if savepath:
+            plt.savefig(savepath)
+        if labels is not None:
+            plt.legend(loc="upper right")
+        plt.show()
+        plt.close()
+
+    @staticmethod
     def plot_cell_activites_heatmap(
-        self, rate_map, task, norm_rate=False, only_moving=False, sorting_indices=None
+        rate_map, additional_title=None, norm_rate=False, sorting_indices=None, xlabel="location (cm)", ylabel="Cell id"
     ):
         # ordered activities by peak
-        title = f"{task.id} Belt: {task.behavior_metadata['stimulus_type']}"
-        if only_moving:
-            title += " (Moving only)"
+        title = "Cell Activities"
+        if additional_title:
+            title = title + f" {additional_title}"
         if not norm_rate:
             title += " not normalized"
         if sorting_indices is not None:
@@ -652,24 +692,33 @@ class Vizualizer:
         else:
             plot_rate_map = rate_map
 
-        sorted_rate_map, sorting_indices = sort_arr_by_peak(
+        sorted_rate_map, indices = sort_arr_by(
             plot_rate_map, axis=1, sorting_indices=sorting_indices
         )
 
         plt.figure()
         plt.imshow(sorted_rate_map, aspect="auto", interpolation="None")
 
-        plt.ylabel("Cell id (Ordered by ~peak")
+        plt.ylabel(ylabel)
         # remove yticks
-        plt.xlabel(
-            "Belt " + str(task.behavior_metadata["stimulus_type"]) + " location (cm)"
-        )
+        plt.xlabel(xlabel)
         plt.title(title)
-        self.plot_ending(self, title, save=True)
-        return sorted_rate_map, sorting_indices
+        plt.show(block=False)
+        plt.close()
+        return sorted_rate_map, indices
 
+    @staticmethod
     def create_histogram(
-        self, data, title, xlabel, ylabel, bins=100, color="tab:blue", interactive=False
+        data,
+        title,
+        xlabel,
+        ylabel,
+        data_labels=None,
+        bins=100,
+        red_line_pos=None,
+        color=None,
+        interactive=False,
+        stacked=True,
     ):
         if interactive:
             fig = px.histogram(
@@ -682,65 +731,95 @@ class Vizualizer:
             fig.show()
         else:
             plt.figure(figsize=(10, 3))
-            plt.hist(data, bins=bins, color=color)
+            plt.hist(data, bins=bins, label=data_labels, color=color, stacked=True)
+            plt.legend()
             plt.title(title)
             plt.xlabel(xlabel)
             plt.ylabel(ylabel)
+            if red_line_pos is not None:
+                plt.axvline(red_line_pos, color="r", linestyle="dashed", linewidth=1)
+            plt.show(block=False)
+            plt.close()
 
+    @staticmethod
     def plot_zscore(
-        self,
         zscore,
         additional_title=None,
-        color="tab:blue",
+        data_labels=None,
+        color=None,
         interactive=False,
         zscore_threshold=2.5,
+        stacked=True,
     ):
+        zscore = np.array(zscore)
         title = "Zscore distribution of Spatial Information"
         xlabel = "Zscore"
         ylable = "# of cells"
         if additional_title is not None:
             title = title + f" ({additional_title})"
-        self.create_histogram(
-            zscore,
+        zscores = split_array_by_zscore(zscore, zscore, threshold=2.5)
+        if data_labels is None:
+            data_labels = [
+                f"{len(zscores[0])} values > {zscore_threshold}",
+                f" {len(zscores[1])} values < {zscore_threshold}",
+            ]
+        Vizualizer.create_histogram(
+            zscores,
             title,
             xlabel,
             ylable,
             bins=100,
+            data_labels=data_labels,
+            red_line_pos=zscore_threshold,
             color=color,
             interactive=interactive,
+            stacked=stacked,
         )
-        plt.axvline(zscore_threshold, color="r", linestyle="dashed", linewidth=1)
-        self.plot_ending(self, title, save=True)
-        plt.close()
 
+    @staticmethod
     def plot_si_rates(
-        self,
         si_rate,
+        data_labels=None,
         additional_title=None,
-        color="tab:blue",
-        threshold=None,
+        zscore=None,
+        zscore_threshold=2.5,
+        color=None,
         interactive=False,
+        stacked=True,
     ):
+        si_rate = np.array(si_rate)
         title = "Spatial Information Rate"
         xlabel = "Spatial Information Rate [bits/sec]"
         ylabel = "# of cells"
         if additional_title is not None:
             title = title + f" ({additional_title})"
-        self.create_histogram(
-            si_rate, title, xlabel, ylabel, bins=100, color=color, interactive=False
+        data = (
+            split_array_by_zscore(si_rate, zscore, threshold=zscore_threshold)
+            if zscore is not None
+            else si_rate
         )
-        if threshold is not None:
-            plt.axvline(threshold, color="r", linestyle="dashed", linewidth=1)
-        self.plot_ending(self, title, save=True)
-        plt.close()
+        if data_labels is None and len(data) == 2:
+            data_labels = [
+                f"{len(data[0])} <= 5% probability",
+                f" {len(data[1])} > 5% probability",
+            ]
+        Vizualizer.create_histogram(
+            data,
+            title,
+            xlabel,
+            ylabel,
+            bins=100,
+            data_labels=data_labels,
+            color=color,
+            interactive=interactive,
+            stacked=stacked,
+        )
 
-    def plot_sanky_example(
-        self,
-    ):
+    @staticmethod
+    def plot_sanky_example():
         #####################################################
         ################### SANKEY PLOTS ####################
         #####################################################
-        # TODO: sankey plot
         #
         label_list = ["cat", "dog", "domesticated", "female", "male", "wild", "neither"]
         # cat: 0, dog: 1, domesticated: 2, female: 3, male: 4, wild: 5
@@ -756,4 +835,5 @@ class Vizualizer:
                 )
             ]
         )
+
         fig.show()

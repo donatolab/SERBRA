@@ -464,7 +464,10 @@ def check_correct_metadata(string_or_list, name_parts):
 
 
 # array
-def sort_arr_by_peak(arr, axis=1, sorting_indices=None):
+def sort_arr_by(arr, axis=1, sorting_indices=None):
+    """
+    if no sorting indices are given array is sorted by maximum value of 2d array
+    """
     if sorting_indices is not None:
         indices = sorting_indices
     else:
@@ -472,6 +475,12 @@ def sort_arr_by_peak(arr, axis=1, sorting_indices=None):
         indices = np.argsort(maxes)
     sorted_arr = arr[indices]
     return sorted_arr, indices
+
+
+def split_array_by_zscore(array, zscore, threshold=2.5):
+    above_threshold = np.where(zscore >= threshold)[0]
+    below_threshold = np.where(zscore < threshold)[0]
+    return array[above_threshold], array[below_threshold]
 
 
 def bin_array(arr, bin_size, min_bin=None, max_bin=None):
