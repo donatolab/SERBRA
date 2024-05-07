@@ -635,7 +635,12 @@ class Vizualizer:
 
     @staticmethod
     def plot_traces_shifted(
-        traces, figsize_x=20, labels=None, additional_title=None, savepath=None
+        traces,
+        figsize_x=20,
+        labels=None,
+        norm=False,
+        additional_title=None,
+        savepath=None,
     ):
         """
         Plots traces shifted up by 10 for each trace
@@ -649,20 +654,18 @@ class Vizualizer:
         figsize = (figsize_x, y_size / 2)
         fig, ax = plt.subplots()
         fig.set_size_inches(figsize)
-        neg_counter = 0
         for i, trace in enumerate(traces):
             if np.isnan(trace).any():
-                neg_counter += 1
                 continue
-            if np.sum(trace) == 0:
-                continue
-            trace = normalize_vector_01(trace)
+            if norm:
+                trace = normalize_vector_01(trace)
             if labels is not None:
                 label = f"{labels[i]:.3f}"
-                ax.plot(trace + (i - neg_counter) / lines_per_y, label=label)
-            ax.plot(trace + (i - neg_counter) / lines_per_y)
-        plt.ylim(-1, y_size)
-        plt.xlim(0, traces.shape[1])
+                ax.plot(trace + i / lines_per_y, label=label)
+            else:
+                ax.plot(trace + i / lines_per_y)
+        # plt.ylim(-1, y_size)
+        # plt.xlim(0, traces.shape[1])
         plt.title(title)
         if savepath:
             plt.savefig(savepath)
@@ -673,7 +676,12 @@ class Vizualizer:
 
     @staticmethod
     def plot_cell_activites_heatmap(
-        rate_map, additional_title=None, norm_rate=False, sorting_indices=None, xlabel="location (cm)", ylabel="Cell id"
+        rate_map,
+        additional_title=None,
+        norm_rate=False,
+        sorting_indices=None,
+        xlabel="location (cm)",
+        ylabel="Cell id",
     ):
         # ordered activities by peak
         title = "Cell Activities"

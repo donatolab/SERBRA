@@ -338,7 +338,7 @@ class SpatialInformation(Model):
         rate_map,
         time_map,
         n_tests=500,
-        spatial_information_method="opexebo",
+        spatial_information_method="skaggs",
     ):
         """
         return spatial information and corresponding zscores
