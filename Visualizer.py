@@ -654,23 +654,28 @@ class Vizualizer:
         figsize = (figsize_x, y_size / 2)
         fig, ax = plt.subplots()
         fig.set_size_inches(figsize)
+        if norm:
+            traces = normalize_01(traces)
         for i, trace in enumerate(traces):
             if np.isnan(trace).any():
                 continue
             if norm:
-                trace = normalize_vector_01(trace)
+                trace = normalize_01(trace)
             if labels is not None:
-                label = f"{labels[i]:.3f}"
+                label = (
+                    f"{labels[i]:.3f}" if not isinstance(labels[i], str) else labels[i]
+                )
                 ax.plot(trace + i / lines_per_y, label=label)
             else:
                 ax.plot(trace + i / lines_per_y)
         # plt.ylim(-1, y_size)
-        # plt.xlim(0, traces.shape[1])
+        plt.xlim(0, traces.shape[1])
         plt.title(title)
         if savepath:
             plt.savefig(savepath)
         if labels is not None:
-            plt.legend(loc="upper right")
+            # plt.legend(loc="upper right")
+            plt.legend(bbox_to_anchor=(1, 1))
         plt.show()
         plt.close()
 
@@ -693,19 +698,14 @@ class Vizualizer:
             title += " order provided"
 
         # normalize by cell firering rate
-        if norm_rate:
-            plot_rate_map = rate_map.copy()
-            for i, cell_rate in enumerate(rate_map):
-                plot_rate_map[i] = normalize_vector_01(cell_rate)
-        else:
-            plot_rate_map = rate_map
+        plot_rate_map = rate_map if not norm_rate else normalize_01(rate_map)
 
         sorted_rate_map, indices = sort_arr_by(
             plot_rate_map, axis=1, sorting_indices=sorting_indices
         )
 
         plt.figure()
-        plt.imshow(sorted_rate_map, aspect="auto", interpolation="None")
+        plt.imshow(sorted_rate_map, aspect="auto")  # , interpolation="None")
 
         plt.ylabel(ylabel)
         # remove yticks

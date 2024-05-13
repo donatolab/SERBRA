@@ -258,9 +258,23 @@ def moving_average(data, window_size=30):
     return np.convolve(data, weights, "valid")
 
 
-def smooth_array(data, window_size=5):
+def smooth_array(data, window_size=5, axis=0):
+    """
+    Smooth a NumPy array along the specified axis using convolution.
+
+    Args:
+        data (np.ndarray): The input 2D array.
+        window_size (int, optional): Size of the smoothing window (default is 5).
+        axis (int, optional): Axis along which to apply smoothing (default is 0).
+
+    Returns:
+        np.ndarray: The smoothed array.
+    """
     weights = np.ones(window_size) / window_size
-    return np.convolve(data, weights, "same")
+    smoothed_data = np.apply_along_axis(
+        lambda x: np.convolve(x, weights, "same"), axis, data
+    )
+    return smoothed_data
 
 
 def continuouse_to_discrete(continuouse_array, lengths: list):
@@ -359,23 +373,12 @@ def correlate_vectors(vectors: np.ndarray):
 
 
 ## normalization
-def normalize_vector_01(vector):
-    normalized_vector = vector - np.min(vector)
-    normalized_vector = normalized_vector / np.max(normalized_vector)
+def normalize_01(vector, axis=1):
+    axis = 0 if axis==1 and len(vector.shape) == 1 else axis
+    min_val = np.min(vector, axis=axis, keepdims=True)
+    max_val = np.max(vector, axis=axis, keepdims=True)
+    normalized_vector = (vector - min_val) / (max_val - min_val)
     return normalized_vector
-
-
-def normalize_matrix_01(matrix, axis=1):
-    new_matrix = np.zeros(matrix.shape)
-    for i in range(matrix.shape[axis]):
-        if axis == 0:
-            new_matrix[i, :] = normalize_vector_01(matrix[i, :])
-        elif axis == 1:
-            new_matrix[:, i] = normalize_vector_01(matrix[:, i])
-        else:
-            raise ValueError("Axis must be 0 or 1. 3D not supported.")
-    return new_matrix
-
 
 # strings
 def filter_strings_by_properties(

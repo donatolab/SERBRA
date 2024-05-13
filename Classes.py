@@ -779,10 +779,9 @@ class Task:
         pass
 
     # Place Cells
-    def get_rate_map(
+    def get_rate_time_map(
         self,
         movement_state="moving",
-        norm_occupancy=True,
         smooth=True,
         window_size=2,
     ):
@@ -796,24 +795,19 @@ class Task:
         binned_pos = Dataset.filter_by_idx(
             self.behavior.position.binned_data, idx_to_keep=idx_to_keep
         )
-        fps = self.behavior_metadata["imaging_fps"]
-
         rate_map, time_map = self.models.place_cell.get_maps(
             activity=activity,
             binned_pos=binned_pos,
-            fps=fps,
-            norm_occupancy=norm_occupancy,
             smooth=smooth,
             window_size=window_size,
         )
-        return rate_map, time_map
+        return rate_map, time_map, activity, binned_pos
 
     def plot_rate_map(
         self,
         rate_map=None,
         time_map=None,
         movement_state="moving",
-        norm_occupancy=True,
         norm_rate=True,
         smooth=True,
         window_size=2,
@@ -823,9 +817,8 @@ class Task:
         Plots the rate maps of the place cells.
         """
         if rate_map is None or time_map is None:
-            rm, tm = self.get_rate_map(
+            rm, tm, _, _ = self.get_rate_time_map(
                 movement_state=movement_state,
-                norm_occupancy=norm_occupancy,
                 smooth=smooth,
                 window_size=window_size,
             )
@@ -849,8 +842,8 @@ class Task:
         self,
         rate_map=None,
         time_map=None,
+        provided_zscore=None,
         movement_state="moving",
-        norm_occupancy=True,
         norm=True,
         smooth=True,
         window_size=2,
@@ -873,47 +866,78 @@ class Task:
             If "all", plots all rate maps.
             if "significant", plots all significant rate maps.
         """
+        only_moving = True if movement_state == "moving" else False
+        additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} sorted by {sort_by if top_n != 'significant' else 'zscore'}"
+        if only_moving:
+            additional_title += " (Moving only)"
+
         if rate_map is None or time_map is None:
-            rm, tm = self.get_rate_map(
+            rm, tm, activity, binned_pos = self.get_rate_time_map(
                 movement_state=movement_state,
-                norm_occupancy=norm_occupancy,
                 smooth=smooth,
                 window_size=window_size,
             )
-
+        fps = self.behavior_metadata["imaging_fps"]
         rate_map = rate_map or rm
         time_map = time_map or tm
 
         if sort_by == "peak":
             sorting_indices = np.argsort(np.argmax(rate_map, axis=1))
             labels = sorting_indices
+            zscore = None
         elif sort_by in ["spatial_information", "spatial_content", "zscore"]:
-            if sort_by == "spatial_information" or "spatial_content":
-                n_test = n_tests if top_n == "significant" else 1
+            if sort_by in ["spatial_information", "spatial_content"]:
+                n_test = (
+                    n_tests if top_n == "significant" and provided_zscore is None else 1
+                )
                 zscore, si_rate, si_content = (
                     self.models.place_cell.si_model.compute_si_zscores(
-                        rate_map, time_map, n_tests=n_test
+                        # rate_map, time_map, n_tests=n_test, fps=fps
+                        activity=activity,
+                        binned_pos=binned_pos,
+                        n_tests=n_test,
+                        fps=fps,
                     )
                 )
                 labels = si_rate if sort_by == "spatial_information" else si_content
             elif sort_by == "zscore":
+                n_test = n_tests if provided_zscore is None else 1
                 zscore, si_rate, si_content = (
                     self.models.place_cell.si_model.compute_si_zscores(
-                        rate_map, time_map, n_tests=n_tests
+                        # rate_map, time_map, n_tests=n_test, fps=fps
+                        activity=activity,
+                        binned_pos=binned_pos,
+                        n_tests=n_test,
+                        fps=fps,
                     )
                 )
-                labels = zscore
+                labels = zscore if provided_zscore is None else provided_zscore
+
+            zscore = zscore if provided_zscore is None else provided_zscore
         else:
             raise ValueError(f"Sorting of the rate_map by {sort_by} not supported.")
 
         sorting_indices = np.argsort(labels)[::-1]
-
         num_nan = np.sum(np.isnan(labels)) if top_n != "significant" else 0
 
         if top_n == "all":
             top_n = len(sorting_indices) - num_nan
         elif top_n == "significant" and sort_by != "peak":
-            num_significant = np.where(zscore >= zscore_threshold)[0].shape[0]
+            # sorted_zscores = zscore[np.argsort(zscore)[::-1]]
+            significant_zscore_indices = np.where(zscore >= zscore_threshold)[0]
+            significant_zscores = zscore[significant_zscore_indices]
+            zscore_sorting_indices = np.argsort(significant_zscores)[::-1]
+            sorted_significant_zscore_indices = significant_zscore_indices[
+                zscore_sorting_indices
+            ]
+            sorting_indices = sorted_significant_zscore_indices
+            num_significant = sorting_indices.shape[0]
+            labels = np.array(
+                [
+                    f"{sort_by} {label:.1f}{f' (zscore: {z_val:.1f})' if sort_by != 'zscore' else ''}"
+                    for label, z_val in zip(labels, zscore)
+                ]
+            )
             top_n = num_significant
         elif isinstance(top_n, int):
             top_n = min(top_n, len(sorting_indices) - num_nan)
@@ -923,14 +947,11 @@ class Task:
         to_plot_rate_map = rate_map[sorting_indices][num_nan : num_nan + top_n]
         to_plot_labels = labels[sorting_indices][num_nan : num_nan + top_n]
 
-        only_moving = True if movement_state == "moving" else False
-        additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} sorted by {sort_by}"
-        if only_moving:
-            additional_title += " (Moving only)"
-
-        .........is the number of significant zscore correctly taken? labels look wrong....
-        .... why is the rate map above 1?????? should be normalized by frames....
-        .... create plot activity per lap......
+        if sort_by != "zscore":
+            to_plot_labels_list = []
+            for cell_id, label in zip(sorting_indices, to_plot_labels):
+                label = label if isinstance(label, str) else f"{label:.1f}"
+                to_plot_labels_list.append(f"Cell {cell_id:>4}: {label}")
 
         Vizualizer.plot_traces_shifted(
             to_plot_rate_map,
@@ -938,19 +959,19 @@ class Task:
             additional_title=additional_title,
             norm=norm,
         )
-        return rate_map, time_map, labels
+        return rate_map, time_map, zscore
 
     def plot_activity_per_lap():
+        # .... create plot activity per lap......
         # .......................
         pass
 
     def plot_place_cell_si_scores(
         self,
         movement_state="moving",
-        norm_occupancy=True,
         smooth=True,
         window_size=2,
-        n_tests=1000,
+        n_tests=100,
         colors=["red", "tab:blue"],
     ):
         """
@@ -958,21 +979,25 @@ class Task:
         """
         method = "skaggs"  # FIXME: remove after finished with searching best method
 
-        rate_map, time_map = self.get_rate_map(
+        rate_map, time_map, activity, binned_pos = self.get_rate_time_map(
             movement_state=movement_state,
-            norm_occupancy=norm_occupancy,
             smooth=smooth,
             window_size=window_size,
         )
+
+        fps = self.behavior_metadata["imaging_fps"]
+
         zscore, si_rate, si_content = (
             self.models.place_cell.si_model.compute_si_zscores(
-                rate_map,
-                time_map,
+                activity=activity,
+                binned_pos=binned_pos,
+                # rate_map=rate_map,
+                # time_map=time_map,
                 n_tests=n_tests,
                 spatial_information_method=method,
+                fps=fps,
             )
         )
-
         additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']}"
         additional_title += f" ({method})"
 

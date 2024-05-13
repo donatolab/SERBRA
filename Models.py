@@ -129,89 +129,75 @@ class PlaceCellDetectors(ModelsWrapper):
         self,
         activity,
         binned_pos,
-        fps=None,
-        norm_occupancy=True,
-        norm_rate=False,
         smooth=True,
         window_size=2,
     ):
-        self.rate_map = self.get_rate_map(
-            activity,
-            binned_pos,
-            fps=fps,
-            norm_occupancy=norm_occupancy,
-            norm_rate=norm_rate,
-            smooth=smooth,
-            window_size=window_size,
-        )
-        num_cells, num_positions = self.rate_map.shape
-        self.time_map, _ = self.get_time_map(
-            binned_pos, bins=num_positions, range=(0, num_positions), fps=fps
-        )
+        # ..............add uncommented line again
+        # if self.rate_map is None or self.time_map is None:
+        if True:
+            self.rate_map, self.time_map = self.get_rate_time_map(
+                activity,
+                binned_pos,
+                smooth=smooth,
+                window_size=window_size,
+            )
         return self.rate_map, self.time_map
 
     @staticmethod
     def get_time_map(binned_pos, range=None, bins=None, fps=None):
         """
-        calculates time in binned_position based on fps
+        calculates time in binned_position counts per frame
         """
         # TODO: 2D occupancie map
         # hist, yedges, xedges = np.histogram2d(in_range_y, in_range_x, bins=bins, range=limits)
         #    edges = [xedges, yedges]
         time_map, bins_edges = np.histogram(binned_pos, bins=bins, range=range)
-        if fps is not None:
-            time_map = time_map / fps
+
         return time_map, bins_edges
 
     @staticmethod
-    def get_spike_map(activity, binned_pos):
+    def get_spike_map(activity, binned_pos, max_pos=None):
         num_cells = activity.shape[1]
         # for every frame count the activity of each cell
-        spike_map = np.zeros((num_cells, max(binned_pos) + 1))
+        max_pos = max_pos or max(binned_pos) + 1
+        spike_map = np.zeros((num_cells, max_pos))
         for frame, rate_map_vec in enumerate(activity):
             pos_at_frame = binned_pos[frame]
             spike_map[:, pos_at_frame] += rate_map_vec
         return spike_map
 
-    def get_rate_map(
+    @staticmethod
+    def get_rate_map(activity, binned_pos):
+        """
+        outputs spike rate per position per time
+        """
+        spike_map = PlaceCellDetectors.get_spike_map(activity, binned_pos)
+        # smooth and normalize
+        # normalize by spatial occupancy
+        time_map, _ = PlaceCellDetectors.get_time_map(
+            binned_pos, bins=len(spike_map[0])
+        )
+        # rate_map = spike_map / (time_map + np.spacing(1))
+        # .............is die summe richtig oder soll ich das anders machen?
+        rate_map = spike_map / np.sum(spike_map)
+
+        return rate_map, time_map
+
+    def get_rate_time_map(
         self,
         activity,
         binned_pos,
-        norm_occupancy=True,
-        norm_rate=False,
         smooth=True,
         window_size=2,
-        fps=None,
     ):
-        """
-        outputs spikes per second
-        """
-        spike_map = self.get_spike_map(activity, binned_pos)
-
-        # smooth and normalize
-        rate_map = spike_map.copy()
-        # normalize by spatial occupancy
-        if norm_occupancy:
-            # occuppancy time map
-            time_map, _ = self.get_time_map(binned_pos, bins=len(rate_map[0]), fps=fps)
-            rate_map = rate_map / (time_map + np.spacing(1))
-
-        for cell_id, cell_spike_map in enumerate(rate_map):
-            # if cell has any activity
-            if cell_spike_map.sum() > 0:
-                # normalize by cell firering rate
-                cell_rate_map = (
-                    normalize_vector_01(cell_spike_map) if norm_rate else cell_spike_map
-                )
-                # smoof over 2 bins (typically 2cm)
-                smooth_cell_rate_map = (
-                    smooth_array(cell_rate_map, window_size=window_size)
-                    if smooth
-                    else cell_rate_map
-                )
-
-                rate_map[cell_id] = smooth_cell_rate_map
-        return rate_map
+        rate_map_org, time_map = self.get_rate_map(activity, binned_pos)
+        # smoof over 2 bins (typically 2cm)
+        rate_map = (
+            rate_map_org
+            if not smooth
+            else smooth_array(rate_map_org, window_size=window_size, axis=1)
+        )
+        return rate_map, time_map
 
     @staticmethod
     def get_rate_map_stats(rate_map, position_PDF=None):
@@ -299,50 +285,63 @@ class SpatialInformation(Model):
         spatial_information_rate: n x m array where cell value is the float information rate [bits/sec]
         spatial_information_content: n x m array where cell value is the float spatial information content [bits/spike]
         """
-        duration = np.sum(time_map)  # in frames
-        # spacing adds floating point precision to avoid DivideByZero errors
-        position_PDF = time_map / (duration + np.spacing(1))
+        # duration = np.sum(time_map)  # in frames
+        ## spacing adds floating point precision to avoid DivideByZero errors
+        # position_PDF = time_map / (duration + np.spacing(1))
+        ## ................ use position pdf
+        # p_spike = rate_map * position_PDF + np.spacing(1)
 
-        firering_at_position_prob_distr = rate_map * position_PDF + np.spacing(1)
-        mean_rate = np.sum(firering_at_position_prob_distr, axis=1) + np.spacing(1)
+        p_spike = np.nansum(rate_map, axis=1)
+        p_position = np.nansum(rate_map, axis=0)
+
+        # mean_rate = np.sum(p_spike, axis=1) + np.spacing(1)
 
         # get statistics of the rate map
         # rate_map_stats = get_rate_map_stats(rate_map, position_PDF)
 
-        if np.sum(mean_rate) == 0:
-            raise ValueError("Mean firering rate is 0, no brain activity")
+        # if np.sum(mean_rate) == 0:
+        #    raise ValueError("Mean firering rate is 0, no brain activity")
 
         # new axis is added to ensure that the division is done along the right axis
-        log_argument = rate_map / mean_rate[:, np.newaxis]
+        # log_argument = rate_map / mean_rate[:, np.newaxis]
+        p_spike_at_pos = p_spike[:, None] * p_position
+        log_argument = rate_map / p_spike_at_pos
         # ensure no number is below 1 before taking the log out of it
         log_argument[log_argument < 1] = 1
 
         if spatial_information_method == "skaggs":
-            inf_rate = np.nansum(
-                firering_at_position_prob_distr * np.log2(log_argument), axis=1
-            )
+            inf_rate = np.nansum(rate_map * np.log2(log_argument), axis=1)
+            # inf_rate = np.nansum(
+            #    p_spike * np.log2(log_argument), axis=1
+            # )
         elif spatial_information_method == "shanon":
             inf_rate = scipy.stats.entropy(pk=log_argument, axis=1)
         elif spatial_information_method == "kullback-leiber":
             inf_rate = scipy.stats.entropy(
-                pk=firering_at_position_prob_distr, qk=mean_rate[:, np.newaxis], axis=1
+                pk=p_spike, qk=mean_rate[:, np.newaxis], axis=1
             )
         else:
             raise ValueError("Spatial information method not recognized")
-        inf_content = inf_rate / mean_rate
+        inf_content = inf_rate  # / mean_rate
 
         return inf_rate, inf_content
 
     def compute_si_zscores(
         self,
-        rate_map,
-        time_map,
+        activity=None,
+        binned_pos=None,
+        rate_map=None,
+        time_map=None,
         n_tests=500,
         spatial_information_method="skaggs",
+        fps=None,
     ):
         """
         return spatial information and corresponding zscores
         """
+
+        rate_map, time_map = PlaceCellDetectors.get_rate_map(activity, binned_pos)
+
         inf_rate, inf_content = self.get_spatial_information(
             rate_map, time_map, spatial_information_method
         )
@@ -355,11 +354,20 @@ class SpatialInformation(Model):
         si_shuffle = np.zeros((n_tests, num_cells))
         for test_num in trange(n_tests):
             # shuffle the time map
-            time_map_shuffled = np.roll(
-                time_map, np.random.choice(np.arange(time_map.shape[0]), 1)
+            # time_map_shuffled = np.roll(
+            #    time_map, np.random.choice(np.arange(time_map.shape[0]), 1)
+            # )................
+            binned_pos_shuffled = np.roll(
+                binned_pos, np.random.choice(np.arange(binned_pos.shape[0]), 1)
             )
+            rate_map_shuffled, time_map_shuffled = PlaceCellDetectors.get_rate_map(
+                activity, binned_pos_shuffled
+            )
+            # inf_rate, _ = self.get_spatial_information(
+            #    rate_map, time_map_shuffled, spatial_information_method
+            # ).................
             inf_rate, _ = self.get_spatial_information(
-                rate_map, time_map_shuffled, spatial_information_method
+                rate_map_shuffled, time_map_shuffled, spatial_information_method
             )
             si_shuffle[test_num] = inf_rate
 
@@ -367,6 +375,8 @@ class SpatialInformation(Model):
         stack = np.vstack([si_rate, si_shuffle])
         zscore = scipy.stats.zscore(stack)[0]
 
+        si_rate *= fps
+        si_content *= fps
         return zscore, si_rate, si_content
 
 
