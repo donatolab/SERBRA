@@ -15,7 +15,7 @@ import cebra
 import cebra.integrations.sklearn.utils as sklearn_utils
 
 # own
-from Datasets import Datasets
+from Datasets import Datasets, Dataset
 from Helper import *
 
 
@@ -167,19 +167,22 @@ class PlaceCellDetectors(ModelsWrapper):
         return spike_map
 
     @staticmethod
-    def get_rate_map(activity, binned_pos):
+    def get_rate_map(activity, binned_pos, max_pos=None):
         """
         outputs spike rate per position per time
         """
-        spike_map = PlaceCellDetectors.get_spike_map(activity, binned_pos)
+        spike_map = PlaceCellDetectors.get_spike_map(
+            activity, binned_pos, max_pos=max_pos
+        )
         # smooth and normalize
         # normalize by spatial occupancy
         time_map, _ = PlaceCellDetectors.get_time_map(
             binned_pos, bins=len(spike_map[0])
         )
-        # rate_map = spike_map / (time_map + np.spacing(1))
+        rate_map_occupancy = spike_map / time_map
+        rate_map_occupancy = np.nan_to_num(rate_map_occupancy, nan=0.0)
         # .............is die summe richtig oder soll ich das anders machen?
-        rate_map = spike_map / np.sum(spike_map)
+        rate_map = rate_map_occupancy / np.sum(rate_map_occupancy)
 
         return rate_map, time_map
 
@@ -190,7 +193,11 @@ class PlaceCellDetectors(ModelsWrapper):
         smooth=True,
         window_size=2,
     ):
-        rate_map_org, time_map = self.get_rate_map(activity, binned_pos)
+        rate_map_org, time_map = self.get_rate_map(
+            activity,
+            binned_pos,
+            max_pos=self.behavior_metadata["environment_dimensions"],
+        )
         # smoof over 2 bins (typically 2cm)
         rate_map = (
             rate_map_org
@@ -318,10 +325,12 @@ class SpatialInformation(Model):
             inf_rate = scipy.stats.entropy(pk=log_argument, axis=1)
         elif spatial_information_method == "kullback-leiber":
             inf_rate = scipy.stats.entropy(
-                pk=p_spike, qk=mean_rate[:, np.newaxis], axis=1
+                pk=rate_map, qk=p_spike_at_pos[:, np.newaxis], axis=1
             )
         else:
             raise ValueError("Spatial information method not recognized")
+
+        # FIXME: this should be corrected or???................
         inf_content = inf_rate  # / mean_rate
 
         return inf_rate, inf_content
@@ -335,12 +344,17 @@ class SpatialInformation(Model):
         n_tests=500,
         spatial_information_method="skaggs",
         fps=None,
+        max_pos=None,
     ):
         """
         return spatial information and corresponding zscores
         """
 
-        rate_map, time_map = PlaceCellDetectors.get_rate_map(activity, binned_pos)
+        rate_map, time_map = PlaceCellDetectors.get_rate_map(
+            activity,
+            binned_pos,
+            max_pos=self.behavior_metadata["environment_dimensions"],
+        )
 
         inf_rate, inf_content = self.get_spatial_information(
             rate_map, time_map, spatial_information_method
@@ -361,7 +375,7 @@ class SpatialInformation(Model):
                 binned_pos, np.random.choice(np.arange(binned_pos.shape[0]), 1)
             )
             rate_map_shuffled, time_map_shuffled = PlaceCellDetectors.get_rate_map(
-                activity, binned_pos_shuffled
+                activity, binned_pos_shuffled, max_pos=max_pos
             )
             # inf_rate, _ = self.get_spatial_information(
             #    rate_map, time_map_shuffled, spatial_information_method

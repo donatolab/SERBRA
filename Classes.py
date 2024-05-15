@@ -779,6 +779,7 @@ class Task:
         pass
 
     # Place Cells
+    # TODO: implement 1D or 2D differentiation
     def get_rate_time_map(
         self,
         movement_state="moving",
@@ -883,7 +884,6 @@ class Task:
 
         if sort_by == "peak":
             sorting_indices = np.argsort(np.argmax(rate_map, axis=1))
-            labels = sorting_indices
             zscore = None
         elif sort_by in ["spatial_information", "spatial_content", "zscore"]:
             if sort_by in ["spatial_information", "spatial_content"]:
@@ -897,9 +897,9 @@ class Task:
                         binned_pos=binned_pos,
                         n_tests=n_test,
                         fps=fps,
+                        max_pos=self.behavior_metadata["environment_dimensions"],
                     )
                 )
-                labels = si_rate if sort_by == "spatial_information" else si_content
             elif sort_by == "zscore":
                 n_test = n_tests if provided_zscore is None else 1
                 zscore, si_rate, si_content = (
@@ -909,17 +909,27 @@ class Task:
                         binned_pos=binned_pos,
                         n_tests=n_test,
                         fps=fps,
+                        max_pos=self.behavior_metadata["environment_dimensions"],
                     )
                 )
-                labels = zscore if provided_zscore is None else provided_zscore
-
             zscore = zscore if provided_zscore is None else provided_zscore
         else:
             raise ValueError(f"Sorting of the rate_map by {sort_by} not supported.")
 
+        # define labels
+        if sort_by == "peak":
+            labels = sorting_indices
+        elif sort_by == "spatial_information":
+            labels = si_rate
+        elif sort_by == "spatial_content":
+            labels = si_content
+        elif sort_by == "zscore":
+            labels = zscore
+
         sorting_indices = np.argsort(labels)[::-1]
         num_nan = np.sum(np.isnan(labels)) if top_n != "significant" else 0
 
+        # get top n rate maps
         if top_n == "all":
             top_n = len(sorting_indices) - num_nan
         elif top_n == "significant" and sort_by != "peak":
@@ -934,8 +944,10 @@ class Task:
             num_significant = sorting_indices.shape[0]
             labels = np.array(
                 [
-                    f"{sort_by} {label:.1f}{f' (zscore: {z_val:.1f})' if sort_by != 'zscore' else ''}"
-                    for label, z_val in zip(labels, zscore)
+                    f"si: {spatial_info:.1f}  sc: {spatial_cont:.1f}  (zscore: {z_val:.1f})"
+                    for spatial_info, spatial_cont, z_val in zip(
+                        si_rate, si_content, zscore
+                    )
                 ]
             )
             top_n = num_significant
@@ -959,26 +971,44 @@ class Task:
             additional_title=additional_title,
             norm=norm,
         )
-        return rate_map, time_map, zscore
+        outputs = {
+            "rate_map": rate_map[sorting_indices],
+            "time_map": time_map,
+            "zscore": zscore[sorting_indices],
+        }
+        return outputs
 
-    def plot_activity_per_lap():
-        # .... create plot activity per lap......
-        # .......................
-        pass
+    def plot_cell_activity_pos_by_time(self, cell_ids, sec_thr=5):  # int or [int]
+        """
+        Plots the cell activity by position and time.
+        """
+
+        # get data
+        cell_activity = self.neural.photon.data[:, cell_ids]
+        binned_pos = self.behavior.position.binned_data
+        
+        # split data by laps
+        cell_activity_by_lap = self.behavior.split_by_laps(cell_activity)
+        binned_pos_by_lap = self.behavior.split_by_laps(binned_pos)
+
+        # count spikes at position
+        ...... use spike counting from models.....................
+        max_pos = self.behavior_metadata["environment_dimensions"]
+        lap_activity = np.zeros((len(cell_ids), pos.shape[1]))
+        Vizualizer.plot_cell_activity_by_lap(cell_activity)
 
     def plot_place_cell_si_scores(
         self,
         movement_state="moving",
         smooth=True,
         window_size=2,
-        n_tests=100,
+        n_tests=1000,
         colors=["red", "tab:blue"],
+        method="skaggs",
     ):
         """
         Plots the spatial information scores of the place cells.
         """
-        method = "skaggs"  # FIXME: remove after finished with searching best method
-
         rate_map, time_map, activity, binned_pos = self.get_rate_time_map(
             movement_state=movement_state,
             smooth=smooth,
@@ -996,6 +1026,7 @@ class Task:
                 n_tests=n_tests,
                 spatial_information_method=method,
                 fps=fps,
+                max_pos=self.behavior_metadata["environment_dimensions"],
             )
         )
         additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']}"
@@ -1008,7 +1039,7 @@ class Task:
         )
         Vizualizer.plot_si_rates(
             si_rate,
-            zscore=zscore,
+            zscores=zscore,
             additional_title=additional_title,
             color=colors,
         )

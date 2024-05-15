@@ -705,6 +705,7 @@ class RotaryEncoder:
             "distance": cumulative_distance,
             "velocity": velocity_smoothed,
             "acceleration": acceleration,
+            "lap_start": lap_start_frame,
         }
         return data, lap_start_frame
 

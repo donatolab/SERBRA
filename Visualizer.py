@@ -767,9 +767,10 @@ class Vizualizer:
             title = title + f" ({additional_title})"
         zscores = split_array_by_zscore(zscore, zscore, threshold=2.5)
         if data_labels is None:
+            percentage = (len(zscores[0]) / (len(zscores[0]) + len(zscores[1]))) * 100
             data_labels = [
-                f"{len(zscores[0])} values > {zscore_threshold}",
-                f" {len(zscores[1])} values < {zscore_threshold}",
+                f"{percentage:.0f}% ({len(zscores[0])}) cells > {zscore_threshold}",
+                f" {len(zscores[1])} cells < {zscore_threshold}",
             ]
         Vizualizer.create_histogram(
             zscores,
@@ -789,7 +790,7 @@ class Vizualizer:
         si_rate,
         data_labels=None,
         additional_title=None,
-        zscore=None,
+        zscores=None,
         zscore_threshold=2.5,
         color=None,
         interactive=False,
@@ -802,14 +803,15 @@ class Vizualizer:
         if additional_title is not None:
             title = title + f" ({additional_title})"
         data = (
-            split_array_by_zscore(si_rate, zscore, threshold=zscore_threshold)
-            if zscore is not None
+            split_array_by_zscore(si_rate, zscores, threshold=zscore_threshold)
+            if zscores is not None
             else si_rate
         )
         if data_labels is None and len(data) == 2:
+            percentage = (len(data[0]) / (len(data[0]) + len(data[1]))) * 100
             data_labels = [
-                f"{len(data[0])} <= 5% probability",
-                f" {len(data[1])} > 5% probability",
+                f" {percentage:.0f}% ({len(data[0])}) <= 5% p",
+                f"{len(data[1])} > 5% p",
             ]
         Vizualizer.create_histogram(
             data,

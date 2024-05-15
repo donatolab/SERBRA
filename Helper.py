@@ -111,6 +111,22 @@ def dir_exist_create(directory):
         directory.mkdir()
 
 
+def create_dirs(dirs):
+    """
+    Create a new directory hierarchy.
+
+    Args:
+        dirs (list): A list of strings representing the path to the new directory.
+
+    Returns:
+        str: The path to the newly created directory.
+    """
+    new_path = dirs[0]
+    for path_part in dirs[1:]:
+        new_path = os.path.join(new_path, path_part)
+        dir_exist_create(new_path)
+    return new_path
+
 def get_directories(directory, regex_search=""):
     """
     This function returns a list of directories from the specified directory that match the regular expression search pattern.
