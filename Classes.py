@@ -5,7 +5,7 @@ from pathlib import Path
 from Setups import *
 from Helper import *
 from Visualizer import *
-from Models import Models
+from Models import Models, PlaceCellDetectors
 from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
 
 # type hints
@@ -796,11 +796,15 @@ class Task:
         binned_pos = Dataset.filter_by_idx(
             self.behavior.position.binned_data, idx_to_keep=idx_to_keep
         )
+
+        max_bin = self.behavior.position.max_bin
+
         rate_map, time_map = self.models.place_cell.get_maps(
             activity=activity,
             binned_pos=binned_pos,
             smooth=smooth,
             window_size=window_size,
+            max_bin=max_bin,
         )
         return rate_map, time_map, activity, binned_pos
 
@@ -878,6 +882,7 @@ class Task:
                 smooth=smooth,
                 window_size=window_size,
             )
+        max_bin = self.behavior.position.max_bin
         fps = self.behavior_metadata["imaging_fps"]
         rate_map = rate_map or rm
         time_map = time_map or tm
@@ -897,7 +902,7 @@ class Task:
                         binned_pos=binned_pos,
                         n_tests=n_test,
                         fps=fps,
-                        max_pos=self.behavior_metadata["environment_dimensions"],
+                        max_bin=max_bin,
                     )
                 )
             elif sort_by == "zscore":
@@ -909,7 +914,7 @@ class Task:
                         binned_pos=binned_pos,
                         n_tests=n_test,
                         fps=fps,
-                        max_pos=self.behavior_metadata["environment_dimensions"],
+                        max_bin=max_bin,
                     )
                 )
             zscore = zscore if provided_zscore is None else provided_zscore
@@ -972,30 +977,47 @@ class Task:
             norm=norm,
         )
         outputs = {
-            "rate_map": rate_map[sorting_indices],
+            "rate_map": rate_map,
             "time_map": time_map,
-            "zscore": zscore[sorting_indices],
+            "zscore": zscore,
+            "sorting_indices": sorting_indices,
         }
         return outputs
 
-    def plot_cell_activity_pos_by_time(self, cell_ids, sec_thr=5):  # int or [int]
+    def plot_cell_activity_pos_by_time(
+        self, cell_id, norm=True, smooth=True, window_size=5
+    ):
         """
         Plots the cell activity by position and time.
         """
 
         # get data
-        cell_activity = self.neural.photon.data[:, cell_ids]
+        cell_activity = self.neural.photon.data[:, cell_id]
         binned_pos = self.behavior.position.binned_data
-        
+
         # split data by laps
         cell_activity_by_lap = self.behavior.split_by_laps(cell_activity)
         binned_pos_by_lap = self.behavior.split_by_laps(binned_pos)
 
         # count spikes at position
-        ...... use spike counting from models.....................
-        max_pos = self.behavior_metadata["environment_dimensions"]
-        lap_activity = np.zeros((len(cell_ids), pos.shape[1]))
-        Vizualizer.plot_cell_activity_by_lap(cell_activity)
+        # ...... use spike counting from models.....................
+        max_bin = self.behavior.position.max_bin
+        cell_lap_activity = np.zeros((len(cell_activity_by_lap), max_bin))
+        for i, (lap_act, lap_pos) in enumerate(
+            zip(cell_activity_by_lap, binned_pos_by_lap)
+        ):
+            counts_at = PlaceCellDetectors.get_spike_map(lap_act, lap_pos, max_bin)
+            cell_lap_activity[i] = counts_at
+
+        additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} - Cell {cell_id}"
+
+        Vizualizer.plot_traces_shifted(
+            cell_lap_activity,
+            additional_title=additional_title,
+            norm=norm,
+            smooth=smooth,
+            window_size=window_size,
+        )
 
     def plot_place_cell_si_scores(
         self,
@@ -1016,6 +1038,7 @@ class Task:
         )
 
         fps = self.behavior_metadata["imaging_fps"]
+        max_bin = self.behavior.position.max_bin
 
         zscore, si_rate, si_content = (
             self.models.place_cell.si_model.compute_si_zscores(
@@ -1026,7 +1049,7 @@ class Task:
                 n_tests=n_tests,
                 spatial_information_method=method,
                 fps=fps,
-                max_pos=self.behavior_metadata["environment_dimensions"],
+                max_bin=max_bin,
             )
         )
         additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']}"

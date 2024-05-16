@@ -260,7 +260,7 @@ class Treadmill:
         belt_segment_len: List[int] = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3],  # in m
         belt_segment_seq: List[int] = [1, 2, 3, 4, 5, 6],
         belt_type: str = "A",
-        wheel_radius=0.1,  # in meters
+        wheel_radius=0.05,  # in meters
         wheel_clicks_per_rotation=500,
     ):
         self.belt_len = belt_len
@@ -740,8 +740,6 @@ class Treadmill_Setup(Setup):
             ]
         }
         needed_attributes = [
-            "radius",
-            "clicks_per_rotation",
             "stimulus_type",
             "stimulus_sequence",
             "stimulus_length",
@@ -756,7 +754,11 @@ class Treadmill_Setup(Setup):
             belt_segment_seq=metadata["stimulus_sequence"],
             belt_type=metadata["stimulus_type"],
             wheel_radius=metadata["radius"],
-            wheel_clicks_per_rotation=metadata["clicks_per_rotation"],
+            wheel_clicks_per_rotation=(
+                metadata["clicks_per_rotation"]
+                if "clicks_per_rotation" in metadata.keys()
+                else None
+            ),
         )
         self.rotary_encoder = RotaryEncoder(
             sample_rate=metadata["fps"], imaging_sample_rate=metadata["imaging_fps"]
@@ -1050,11 +1052,11 @@ class Suite2p(Preprocessing):
             "cell_geldrying": "cell_drying.npy",
             "binary": "data.bin",
         }
-        
-        self.ops_settings = {"tau": 1, #0.7 for GCaMP6f,   1.0 for GCaMP6m,    1.25-1.5 for GCaMP6s
-                             "max_overlap": 0.75, # percentage of allowed overlap between cells
-                             }
 
+        self.ops_settings = {
+            "tau": 1,  # 0.7 for GCaMP6f,   1.0 for GCaMP6m,    1.25-1.5 for GCaMP6s
+            "max_overlap": 0.75,  # percentage of allowed overlap between cells
+        }
 
     def process_data(self, raw_data, task_name=None, save=True):
         raise NotImplementedError(

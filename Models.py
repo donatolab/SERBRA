@@ -131,6 +131,7 @@ class PlaceCellDetectors(ModelsWrapper):
         binned_pos,
         smooth=True,
         window_size=2,
+        max_bin=None,
     ):
         # ..............add uncommented line again
         # if self.rate_map is None or self.time_map is None:
@@ -140,6 +141,7 @@ class PlaceCellDetectors(ModelsWrapper):
                 binned_pos,
                 smooth=smooth,
                 window_size=window_size,
+                max_bin=max_bin,
             )
         return self.rate_map, self.time_map
 
@@ -156,23 +158,24 @@ class PlaceCellDetectors(ModelsWrapper):
         return time_map, bins_edges
 
     @staticmethod
-    def get_spike_map(activity, binned_pos, max_pos=None):
-        num_cells = activity.shape[1]
+    def get_spike_map(activity, binned_pos, max_bin=None):
+        activity_2d = Dataset.force_2d(activity)
+        num_cells = activity_2d.shape[1]
         # for every frame count the activity of each cell
-        max_pos = max_pos or max(binned_pos) + 1
-        spike_map = np.zeros((num_cells, max_pos))
-        for frame, rate_map_vec in enumerate(activity):
+        max_bin = max_bin or max(binned_pos) + 1
+        spike_map = np.zeros((num_cells, max_bin))
+        for frame, rate_map_vec in enumerate(activity_2d):
             pos_at_frame = binned_pos[frame]
             spike_map[:, pos_at_frame] += rate_map_vec
         return spike_map
 
     @staticmethod
-    def get_rate_map(activity, binned_pos, max_pos=None):
+    def get_rate_map(activity, binned_pos, max_bin=None):
         """
         outputs spike rate per position per time
         """
         spike_map = PlaceCellDetectors.get_spike_map(
-            activity, binned_pos, max_pos=max_pos
+            activity, binned_pos, max_bin=max_bin
         )
         # smooth and normalize
         # normalize by spatial occupancy
@@ -190,13 +193,14 @@ class PlaceCellDetectors(ModelsWrapper):
         self,
         activity,
         binned_pos,
+        max_bin=None,
         smooth=True,
         window_size=2,
     ):
         rate_map_org, time_map = self.get_rate_map(
             activity,
             binned_pos,
-            max_pos=self.behavior_metadata["environment_dimensions"],
+            max_bin=max_bin,
         )
         # smoof over 2 bins (typically 2cm)
         rate_map = (
@@ -344,7 +348,7 @@ class SpatialInformation(Model):
         n_tests=500,
         spatial_information_method="skaggs",
         fps=None,
-        max_pos=None,
+        max_bin=None,
     ):
         """
         return spatial information and corresponding zscores
@@ -353,7 +357,7 @@ class SpatialInformation(Model):
         rate_map, time_map = PlaceCellDetectors.get_rate_map(
             activity,
             binned_pos,
-            max_pos=self.behavior_metadata["environment_dimensions"],
+            max_bin=max_bin
         )
 
         inf_rate, inf_content = self.get_spatial_information(
@@ -375,7 +379,7 @@ class SpatialInformation(Model):
                 binned_pos, np.random.choice(np.arange(binned_pos.shape[0]), 1)
             )
             rate_map_shuffled, time_map_shuffled = PlaceCellDetectors.get_rate_map(
-                activity, binned_pos_shuffled, max_pos=max_pos
+                activity, binned_pos_shuffled, max_bin=max_bin
             )
             # inf_rate, _ = self.get_spatial_information(
             #    rate_map, time_map_shuffled, spatial_information_method

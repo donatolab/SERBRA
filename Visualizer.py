@@ -1,6 +1,3 @@
-from Helper import *
-from Datasets import Datasets
-
 # Plotting
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -10,9 +7,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # from pySankey.sankey import sankey
-
 import cebra
 import pandas as pd
+
+# OWN
+from Helper import *
+from Datasets import Datasets
 
 
 class Vizualizer:
@@ -354,49 +354,6 @@ class Vizualizer:
         plt.show()
         plt.close()
 
-    def histogam_subplot(
-        self,
-        data: np.ndarray,
-        title: str,
-        ax,
-        bins=100,
-        xlim=[0, 1],
-        xlabel="",
-        ylabel="Frequency",
-        xticklabels=None,
-        color=None,
-    ):
-        ax.set_title(title)
-        ax.hist(data.flatten(), bins=bins, color=color)
-        ax.set_xlim(xlim[0], xlim[1])
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        if xticklabels == "empty":
-            ax.set_xticklabels("")
-
-    def heatmap_subplot(
-        self,
-        matrix,
-        title,
-        ax,
-        sort=False,
-        xlabel="Cell ID",
-        ylabel="Cell ID",
-        cmap="YlGnBu",
-    ):
-        if sort:
-            # Assuming correlations is your correlation matrix as a NumPy array
-            # Convert it to a Pandas DataFrame
-            correlations_df = pd.DataFrame(matrix)
-            # sort the correlation matrix
-            matrix = correlations_df.sort_values(by=0, axis=1, ascending=False)
-
-        # Creating a heatmap with sort correlations
-        ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        sns.heatmap(matrix, annot=False, cmap=cmap, ax=ax)
-
     def plot_corr_hist_heat_salience(
         self,
         correlation: np.ndarray,
@@ -633,52 +590,7 @@ class Vizualizer:
         plt.show()
         plt.close()
 
-    @staticmethod
-    def plot_traces_shifted(
-        traces,
-        figsize_x=20,
-        labels=None,
-        norm=False,
-        additional_title=None,
-        savepath=None,
-    ):
-        """
-        Plots traces shifted up by 10 for each trace
-        """
-        title = "Activity"
-        if additional_title:
-            title += f" {additional_title}"
-
-        lines_per_y = 1
-        y_size = int(len(traces) / lines_per_y)
-        figsize = (figsize_x, y_size / 2)
-        fig, ax = plt.subplots()
-        fig.set_size_inches(figsize)
-        if norm:
-            traces = normalize_01(traces)
-        for i, trace in enumerate(traces):
-            if np.isnan(trace).any():
-                continue
-            if norm:
-                trace = normalize_01(trace)
-            if labels is not None:
-                label = (
-                    f"{labels[i]:.3f}" if not isinstance(labels[i], str) else labels[i]
-                )
-                ax.plot(trace + i / lines_per_y, label=label)
-            else:
-                ax.plot(trace + i / lines_per_y)
-        # plt.ylim(-1, y_size)
-        plt.xlim(0, traces.shape[1])
-        plt.title(title)
-        if savepath:
-            plt.savefig(savepath)
-        if labels is not None:
-            # plt.legend(loc="upper right")
-            plt.legend(bbox_to_anchor=(1, 1))
-        plt.show()
-        plt.close()
-
+    #########################
     @staticmethod
     def plot_cell_activites_heatmap(
         rate_map,
@@ -847,3 +759,98 @@ class Vizualizer:
         )
 
         fig.show()
+
+    @staticmethod
+    def plot_traces_shifted(
+        traces,
+        figsize_x=20,
+        labels=None,
+        norm=False,
+        smooth=False,
+        window_size=5,
+        additional_title=None,
+        savepath=None,
+    ):
+        """
+        Plots traces shifted up by 10 for each trace
+        """
+        title = "Activity"
+        if additional_title:
+            title += f" {additional_title}"
+
+        lines_per_y = 1
+        y_size = int(len(traces) / lines_per_y)
+        figsize = (figsize_x, y_size / 2)
+        fig, ax = plt.subplots()
+        fig.set_size_inches(figsize)
+        if smooth:
+            traces = smooth_array(traces, window_size=window_size, axis=1)
+        if norm:
+            traces = normalize_01(traces)
+            traces = np.nan_to_num(traces)
+        for i, trace in enumerate(traces):
+            upshift = i / lines_per_y + 0.1 * i
+            shifted_trace = trace + upshift
+            label = None
+            if labels is not None:
+                label = (
+                    f"{labels[i]:.3f}" if not isinstance(labels[i], str) else labels[i]
+                )
+            ax.plot(shifted_trace, label=label)
+        plt.ylim(-0.1, y_size)
+        plt.yticks(range(0, y_size))
+        plt.xlim(0, traces.shape[1])
+        plt.title(title)
+        plt.xlabel("Bins")
+        plt.ylabel("Cell")
+        if savepath:
+            plt.savefig(savepath)
+        if labels is not None:
+            # plt.legend(loc="upper right")
+            plt.legend(bbox_to_anchor=(1, 1))
+        plt.show()
+        plt.close()
+
+    # Subplots
+    def histogam_subplot(
+        self,
+        data: np.ndarray,
+        title: str,
+        ax,
+        bins=100,
+        xlim=[0, 1],
+        xlabel="",
+        ylabel="Frequency",
+        xticklabels=None,
+        color=None,
+    ):
+        ax.set_title(title)
+        ax.hist(data.flatten(), bins=bins, color=color)
+        ax.set_xlim(xlim[0], xlim[1])
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        if xticklabels == "empty":
+            ax.set_xticklabels("")
+
+    def heatmap_subplot(
+        self,
+        matrix,
+        title,
+        ax,
+        sort=False,
+        xlabel="Cell ID",
+        ylabel="Cell ID",
+        cmap="YlGnBu",
+    ):
+        if sort:
+            # Assuming correlations is your correlation matrix as a NumPy array
+            # Convert it to a Pandas DataFrame
+            correlations_df = pd.DataFrame(matrix)
+            # sort the correlation matrix
+            matrix = correlations_df.sort_values(by=0, axis=1, ascending=False)
+
+        # Creating a heatmap with sort correlations
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        sns.heatmap(matrix, annot=False, cmap=cmap, ax=ax)

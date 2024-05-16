@@ -374,7 +374,7 @@ def correlate_vectors(vectors: np.ndarray):
 
     Returns:
         np.ndarray: A matrix of correlations/cosine similarities between each pair of vectors.
-
+ 
     Example:
         vectors = np.array([[1, 2, 3],
                             [4, 5, 6],
