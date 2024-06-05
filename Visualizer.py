@@ -2,9 +2,11 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.ticker import MaxNLocator
+from matplotlib.collections import LineCollection
+from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
-import plotly.express as px
-import plotly.graph_objects as go
+import plotly
+
 
 # from pySankey.sankey import sankey
 import cebra
@@ -641,7 +643,7 @@ class Vizualizer:
         stacked=True,
     ):
         if interactive:
-            fig = px.histogram(
+            fig = plotly.express.histogram(
                 data,
                 title=title,
                 labels={"value": xlabel, "count": ylabel},
@@ -749,9 +751,9 @@ class Vizualizer:
         target = [3, 4, 4, 2, 2, 5, 6]
         count = [5, 6, 22, 21, 6, 22, 5]
 
-        fig = go.Figure(
+        fig = plotly.graph_object.Figure(
             data=[
-                go.Sankey(
+                plotly.graph_object.Sankey(
                     node={"label": label_list},
                     link={"source": source, "target": target, "value": count},
                 )
@@ -759,6 +761,78 @@ class Vizualizer:
         )
 
         fig.show()
+
+    @staticmethod
+    def plot_single_cell_activity(
+        traces,
+        figsize_x=20,
+        labels=None,
+        norm=False,
+        smooth=False,
+        window_size=5,
+        additional_title=None,
+        savepath=None,
+        lines_per_y=1,
+        use_discrete_colors=False,
+        cmap="gray",
+        show=True,
+    ):
+        """
+        Plots traces shifted up by 10 for each trace
+        """
+        # create 2 subplots
+        fig, (ax1, ax2) = plt.subplots(
+            2, 1, gridspec_kw={"height_ratios": [1, 10]}
+        )  # Set relative heights of subplots
+        fig.subplots_adjust(hspace=0.08)  # Decrease gap between subplots
+
+        sum_traces = np.array([np.sum(traces, axis=0)])
+
+        if labels:
+            labels = make_list_ifnot(labels)
+
+        ax1 = Vizualizer.traces_subplot(
+            ax1,
+            sum_traces,
+            labels=labels,
+            norm=norm,
+            smooth=smooth,
+            window_size=window_size,
+            lines_per_y=1.1,
+            xlabel="",
+            yticks=None,
+            additional_title=f"avg. {additional_title}",
+            ylabel="",
+            figsize_x=figsize_x,
+            use_discrete_colors=use_discrete_colors,
+            cmap=cmap,
+        )
+
+        if norm:
+            norm_traces = normalize_01(traces)
+            norm_traces = np.nan_to_num(norm_traces)
+
+        ax2 = Vizualizer.traces_subplot(
+            ax2,
+            norm_traces,
+            labels=None,
+            norm=False,
+            smooth=smooth,
+            window_size=window_size,
+            lines_per_y=lines_per_y,
+            additional_title=additional_title,
+            ylabel="lap",
+            figsize_x=figsize_x,
+            use_discrete_colors=use_discrete_colors,
+            cmap=cmap,
+        )
+        if savepath:
+            plt.savefig(savepath)
+        if show:
+            plt.show()
+        plt.close()
+
+        return fig
 
     @staticmethod
     def plot_traces_shifted(
@@ -770,48 +844,144 @@ class Vizualizer:
         window_size=5,
         additional_title=None,
         savepath=None,
+        lines_per_y=1,
+        use_discrete_colors=True,
+        cmap="inferno",  # gray, magma, plasma, viridis
     ):
         """
         Plots traces shifted up by 10 for each trace
+        cmap: colormap
+            default: inferno
+            good colormaps for black background: gray, inferno, magma, plasma, viridis
+            white colormaps for black background: binary, blues
         """
-        title = "Activity"
-        if additional_title:
-            title += f" {additional_title}"
-
-        lines_per_y = 1
-        y_size = int(len(traces) / lines_per_y)
-        figsize = (figsize_x, y_size / 2)
         fig, ax = plt.subplots()
-        fig.set_size_inches(figsize)
+        ax = Vizualizer.traces_subplot(
+            ax,
+            traces,
+            labels=labels,
+            norm=norm,
+            smooth=smooth,
+            window_size=window_size,
+            lines_per_y=lines_per_y,
+            additional_title=additional_title,
+            figsize_x=figsize_x,
+            use_discrete_colors=use_discrete_colors,
+            cmap=cmap,
+        )
+        if savepath:
+            plt.savefig(savepath)
+        plt.show()
+        plt.close()
+
+    def calculate_alpha(value, min_value, max_value, min_alpha=0.1, max_alpha=1.0):
+        """Calculate alpha value based on the line value."""
+        if max_value == min_value:
+            return 0.1  # max_alpha
+        normalized_value = (value - min_value) / (max_value - min_value)
+        return min_alpha + (max_alpha - min_alpha) * normalized_value
+
+    # Subplots
+    def traces_subplot(
+        ax,
+        traces,
+        additional_title=None,
+        color=None,
+        labels=None,
+        norm=False,
+        smooth=False,
+        window_size=5,
+        lines_per_y=1,
+        plot_legend=True,
+        yticks="default",
+        xlabel="Bins",
+        ylabel="Cell",
+        figsize_x=20,
+        figsize_y=None,
+        use_discrete_colors=True,
+        cmap="gray",
+    ):
+        """
+        cmap: colormap
+            good colormaps for black background: gray, inferno, magma, plasma, viridis
+            white colormaps for black background: binary, blues
+        """
         if smooth:
             traces = smooth_array(traces, window_size=window_size, axis=1)
         if norm:
             traces = normalize_01(traces)
             traces = np.nan_to_num(traces)
-        for i, trace in enumerate(traces):
-            upshift = i / lines_per_y + 0.1 * i
-            shifted_trace = trace + upshift
-            label = None
-            if labels is not None:
-                label = (
-                    f"{labels[i]:.3f}" if not isinstance(labels[i], str) else labels[i]
-                )
-            ax.plot(shifted_trace, label=label)
-        plt.ylim(-0.1, y_size)
-        plt.yticks(range(0, y_size))
-        plt.xlim(0, traces.shape[1])
-        plt.title(title)
-        plt.xlabel("Bins")
-        plt.ylabel("Cell")
-        if savepath:
-            plt.savefig(savepath)
-        if labels is not None:
-            # plt.legend(loc="upper right")
-            plt.legend(bbox_to_anchor=(1, 1))
-        plt.show()
-        plt.close()
 
-    # Subplots
+        if labels is None:
+            labels = [None] * len(traces)
+            plot_legend = False
+        else:
+            labels = [
+                f"{label:.3f}" if not isinstance(label, str) else label
+                for label in labels
+            ]
+
+        shift_scale = 0.1 / lines_per_y
+        linecolor = color or None
+
+        min_value, max_value = np.min(traces) - np.max(traces), np.max(traces)
+        for i, (trace, label) in enumerate(zip(traces, labels)):
+            # min_value, max_value = np.min(trace) - np.max(trace) / 3, np.max(trace)
+            upshift = i / lines_per_y + shift_scale * i
+            shifted_trace = trace / lines_per_y + upshift
+
+            if use_discrete_colors:
+                ax.plot(shifted_trace, color=linecolor, label=label)
+            else:
+                # Create line segments
+                points = np.array(
+                    [np.arange(len(shifted_trace)), shifted_trace]
+                ).T.reshape(-1, 1, 2)
+                segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+                # Calculate alpha for each segment
+                alphas = [
+                    Vizualizer.calculate_alpha(value, min_value, max_value)
+                    for value in trace
+                ]
+
+                # Create a LineCollection
+                lc = LineCollection(segments, cmap=cmap, label=label)  # , alpha=alphas)
+                lc.set_array(np.array(alphas))
+                ax.add_collection(lc)
+
+            ax.axhline(
+                y=upshift, color="grey", linestyle="--", alpha=0.2
+            )  # Adding grey dashed line
+
+        if not figsize_y:
+            figsize_y = int(len(traces) / lines_per_y)
+            # y_size /= 2
+
+        title = "Activity"
+        if additional_title:
+            title += f" {additional_title}"
+
+        if yticks == "default":
+            yticks = range(traces.shape[0])
+            ytick_pos = [
+                i / lines_per_y + shift_scale * i for i, tick in enumerate(yticks)
+            ]
+            ax.set_yticks(ytick_pos, yticks)
+            ax.set_ylim(-shift_scale, np.max(ytick_pos) + 1 / lines_per_y)
+        else:
+            ax.set_ylim(-shift_scale, None)
+
+        ax.set_title(title)
+        ax.set_xlim(0, traces.shape[1])
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.figure.set_size_inches(figsize_x, figsize_y)  # Set figure size
+        if plot_legend:
+            # plt.legend(loc="upper right")
+            ax.legend(bbox_to_anchor=(1, 1))
+        return ax
+
     def histogam_subplot(
         self,
         data: np.ndarray,

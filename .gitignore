@@ -1,5 +1,6 @@
 data*
 *.pt
+*.pdf
 Demo*
 **.log
 logs*

@@ -127,6 +127,7 @@ def create_dirs(dirs):
         dir_exist_create(new_path)
     return new_path
 
+
 def get_directories(directory, regex_search=""):
     """
     This function returns a list of directories from the specified directory that match the regular expression search pattern.
@@ -197,6 +198,8 @@ def search_file(directory, filename):
 
 
 def make_list_ifnot(string_or_list):
+    if isinstance(string_or_list, np.ndarray):
+        return string_or_list.tolist()
     return [string_or_list] if type(string_or_list) != list else string_or_list
 
 
@@ -374,7 +377,7 @@ def correlate_vectors(vectors: np.ndarray):
 
     Returns:
         np.ndarray: A matrix of correlations/cosine similarities between each pair of vectors.
- 
+
     Example:
         vectors = np.array([[1, 2, 3],
                             [4, 5, 6],
@@ -390,11 +393,12 @@ def correlate_vectors(vectors: np.ndarray):
 
 ## normalization
 def normalize_01(vector, axis=1):
-    axis = 0 if axis==1 and len(vector.shape) == 1 else axis
+    axis = 0 if axis == 1 and len(vector.shape) == 1 else axis
     min_val = np.min(vector, axis=axis, keepdims=True)
     max_val = np.max(vector, axis=axis, keepdims=True)
     normalized_vector = (vector - min_val) / (max_val - min_val)
     return normalized_vector
+
 
 # strings
 def filter_strings_by_properties(

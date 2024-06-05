@@ -315,6 +315,77 @@ class Session:
         # TODO: implement consistency session plot
         pass
 
+########################################################################################
+    def plot_cell_activity_pos_by_time(
+        self,
+        cell_ids,
+
+        labels=None,
+        norm=True,
+        smooth=True,
+        window_size=5,
+        lines_per_y=3,
+        cmap="inferno",
+        show=False,
+        save_pdf=False,
+    ):
+        """
+        Plots the cell activity by position and time.
+        cmap: str
+            Colormap to use for the plot. Default is 'inferno' (black to yellow) for better visibility.
+        """
+        cell_ids = make_list_ifnot(cell_ids)
+        labels = labels or [None] * len(cell_ids)
+        if len(labels) != len(cell_ids):
+            raise ValueError("Labels must be the same length as cell_ids.")
+
+        if "all" in cell_ids:
+            cell_ids = np.arange(self.neural.photon.data.shape[1])
+        cell_dict = {}
+        for cell_id in cell_ids:
+            cell_dict[cell_id] = {"lap_activity": None, "additional_title": None}
+            
+            # get data
+            cell_activity = self.neural.photon.data[:, cell_id]
+            binned_pos = self.behavior.position.binned_data
+
+            # split data by laps
+            cell_activity_by_lap = self.behavior.split_by_laps(cell_activity)
+            binned_pos_by_lap = self.behavior.split_by_laps(binned_pos)
+
+            # count spikes at position
+            max_bin = self.behavior.position.max_bin
+            cell_lap_activity = np.zeros((len(cell_activity_by_lap), max_bin))
+            for i, (lap_act, lap_pos) in enumerate(
+                zip(cell_activity_by_lap, binned_pos_by_lap)
+            ):
+                counts_at = PlaceCellDetectors.get_spike_map(lap_act, lap_pos, max_bin)
+                cell_lap_activity[i] = counts_at
+
+            additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} - Cell {cell_id}"
+
+            cell_dict[cell_id]["lap_activity"] = cell_lap_activity
+            cell_dict[cell_id]["additional_title"] = additional_title
+
+        figures = []
+        for (cell_id, cell_data), label in zip(cell_dict.items(), labels):
+            fig = Vizualizer.plot_single_cell_activity(
+                cell_data["lap_activity"],
+                additional_title=cell_data["additional_title"],
+                labels=label,
+                norm=norm,
+                smooth=smooth,
+                window_size=window_size,
+                lines_per_y=lines_per_y,
+                cmap=cmap,
+                show=show,
+            )
+            figures.append(fig)
+
+        if save_pdf:
+            with PdfPages(f"{self.id}_cells_activity.pdf") as pdf:
+                for fig in figures:
+                    pdf.savefig(fig)
 
 class Task:
     def __init__(
@@ -726,6 +797,31 @@ class Task:
                 models_original.append(model)
         return models_original, models_shuffled
 
+    def get_spike_map_per_lap(self, cell_id):
+        """
+        Returns the spike map for a given cell_id. Used for parallel processing.
+        """
+        # get data
+        cell_activity = self.neural.photon.data[:, cell_id]
+        binned_pos = self.behavior.position.binned_data
+
+        # split data by laps
+        cell_activity_by_lap = self.behavior.split_by_laps(cell_activity)
+        binned_pos_by_lap = self.behavior.split_by_laps(binned_pos)
+
+        # count spikes at position
+        max_bin = self.behavior.position.max_bin
+        cell_lap_activity = np.zeros((len(cell_activity_by_lap), max_bin))
+        for i, (lap_act, lap_pos) in enumerate(
+            zip(cell_activity_by_lap, binned_pos_by_lap)
+        ):
+            counts_at = PlaceCellDetectors.get_spike_map(lap_act, lap_pos, max_bin)
+            cell_lap_activity[i] = counts_at
+
+        additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} - Cell {cell_id}"
+
+        return cell_lap_activity, additional_title
+
     def plot_model_losses(
         self,
         models=None,
@@ -857,6 +953,8 @@ class Task:
         sort_by="peak",
         top_n=10,
         zscore_threshold=2.5,
+        use_discrete_colors=True,
+        cmap="inferno",
     ):
         """
         parameter:
@@ -974,50 +1072,77 @@ class Task:
             to_plot_rate_map,
             labels=to_plot_labels,
             additional_title=additional_title,
+            use_discrete_colors=use_discrete_colors,
             norm=norm,
+            cmap=cmap,
         )
         outputs = {
             "rate_map": rate_map,
             "time_map": time_map,
             "zscore": zscore,
             "sorting_indices": sorting_indices,
+            "si_rate": si_rate,
         }
         return outputs
 
     def plot_cell_activity_pos_by_time(
-        self, cell_id, norm=True, smooth=True, window_size=5
+        self,
+        cell_ids,
+        labels=None,
+        norm=True,
+        smooth=True,
+        window_size=5,
+        lines_per_y=3,
+        cmap="inferno",
+        show=False,
+        save_pdf=False,
+        parallel=True,
     ):
         """
         Plots the cell activity by position and time.
+        cmap: str
+            Colormap to use for the plot. Default is 'inferno' (black to yellow) for better visibility.
         """
+        cell_ids = make_list_ifnot(cell_ids)
+        labels = labels or [None] * len(cell_ids)
+        if len(labels) != len(cell_ids):
+            raise ValueError("Labels must be the same length as cell_ids.")
 
-        # get data
-        cell_activity = self.neural.photon.data[:, cell_id]
-        binned_pos = self.behavior.position.binned_data
+        if "all" in cell_ids:
+            cell_ids = np.arange(self.neural.photon.data.shape[1])
+        
+        cell_dict = PlaceCellDetectors.get_spike_maps_per_laps(cell_ids=cell_ids,
+                                                  neural_data=self.neural.photon.data,
+                                                  behavior=self.behavior,
+                                                  parallel=parallel)
+        #cell_dict[cell_id]["lap_activity"] = cell_lap_activity
 
-        # split data by laps
-        cell_activity_by_lap = self.behavior.split_by_laps(cell_activity)
-        binned_pos_by_lap = self.behavior.split_by_laps(binned_pos)
+        for cell_id in cell_ids:
+            additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} - Cell {cell_id}"
+            cell_dict[cell_id]["additional_title"] = additional_title
 
-        # count spikes at position
-        # ...... use spike counting from models.....................
-        max_bin = self.behavior.position.max_bin
-        cell_lap_activity = np.zeros((len(cell_activity_by_lap), max_bin))
-        for i, (lap_act, lap_pos) in enumerate(
-            zip(cell_activity_by_lap, binned_pos_by_lap)
-        ):
-            counts_at = PlaceCellDetectors.get_spike_map(lap_act, lap_pos, max_bin)
-            cell_lap_activity[i] = counts_at
+            #...........copy this to session with same function name
+            #............create function for plotting for all tasks from session
 
-        additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} - Cell {cell_id}"
+        figures = []
+        for (cell_id, cell_data), label in zip(cell_dict.items(), labels):
+            fig = Vizualizer.plot_single_cell_activity(
+                cell_data["lap_activity"],
+                additional_title=cell_data["additional_title"],
+                labels=label,
+                norm=norm,
+                smooth=smooth,
+                window_size=window_size,    
+                lines_per_y=lines_per_y,
+                cmap=cmap,
+                show=show,
+            )
+            figures.append(fig)
 
-        Vizualizer.plot_traces_shifted(
-            cell_lap_activity,
-            additional_title=additional_title,
-            norm=norm,
-            smooth=smooth,
-            window_size=window_size,
-        )
+        if save_pdf:
+            with PdfPages(f"{self.id}_cells_activity.pdf") as pdf:
+                for fig in figures:
+                    pdf.savefig(fig)
 
     def plot_place_cell_si_scores(
         self,
