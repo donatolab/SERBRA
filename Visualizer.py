@@ -762,37 +762,69 @@ class Vizualizer:
 
         fig.show()
 
-    def plot_multi_session_single_cell_activity(
-        traces,
-        figsize_x=20,
-        labels=None,
-        norm=False,
-        smooth=False,
-        window_size=5,
+    def plot_multi_task_cell_activity_pos_by_time(
+        axis_dict,
         additional_title=None,
-        savepath=None,
-        lines_per_y=1,
-        use_discrete_colors=False,
-        cmap="gray",
         show=True,
+        save_pdf=True,
+        figsize=None,  # (20, 10)
     ):
         """
         Plots traces shifted up by 10 for each trace
         """
         # create 2 subplots
+        fig, (ax1, ax2) = plt.subplots(
+            2, 1, gridspec_kw={"height_ratios": [1, 10]}
+        )  # Set relative heights of subplots
+        fig.subplots_adjust(hspace=0.08)  # Decrease gap between subplots
 
-        title = f"Cell activity by position"
-        if additional_title:
-            title += f" {additional_title}"
+        sum_traces = np.array([np.sum(traces, axis=0)])
 
-        plt.title(dothiscorrectlater)
+        if labels:
+            labels = make_list_ifnot(labels)
 
+        ax1 = Vizualizer.traces_subplot(
+            ax1,
+            sum_traces,
+            labels=labels,
+            norm=norm,
+            smooth=smooth,
+            window_size=window_size,
+            lines_per_y=1.1,
+            xlabel="",
+            yticks=None,
+            additional_title=f"avg. {additional_title}",
+            ylabel="",
+            figsize_x=figsize_x,
+            use_discrete_colors=use_discrete_colors,
+            cmap=cmap,
+        )
+
+        if norm:
+            norm_traces = normalize_01(traces)
+            norm_traces = np.nan_to_num(norm_traces)
+
+        ax2 = Vizualizer.traces_subplot(
+            ax2,
+            norm_traces,
+            labels=None,
+            norm=False,
+            smooth=smooth,
+            window_size=window_size,
+            lines_per_y=lines_per_y,
+            additional_title=additional_title,
+            ylabel="lap",
+            figsize_x=figsize_x,
+            use_discrete_colors=use_discrete_colors,
+            cmap=cmap,
+        )
         if savepath:
-            plt.savefig(savepath, dpi=300)
-            
+            plt.savefig(savepath)
         if show:
             plt.show()
+            plt.close()
 
+        return fig
 
     @staticmethod
     def plot_single_cell_activity(
@@ -862,9 +894,9 @@ class Vizualizer:
             plt.savefig(savepath)
         if show:
             plt.show()
-        plt.close()
+            plt.close()
 
-        return fig, (ax1, ax2)
+        return fig
 
     @staticmethod
     def plot_traces_shifted(

@@ -318,14 +318,12 @@ class Session:
     ########################################################################################
     def plot_cell_activity_pos_by_time(
         self,
-        cell_ids: int | List[int] = None,
+        cell_ids: int = None,
         task_ids: str = None,
         movement_state: str = "moving",
         sort_by: str = "zscore",  # peak, spatial_information, spatial_content, zscore or indices
         reference_task: str = None,  # task id to use for sorting
-        top_n: (
-            str | int
-        ) = 10,  # if set to "significant" will use zscore_thr to get top n cells
+        top_n: str = 10,  # if set to "significant" will use zscore_thr to get top n cells
         n_tests: int = 1000,
         provided_zscore: np.ndarray = None,
         zscore_thr: float = 2.5,
@@ -352,12 +350,16 @@ class Session:
         # get rate map and time map and other info for sorting
         if not reference_task and cell_ids is None:
             print("No reference task or cell ids given. Printing all cells.")
-        elif reference_task and not cell_ids:
+        elif reference_task and cell_ids is None:
             if reference_task not in self.tasks.keys():
                 raise ValueError(
                     f"Reference task {reference_task} not found. in session {self.id}"
                 )
-            task = self.tasks[reference_task]
+            task = (
+                self.tasks[reference_task]
+                if reference_task
+                else self.tasks[list(self.tasks.keys())[0]]
+            )
             if not provided_zscore:
                 (
                     rate_map,
@@ -378,7 +380,8 @@ class Session:
                 )
             cell_ids = sorting_indices
 
-        cell_ids = make_list_ifnot(cell_ids) if cell_ids else None
+        cell_ids = make_list_ifnot(cell_ids) if cell_ids is not None else None
+        task_cell_dict = {}
         for task_id, task in self.tasks.items():
             if task_ids and task_id not in task_ids:
                 continue
@@ -389,7 +392,7 @@ class Session:
                 movement_state=movement_state,
                 smooth=smooth,
                 window_size=window_size,
-                n_tests=1,
+                n_tests=1, #FIXME:....................change to n_tests
             )
 
             labels = [
@@ -397,44 +400,35 @@ class Session:
                 for cell in cell_ids
             ]
 
-            # Extract cell activity by lap and create plot
-            axis = task.plot_cell_activity_pos_by_time(
-                cell_ids,
-                labels=labels,
-                norm=norm,
-                lines_per_y=lines_per_y,
-                cmap=cmap,
-                save_pdf=False,
-                show=False,
+            cell_dict = PlaceCellDetectors.get_spike_maps_per_laps(
+                cell_ids=cell_ids,
+                neural_data=self.neural.photon.data,
+                behavior=self.behavior,
             )
-            ....... axis needs to be saved and plotted together
+
+            for cell_id, label in zip(cell_ids, labels):
+                additional_title = f"Stimulus: {self.behavior_metadata['stimulus_type']}"
+                cell_dict[cell_id]["additional_title"] = additional_title
+
+            task_cell_dict[task_id] = cell_dict
 
         # plotting
         only_moving = True if movement_state == "moving" else False
-        additional_title = (
-            f"{self.id} sorted by {sort_by if top_n != 'significant' else 'zscore'}"
-        )
-        if only_moving:
-            additional_title += " (Moving only)"
 
-        Vizualizer.plot_multi_task_cell_activity_pos_by_time(
-            outputs,
-            additional_title=additional_title,
-            norm=norm,
-            smooth=smooth,
-            window_size=window_size,
-            lines_per_y=lines_per_y,
-            cmap=cmap,
-            show=show,
-            save_pdf=save_pdf,
-        )
+        cell_task_activity_dict = {}
+        for task_id, cell_dict in task_cell_dict.items():
+            for cell_id, cell_dict in cell_dict.items():
+                cell_task_activity_dict[cell_id] = {task_id: cell_dict}
 
-        if save_pdf:
-            with PdfPages(f"{self.id}_cells_activity.pdf") as pdf:
-                for fig in figures:
-                    pdf.savefig(fig)
-
-        return outputs
+        for cell_id, task_activity_dict in cell_task_activity_dict.items():
+            additional_title = (
+                f"{self.id} sorted by {sort_by if top_n != 'significant' else 'zscore'} Cell {cell_id}"
+            )
+            if only_moving:
+                additional_title += " (Moving only)"
+            .......... function anfertigen 
+            Vizualizer.plot_multi_task_cell_activity_pos_by_time(
+                                                        )
 
 
 class Task:
@@ -1193,17 +1187,16 @@ class Task:
             cell_ids=cell_ids,
             neural_data=self.neural.photon.data,
             behavior=self.behavior,
-        )
-        # cell_dict[cell_id]["lap_activity"] = cell_lap_activity
+        ) # cell_dict[cell_id]["lap_activity"] = cell_lap_activity
 
         for cell_id in cell_ids:
-            additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} - Cell {cell_id}"
+            additional_title = f"{self.id} Stimulus: {self.behavior_metadata['stimulus_type']} - Cell {cell_id}"
             cell_dict[cell_id]["additional_title"] = additional_title
 
         figures = [None] * len(cell_dict)
-        axis = [None] * len(cell_dict)
-        for (cell_id, cell_data), label in zip(cell_dict.items(), labels):
-            fig, axis = Vizualizer.plot_single_cell_activity(
+        for i, (cell_id, cell_data) in enumerate(cell_dict.items()):
+            label = labels[i]
+            fig = Vizualizer.plot_single_cell_activity(
                 cell_data["lap_activity"],
                 additional_title=cell_data["additional_title"],
                 labels=label,
@@ -1214,14 +1207,14 @@ class Task:
                 cmap=cmap,
                 show=show,
             )
-            figures.append(fig)
+            figures[i] = fig
 
         if save_pdf:
             with PdfPages(f"{self.id}_cells_activity.pdf") as pdf:
                 for fig in figures:
                     pdf.savefig(fig)
 
-        return axis
+        return 
 
     def plot_place_cell_si_scores(
         self,
