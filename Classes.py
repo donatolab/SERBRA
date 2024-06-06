@@ -315,77 +315,127 @@ class Session:
         # TODO: implement consistency session plot
         pass
 
-########################################################################################
+    ########################################################################################
     def plot_cell_activity_pos_by_time(
         self,
-        cell_ids,
-
-        labels=None,
-        norm=True,
-        smooth=True,
-        window_size=5,
-        lines_per_y=3,
-        cmap="inferno",
-        show=False,
-        save_pdf=False,
+        cell_ids: int | List[int] = None,
+        task_ids: str = None,
+        movement_state: str = "moving",
+        sort_by: str = "zscore",  # peak, spatial_information, spatial_content, zscore or indices
+        reference_task: str = None,  # task id to use for sorting
+        top_n: (
+            str | int
+        ) = 10,  # if set to "significant" will use zscore_thr to get top n cells
+        n_tests: int = 1000,
+        provided_zscore: np.ndarray = None,
+        zscore_thr: float = 2.5,
+        norm: bool = True,
+        smooth: bool = True,
+        window_size: int = 5,
+        lines_per_y: int = 3,
+        cmap: str = "inferno",
+        show: bool = False,
+        save_pdf: bool = True,
     ):
         """
         Plots the cell activity by position and time.
         cmap: str
             Colormap to use for the plot. Default is 'inferno' (black to yellow) for better visibility.
         """
-        cell_ids = make_list_ifnot(cell_ids)
-        labels = labels or [None] * len(cell_ids)
-        if len(labels) != len(cell_ids):
-            raise ValueError("Labels must be the same length as cell_ids.")
 
-        if "all" in cell_ids:
-            cell_ids = np.arange(self.neural.photon.data.shape[1])
-        cell_dict = {}
-        for cell_id in cell_ids:
-            cell_dict[cell_id] = {"lap_activity": None, "additional_title": None}
-            
-            # get data
-            cell_activity = self.neural.photon.data[:, cell_id]
-            binned_pos = self.behavior.position.binned_data
+        sort_by = (
+            "custom"
+            if isinstance(sort_by, list) or isinstance(sort_by, np.ndarray)
+            else sort_by
+        )
 
-            # split data by laps
-            cell_activity_by_lap = self.behavior.split_by_laps(cell_activity)
-            binned_pos_by_lap = self.behavior.split_by_laps(binned_pos)
+        # get rate map and time map and other info for sorting
+        if not reference_task and cell_ids is None:
+            print("No reference task or cell ids given. Printing all cells.")
+        elif reference_task and not cell_ids:
+            if reference_task not in self.tasks.keys():
+                raise ValueError(
+                    f"Reference task {reference_task} not found. in session {self.id}"
+                )
+            task = self.tasks[reference_task]
+            if not provided_zscore:
+                (
+                    rate_map,
+                    time_map,
+                    zscore,
+                    si_rate,
+                    si_content,
+                    sorting_indices,
+                    labels,
+                ) = task.extract_rate_map_info_for_sorting(
+                    movement_state=movement_state,
+                    smooth=smooth,
+                    window_size=window_size,
+                    n_tests=n_tests,
+                    top_n=top_n,
+                    provided_zscore=provided_zscore,
+                    zscore_thr=zscore_thr,
+                )
+            cell_ids = sorting_indices
 
-            # count spikes at position
-            max_bin = self.behavior.position.max_bin
-            cell_lap_activity = np.zeros((len(cell_activity_by_lap), max_bin))
-            for i, (lap_act, lap_pos) in enumerate(
-                zip(cell_activity_by_lap, binned_pos_by_lap)
-            ):
-                counts_at = PlaceCellDetectors.get_spike_map(lap_act, lap_pos, max_bin)
-                cell_lap_activity[i] = counts_at
+        cell_ids = make_list_ifnot(cell_ids) if cell_ids else None
+        for task_id, task in self.tasks.items():
+            if task_ids and task_id not in task_ids:
+                continue
+            cell_ids = cell_ids or np.arange(task.neural.photon.data.shape[1])
 
-            additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} - Cell {cell_id}"
-
-            cell_dict[cell_id]["lap_activity"] = cell_lap_activity
-            cell_dict[cell_id]["additional_title"] = additional_title
-
-        figures = []
-        for (cell_id, cell_data), label in zip(cell_dict.items(), labels):
-            fig = Vizualizer.plot_single_cell_activity(
-                cell_data["lap_activity"],
-                additional_title=cell_data["additional_title"],
-                labels=label,
-                norm=norm,
+            # extract zscore and spatial information for labels
+            _, _, zscore, si_rate, _, _, _ = task.extract_rate_map_info_for_sorting(
+                movement_state=movement_state,
                 smooth=smooth,
                 window_size=window_size,
+                n_tests=1,
+            )
+
+            labels = [
+                f"zscore: {zscore[cell]:.2f}, SI: {si_rate[cell]:.2f}"
+                for cell in cell_ids
+            ]
+
+            # Extract cell activity by lap and create plot
+            axis = task.plot_cell_activity_pos_by_time(
+                cell_ids,
+                labels=labels,
+                norm=norm,
                 lines_per_y=lines_per_y,
                 cmap=cmap,
-                show=show,
+                save_pdf=False,
+                show=False,
             )
-            figures.append(fig)
+            ....... axis needs to be saved and plotted together
+
+        # plotting
+        only_moving = True if movement_state == "moving" else False
+        additional_title = (
+            f"{self.id} sorted by {sort_by if top_n != 'significant' else 'zscore'}"
+        )
+        if only_moving:
+            additional_title += " (Moving only)"
+
+        Vizualizer.plot_multi_task_cell_activity_pos_by_time(
+            outputs,
+            additional_title=additional_title,
+            norm=norm,
+            smooth=smooth,
+            window_size=window_size,
+            lines_per_y=lines_per_y,
+            cmap=cmap,
+            show=show,
+            save_pdf=save_pdf,
+        )
 
         if save_pdf:
             with PdfPages(f"{self.id}_cells_activity.pdf") as pdf:
                 for fig in figures:
                     pdf.savefig(fig)
+
+        return outputs
+
 
 class Task:
     def __init__(
@@ -904,6 +954,105 @@ class Task:
         )
         return rate_map, time_map, activity, binned_pos
 
+    def extract_rate_map_info_for_sorting(
+        self,
+        sort_by="zscore",
+        movement_state="moving",
+        smooth=True,
+        window_size=2,
+        n_tests=1000,
+        top_n=10,
+        provided_zscore=None,
+        zscore_thr=2.5,
+    ):
+        # get rate map and time map
+        rate_map, time_map, activity, binned_pos = self.get_rate_time_map(
+            movement_state=movement_state,
+            smooth=smooth,
+            window_size=window_size,
+        )
+
+        # get zscore, si_rate and si_content
+        max_bin = self.behavior.position.max_bin
+        fps = self.behavior_metadata["imaging_fps"]
+
+        if sort_by == "peak":
+            zscore = None
+        elif sort_by in ["spatial_information", "spatial_content", "zscore"]:
+            if sort_by in ["spatial_information", "spatial_content"]:
+                n_test = (
+                    n_tests if top_n == "significant" and provided_zscore is None else 1
+                )
+            elif sort_by == "zscore":
+                n_test = n_tests if provided_zscore is None else 1
+
+            zscore, si_rate, si_content = (
+                self.models.place_cell.si_model.compute_si_zscores(
+                    # rate_map, time_map, n_tests=n_test, fps=fps
+                    activity=activity,
+                    binned_pos=binned_pos,
+                    n_tests=n_test,
+                    fps=fps,
+                    max_bin=max_bin,
+                )
+            )
+            zscore = zscore if provided_zscore is None else provided_zscore
+        else:
+            raise ValueError(f"Sorting of the rate_map by {sort_by} not supported.")
+
+        # define labels
+        if sort_by == "peak":
+            sorting_indices = np.argsort(np.argmax(rate_map, axis=1))
+            labels = sorting_indices
+        elif sort_by == "spatial_information":
+            labels = si_rate
+        elif sort_by == "spatial_content":
+            labels = si_content
+        elif sort_by == "zscore":
+            labels = zscore
+
+        sorting_indices = np.argsort(labels)[::-1]
+        num_nan = np.sum(np.isnan(labels)) if top_n != "significant" else 0
+
+        # get top n rate maps
+        if top_n == "all":
+            top_n = len(sorting_indices) - num_nan
+        elif top_n == "significant" and sort_by != "peak":
+            # sorted_zscores = zscore[np.argsort(zscore)[::-1]]
+            significant_zscore_indices = np.where(zscore >= zscore_thr)[0]
+            significant_zscores = zscore[significant_zscore_indices]
+            zscore_sorting_indices = np.argsort(significant_zscores)[::-1]
+            sorted_significant_zscore_indices = significant_zscore_indices[
+                zscore_sorting_indices
+            ]
+            sorting_indices = sorted_significant_zscore_indices
+            num_significant = sorting_indices.shape[0]
+            labels = np.array(
+                [
+                    f"si: {spatial_info:.1f}  sc: {spatial_cont:.1f}  (zscore: {z_val:.1f})"
+                    for spatial_info, spatial_cont, z_val in zip(
+                        si_rate, si_content, zscore
+                    )
+                ]
+            )
+            top_n = num_significant
+        elif isinstance(top_n, int):
+            top_n = min(top_n, len(sorting_indices) - num_nan)
+        else:
+            raise ValueError("top_n must be an integer, 'all' or 'significant'.")
+
+        real_sorting_indices = sorting_indices[num_nan : num_nan + top_n]
+
+        return (
+            rate_map,
+            time_map,
+            zscore,
+            si_rate,
+            si_content,
+            real_sorting_indices,
+            labels,
+        )
+
     def plot_rate_map(
         self,
         rate_map=None,
@@ -941,18 +1090,15 @@ class Task:
 
     def plot_rate_map_per_cell(
         self,
-        rate_map=None,
-        time_map=None,
         provided_zscore=None,
         movement_state="moving",
         norm=True,
         smooth=True,
         window_size=2,
-        sorting_indices=None,
         n_tests=1000,
-        sort_by="peak",
+        sort_by="zscore",  # peak, spatial_information, spatial_content, zscore or indices
         top_n=10,
-        zscore_threshold=2.5,
+        zscore_thr=2.5,
         use_discrete_colors=True,
         cmap="inferno",
     ):
@@ -970,97 +1116,30 @@ class Task:
             if "significant", plots all significant rate maps.
         """
         only_moving = True if movement_state == "moving" else False
+        sort_by = (
+            "custom"
+            if isinstance(sort_by, list) or isinstance(sort_by, np.ndarray)
+            else sort_by
+        )
         additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} sorted by {sort_by if top_n != 'significant' else 'zscore'}"
         if only_moving:
             additional_title += " (Moving only)"
 
-        if rate_map is None or time_map is None:
-            rm, tm, activity, binned_pos = self.get_rate_time_map(
+        rate_map, time_map, zscore, si_rate, si_content, sorting_indices, labels = (
+            self.extract_rate_map_info_for_sorting(
+                sort_by=sort_by,
                 movement_state=movement_state,
                 smooth=smooth,
                 window_size=window_size,
+                n_tests=n_tests,
+                top_n=top_n,
+                provided_zscore=provided_zscore,
+                zscore_thr=zscore_thr,
             )
-        max_bin = self.behavior.position.max_bin
-        fps = self.behavior_metadata["imaging_fps"]
-        rate_map = rate_map or rm
-        time_map = time_map or tm
+        )
 
-        if sort_by == "peak":
-            sorting_indices = np.argsort(np.argmax(rate_map, axis=1))
-            zscore = None
-        elif sort_by in ["spatial_information", "spatial_content", "zscore"]:
-            if sort_by in ["spatial_information", "spatial_content"]:
-                n_test = (
-                    n_tests if top_n == "significant" and provided_zscore is None else 1
-                )
-                zscore, si_rate, si_content = (
-                    self.models.place_cell.si_model.compute_si_zscores(
-                        # rate_map, time_map, n_tests=n_test, fps=fps
-                        activity=activity,
-                        binned_pos=binned_pos,
-                        n_tests=n_test,
-                        fps=fps,
-                        max_bin=max_bin,
-                    )
-                )
-            elif sort_by == "zscore":
-                n_test = n_tests if provided_zscore is None else 1
-                zscore, si_rate, si_content = (
-                    self.models.place_cell.si_model.compute_si_zscores(
-                        # rate_map, time_map, n_tests=n_test, fps=fps
-                        activity=activity,
-                        binned_pos=binned_pos,
-                        n_tests=n_test,
-                        fps=fps,
-                        max_bin=max_bin,
-                    )
-                )
-            zscore = zscore if provided_zscore is None else provided_zscore
-        else:
-            raise ValueError(f"Sorting of the rate_map by {sort_by} not supported.")
-
-        # define labels
-        if sort_by == "peak":
-            labels = sorting_indices
-        elif sort_by == "spatial_information":
-            labels = si_rate
-        elif sort_by == "spatial_content":
-            labels = si_content
-        elif sort_by == "zscore":
-            labels = zscore
-
-        sorting_indices = np.argsort(labels)[::-1]
-        num_nan = np.sum(np.isnan(labels)) if top_n != "significant" else 0
-
-        # get top n rate maps
-        if top_n == "all":
-            top_n = len(sorting_indices) - num_nan
-        elif top_n == "significant" and sort_by != "peak":
-            # sorted_zscores = zscore[np.argsort(zscore)[::-1]]
-            significant_zscore_indices = np.where(zscore >= zscore_threshold)[0]
-            significant_zscores = zscore[significant_zscore_indices]
-            zscore_sorting_indices = np.argsort(significant_zscores)[::-1]
-            sorted_significant_zscore_indices = significant_zscore_indices[
-                zscore_sorting_indices
-            ]
-            sorting_indices = sorted_significant_zscore_indices
-            num_significant = sorting_indices.shape[0]
-            labels = np.array(
-                [
-                    f"si: {spatial_info:.1f}  sc: {spatial_cont:.1f}  (zscore: {z_val:.1f})"
-                    for spatial_info, spatial_cont, z_val in zip(
-                        si_rate, si_content, zscore
-                    )
-                ]
-            )
-            top_n = num_significant
-        elif isinstance(top_n, int):
-            top_n = min(top_n, len(sorting_indices) - num_nan)
-        else:
-            raise ValueError("top_n must be an integer, 'all' or 'significant'.")
-
-        to_plot_rate_map = rate_map[sorting_indices][num_nan : num_nan + top_n]
-        to_plot_labels = labels[sorting_indices][num_nan : num_nan + top_n]
+        to_plot_rate_map = rate_map[sorting_indices]
+        to_plot_labels = labels[sorting_indices]
 
         if sort_by != "zscore":
             to_plot_labels_list = []
@@ -1096,7 +1175,6 @@ class Task:
         cmap="inferno",
         show=False,
         save_pdf=False,
-        parallel=True,
     ):
         """
         Plots the cell activity by position and time.
@@ -1110,29 +1188,28 @@ class Task:
 
         if "all" in cell_ids:
             cell_ids = np.arange(self.neural.photon.data.shape[1])
-        
-        cell_dict = PlaceCellDetectors.get_spike_maps_per_laps(cell_ids=cell_ids,
-                                                  neural_data=self.neural.photon.data,
-                                                  behavior=self.behavior,
-                                                  parallel=parallel)
-        #cell_dict[cell_id]["lap_activity"] = cell_lap_activity
+
+        cell_dict = PlaceCellDetectors.get_spike_maps_per_laps(
+            cell_ids=cell_ids,
+            neural_data=self.neural.photon.data,
+            behavior=self.behavior,
+        )
+        # cell_dict[cell_id]["lap_activity"] = cell_lap_activity
 
         for cell_id in cell_ids:
             additional_title = f"{self.id} Belt: {self.behavior_metadata['stimulus_type']} - Cell {cell_id}"
             cell_dict[cell_id]["additional_title"] = additional_title
 
-            #...........copy this to session with same function name
-            #............create function for plotting for all tasks from session
-
-        figures = []
+        figures = [None] * len(cell_dict)
+        axis = [None] * len(cell_dict)
         for (cell_id, cell_data), label in zip(cell_dict.items(), labels):
-            fig = Vizualizer.plot_single_cell_activity(
+            fig, axis = Vizualizer.plot_single_cell_activity(
                 cell_data["lap_activity"],
                 additional_title=cell_data["additional_title"],
                 labels=label,
                 norm=norm,
                 smooth=smooth,
-                window_size=window_size,    
+                window_size=window_size,
                 lines_per_y=lines_per_y,
                 cmap=cmap,
                 show=show,
@@ -1143,6 +1220,8 @@ class Task:
             with PdfPages(f"{self.id}_cells_activity.pdf") as pdf:
                 for fig in figures:
                     pdf.savefig(fig)
+
+        return axis
 
     def plot_place_cell_si_scores(
         self,

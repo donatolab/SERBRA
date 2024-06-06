@@ -11,6 +11,7 @@ import scipy
 
 # parralelize
 from numba import jit, njit, prange
+from numba import cuda  # @jit(target='cuda')
 
 # manifolds
 from cebra import CEBRA
@@ -174,7 +175,12 @@ class PlaceCellDetectors(ModelsWrapper):
         Returns:
             np.ndarray: A 2D array where each row represents a cell, and each column represents a bin. The value at (i, j) represents the summed activity of cell `i` at bin `j`.
         """
-        activity_2d = Dataset.force_2d(activity)
+        activity_2d = activity
+        if activity.ndim == 1:
+            activity_2d = activity_2d.reshape(1, -1)
+        elif activity.ndim > 2:
+            raise ValueError("Activity data has more than 2 dimensions.")
+
         num_cells = activity_2d.shape[1]
         # for every frame count the activity of each cell
         max_bin = max_bin or max(binned_pos) + 1
@@ -186,7 +192,7 @@ class PlaceCellDetectors(ModelsWrapper):
         return spike_map
 
     @staticmethod
-    @njit(parallel=True)
+    # @njit(parallel=True)
     def get_spike_map_per_laps(cell_neural_data_by_laps, binned_pos_by_lap, max_bin):
         """
         Computes the spike map for all laps.
@@ -200,15 +206,39 @@ class PlaceCellDetectors(ModelsWrapper):
             np.ndarray: A 3D array where the first dimension represents laps, the second dimension represents cells, and the third dimension represents bins. The value at (i, j, k) represents the summed activity of cell `j` at bin `k` during lap `i`.
         """
         # count spikes at position
-        cell_lap_activity = np.zeros((len(cell_neural_data_by_laps), len(binned_pos_by_lap)))
-        for i in prange(len(cell_neural_data_by_laps)):
-            cell_neural_by_lap = cell_neural_data_by_laps[i]
-            lap_pos = binned_pos_by_lap[i]
-            counts_at = PlaceCellDetectors.get_spike_map(cell_neural_by_lap, lap_pos, max_bin)
-            cell_lap_activity[i] = counts_at
+        num_laps = len(cell_neural_data_by_laps)
+        num_cells = cell_neural_data_by_laps[0].shape[1]
+        cell_lap_activity = np.zeros((num_cells, num_laps, max_bin))
+        for lap, (cell_neural_by_lap, lap_pos) in enumerate(
+            zip(cell_neural_data_by_laps, binned_pos_by_lap)
+        ):
+
+            # this should be the following function, but was changed to the following for numba compatibility
+            cells_spikes_at = PlaceCellDetectors.get_spike_map(
+                cell_neural_by_lap, lap_pos, max_bin
+            )
+            ##################### numba compatibility #####################
+            # activity_2d = cell_neural_by_lap
+            # if activity_2d.ndim == 1:
+            #    activity_2d = activity_2d.reshape(-1, 1)
+            # elif activity_2d.ndim > 2:
+            #    raise ValueError("Activity data has more than 2 dimensions.")
+            #
+            # num_cells = activity_2d.shape[1]
+            ## for every frame count the activity of each cell
+            # spike_map = np.zeros((num_cells, max_bin))
+            # for frame in prange(len(activity_2d)):
+            #    rate_map_vec = activity_2d[frame]
+            #    pos_at_frame = lap_pos[frame]
+            #    spike_map[:, pos_at_frame] += rate_map_vec
+            # counts_at = = spike_map
+            ##################### numba compatibility #####################
+            cell_lap_activity[:, lap, :] = cells_spikes_at
         return cell_lap_activity
 
-    def extract_all_spike_map_per_lap(self, cell_ids, neural_data_by_laps, binned_pos_by_laps, max_bin):
+    def extract_all_spike_map_per_lap(
+        self, cell_ids, neural_data_by_laps, binned_pos_by_laps, max_bin
+    ):
         """
         Extracts the spike map for each cell across all laps.
 
@@ -221,14 +251,16 @@ class PlaceCellDetectors(ModelsWrapper):
         Returns:
             np.ndarray: A 4D array where the first dimension represents cells, the second dimension represents laps, the third dimension represents bins. The value at (i, j, k) represents the summed activity of cell `i` at bin `k` during lap `j`.
         """
-        cell_lap_activities = np.zeros((len(cell_ids), len(neural_data_by_laps), len(binned_pos_by_laps[0])))
-        for cell_id in prange(len(cell_ids)):
+        cell_lap_activities = np.zeros(
+            (len(cell_ids), len(neural_data_by_laps), len(binned_pos_by_laps[0]))
+        )
+        for cell_id in range(len(cell_ids)):
             cell_neural_data_by_laps = neural_data_by_laps[cell_id]
-            cell_lap_activity = self.get_spike_map_per_laps(cell_neural_data_by_laps, binned_pos_by_laps, max_bin)
-            
+            cell_lap_activity = self.get_spike_map_per_laps(
+                cell_neural_data_by_laps, binned_pos_by_laps, max_bin
+            )
             cell_lap_activities[cell_id] = cell_lap_activity
 
-    @njit(parallel=True)
     @staticmethod
     def get_spike_maps_per_laps(cell_ids, neural_data, behavior: Datasets):
         """
@@ -242,24 +274,24 @@ class PlaceCellDetectors(ModelsWrapper):
         Returns:
             dict: A dictionary where keys are cell IDs and values are dictionaries containing the spike maps for each lap.
         """
-        cell_activity_dict = {}
         cell_ids = make_list_ifnot(cell_ids)
 
-        binned_pos = binned_pos or behavior.position.binned_data
+        binned_pos = behavior.position.binned_data
         max_bin = behavior.position.max_bin or max(binned_pos) + 1
-        # split data by laps
-        neural_data_by_laps = behavior.split_by_laps(neural_data)
+
+        # get neural_data for each cell
+        wanted_neural_data = neural_data[:, cell_ids]
+        cell_neural_data_by_laps = behavior.split_by_laps(wanted_neural_data)
         binned_pos_by_laps = behavior.split_by_laps(binned_pos)
 
         # get spike map for each lap
-        cell_lap_activities = PlaceCellDetectors.get_spike_map_per_laps(cell_ids,
-                                                                       neural_data_by_laps,
-                                                                       binned_pos_by_laps,
-                                                                       max_bin=max_bin
-                                                                       )
-        
+        cell_lap_activities = PlaceCellDetectors.get_spike_map_per_laps(
+            cell_neural_data_by_laps, binned_pos_by_laps, max_bin=max_bin
+        )
+
+        cell_activity_dict = {}
         for cell_id, cell_lap_activity in zip(cell_ids, cell_lap_activities):
-            cell_activity_dict[cell_id] = {"lap_activity": None}
+            cell_activity_dict[cell_id] = {}
             cell_activity_dict[cell_id]["lap_activity"] = cell_lap_activity
         return cell_activity_dict
 

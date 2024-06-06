@@ -762,6 +762,38 @@ class Vizualizer:
 
         fig.show()
 
+    def plot_multi_session_single_cell_activity(
+        traces,
+        figsize_x=20,
+        labels=None,
+        norm=False,
+        smooth=False,
+        window_size=5,
+        additional_title=None,
+        savepath=None,
+        lines_per_y=1,
+        use_discrete_colors=False,
+        cmap="gray",
+        show=True,
+    ):
+        """
+        Plots traces shifted up by 10 for each trace
+        """
+        # create 2 subplots
+
+        title = f"Cell activity by position"
+        if additional_title:
+            title += f" {additional_title}"
+
+        plt.title(dothiscorrectlater)
+
+        if savepath:
+            plt.savefig(savepath, dpi=300)
+            
+        if show:
+            plt.show()
+
+
     @staticmethod
     def plot_single_cell_activity(
         traces,
@@ -832,7 +864,7 @@ class Vizualizer:
             plt.show()
         plt.close()
 
-        return fig
+        return fig, (ax1, ax2)
 
     @staticmethod
     def plot_traces_shifted(
@@ -873,6 +905,8 @@ class Vizualizer:
             plt.savefig(savepath)
         plt.show()
         plt.close()
+
+        return ax
 
     def calculate_alpha(value, min_value, max_value, min_alpha=0.1, max_alpha=1.0):
         """Calculate alpha value based on the line value."""
