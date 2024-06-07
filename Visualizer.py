@@ -762,62 +762,117 @@ class Vizualizer:
 
         fig.show()
 
+    @staticmethod
     def plot_multi_task_cell_activity_pos_by_time(
-        axis_dict,
+        task_cell_activity,
+        figsize_x=20,
+        norm=False,
+        smooth=False,
+        window_size=5,
         additional_title=None,
+        savepath=None,
+        lines_per_y=1,
+        use_discrete_colors=False,
+        cmap="inferno",
         show=True,
-        save_pdf=True,
-        figsize=None,  # (20, 10)
     ):
         """
-        Plots traces shifted up by 10 for each trace
+        Plots the activity of cells across multiple tasks, with each task's activity plotted in separate subplots.
+        Cell plots are normalized and smoothed. Top subplot shows the average activity across all laps, and the bottom subplot shows the activity of each lap.
+
+        Parameters
+        ----------
+        task_cell_activity : dict
+            Dictionary where keys are task identifiers and values are dictionaries with keys "lap_activity" and "additional_title".
+            "lap_activity" is a numpy array of cell activities, and "additional_title" is a string to be added to the subplot title.
+        figsize_x : int, optional
+            Width of the figure in inches (default is 20).
+        norm : bool, optional
+            Whether to normalize the traces (default is False).
+        smooth : bool, optional
+            Whether to smooth the traces (default is False).
+        window_size : int, optional
+            Window size for smoothing (default is 5).
+        additional_title : str, optional
+            Additional title to be added to the main title (default is None).
+        savepath : str, optional
+            Path to save the plot (default is None).
+        lines_per_y : int, optional
+            Number of lines per y-axis unit (default is 1).
+        use_discrete_colors : bool, optional
+            Whether to use discrete colors for the traces (default is False).
+        cmap : str, optional
+            Colormap to use for the traces (default is "inferno").
+        show : bool, optional
+            Whether to show the plot (default is True).
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            The figure object containing the plot.
         """
         # create 2 subplots
-        fig, (ax1, ax2) = plt.subplots(
-            2, 1, gridspec_kw={"height_ratios": [1, 10]}
+        fig, axes = plt.subplots(
+            2, len(task_cell_activity), gridspec_kw={"height_ratios": [1, 10]}
         )  # Set relative heights of subplots
-        fig.subplots_adjust(hspace=0.08)  # Decrease gap between subplots
 
-        sum_traces = np.array([np.sum(traces, axis=0)])
+        for task_num, (task, activity_and_title) in enumerate(
+            task_cell_activity.items()
+        ):
+            traces = activity_and_title["lap_activity"]
+            additional_cell_title = activity_and_title["additional_title"]
 
-        if labels:
-            labels = make_list_ifnot(labels)
+            sum_traces = np.array([np.sum(traces, axis=0)])
+            if "label" in activity_and_title.keys():
+                label = make_list_ifnot(activity_and_title["label"])
+            else:
+                label = None
 
-        ax1 = Vizualizer.traces_subplot(
-            ax1,
-            sum_traces,
-            labels=labels,
-            norm=norm,
-            smooth=smooth,
-            window_size=window_size,
-            lines_per_y=1.1,
-            xlabel="",
-            yticks=None,
-            additional_title=f"avg. {additional_title}",
-            ylabel="",
-            figsize_x=figsize_x,
-            use_discrete_colors=use_discrete_colors,
-            cmap=cmap,
-        )
+            if axes.ndim == 1:
+                axes = axes.reshape(1, -1)
 
-        if norm:
-            norm_traces = normalize_01(traces)
+            axes[0, task_num] = Vizualizer.traces_subplot(
+                axes[0, task_num],
+                sum_traces,
+                labels=label,
+                norm=norm,
+                smooth=smooth,
+                window_size=window_size,
+                lines_per_y=1.1,
+                xlabel="",
+                yticks=None,
+                additional_title=f"avg. {additional_cell_title}",
+                ylabel="",
+                figsize_x=figsize_x,
+                use_discrete_colors=use_discrete_colors,
+                cmap=cmap,
+            )
+
+            norm_traces = normalize_01(traces) if norm else traces
             norm_traces = np.nan_to_num(norm_traces)
 
-        ax2 = Vizualizer.traces_subplot(
-            ax2,
-            norm_traces,
-            labels=None,
-            norm=False,
-            smooth=smooth,
-            window_size=window_size,
-            lines_per_y=lines_per_y,
-            additional_title=additional_title,
-            ylabel="lap",
-            figsize_x=figsize_x,
-            use_discrete_colors=use_discrete_colors,
-            cmap=cmap,
-        )
+            axes[1, task_num] = Vizualizer.traces_subplot(
+                axes[1, task_num],
+                norm_traces,
+                labels=None,
+                norm=False,
+                smooth=smooth,
+                window_size=window_size,
+                lines_per_y=lines_per_y,
+                additional_title=additional_cell_title,
+                ylabel="lap",
+                figsize_x=figsize_x,
+                use_discrete_colors=use_discrete_colors,
+                cmap=cmap,
+            )
+
+        title = "Cell Activity"
+        if additional_title:
+            title += f" {additional_title}"
+
+        fig.subplots_adjust(hspace=0.08, top=0.93)  # Decrease gap between subplots
+        fig.suptitle(title, fontsize=17)
+
         if savepath:
             plt.savefig(savepath)
         if show:
@@ -838,11 +893,43 @@ class Vizualizer:
         savepath=None,
         lines_per_y=1,
         use_discrete_colors=False,
-        cmap="gray",
+        cmap="inferno",
         show=True,
     ):
         """
-        Plots traces shifted up by 10 for each trace
+        Plots the activity of a single cell. Top subplot shows the average activity across all laps, and the bottom subplot shows the activity of each lap.
+
+        Parameters
+        ----------
+        traces : np.ndarray
+            Array of cell activity traces.
+        figsize_x : int, optional
+            Width of the figure in inches (default is 20).
+        labels : list, optional
+            Labels for the traces (default is None).
+        norm : bool, optional
+            Whether to normalize the traces (default is False).
+        smooth : bool, optional
+            Whether to smooth the traces (default is False).
+        window_size : int, optional
+            Window size for smoothing (default is 5).
+        additional_title : str, optional
+            Additional title to be added to the main title (default is None).
+        savepath : str, optional
+            Path to save the plot (default is None).
+        lines_per_y : int, optional
+            Number of lines per y-axis unit (default is 1).
+        use_discrete_colors : bool, optional
+            Whether to use discrete colors for the traces (default is False).
+        cmap : str, optional
+            Colormap to use for the traces (default is "inferno").
+        show : bool, optional
+            Whether to show the plot (default is True).
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            The figure object containing the plot.
         """
         # create 2 subplots
         fig, (ax1, ax2) = plt.subplots(
@@ -872,9 +959,8 @@ class Vizualizer:
             cmap=cmap,
         )
 
-        if norm:
-            norm_traces = normalize_01(traces)
-            norm_traces = np.nan_to_num(norm_traces)
+        norm_traces = normalize_01(traces) if norm else traces
+        norm_traces = np.nan_to_num(norm_traces)
 
         ax2 = Vizualizer.traces_subplot(
             ax2,
@@ -913,11 +999,39 @@ class Vizualizer:
         cmap="inferno",  # gray, magma, plasma, viridis
     ):
         """
-        Plots traces shifted up by 10 for each trace
-        cmap: colormap
-            default: inferno
+        Plots traces shifted up by a fixed amount for each trace.
+
+        Parameters
+        ----------
+        traces : np.ndarray
+            Array of traces to plot.
+        figsize_x : int, optional
+            Width of the figure in inches (default is 20).
+        labels : list, optional
+            Labels for the traces (default is None).
+        norm : bool, optional
+            Whether to normalize the traces (default is False).
+        smooth : bool, optional
+            Whether to smooth the traces (default is False).
+        window_size : int, optional
+            Window size for smoothing (default is 5).
+        additional_title : str, optional
+            Additional title to be added to the main title (default is None).
+        savepath : str, optional
+            Path to save the plot (default is None).
+        lines_per_y : int, optional
+            Number of lines per y-axis unit (default is 1).
+        use_discrete_colors : bool, optional
+            Whether to use discrete colors for the traces (default is True).
+        cmap : str, optional
+            Colormap to use for the traces (default is "inferno").
             good colormaps for black background: gray, inferno, magma, plasma, viridis
             white colormaps for black background: binary, blues
+
+        Returns
+        -------
+        ax : matplotlib.axes.Axes
+            The axes object containing the plot.
         """
         fig, ax = plt.subplots()
         ax = Vizualizer.traces_subplot(
@@ -941,7 +1055,27 @@ class Vizualizer:
         return ax
 
     def calculate_alpha(value, min_value, max_value, min_alpha=0.1, max_alpha=1.0):
-        """Calculate alpha value based on the line value."""
+        """
+        Calculates the alpha (transparency) value based on the given value and its range.
+
+        Parameters
+        ----------
+        value : float
+            The value for which to calculate the alpha.
+        min_value : float
+            The minimum value of the range.
+        max_value : float
+            The maximum value of the range.
+        min_alpha : float, optional
+            The minimum alpha value (default is 0.1).
+        max_alpha : float, optional
+            The maximum alpha value (default is 1.0).
+
+        Returns
+        -------
+        float
+            The calculated alpha value.
+        """
         if max_value == min_value:
             return 0.1  # max_alpha
         normalized_value = (value - min_value) / (max_value - min_value)
@@ -965,12 +1099,54 @@ class Vizualizer:
         figsize_x=20,
         figsize_y=None,
         use_discrete_colors=True,
-        cmap="gray",
+        cmap="inferno",
     ):
         """
-        cmap: colormap
+        Plots traces on a given axis with options for normalization, smoothing, and color mapping.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            The axes object to plot on.
+        traces : np.ndarray
+            Array of traces to plot.
+        additional_title : str, optional
+            Additional title to be added to the subplot title (default is None).
+        color : str or None, optional
+            Color for the traces (default is None).
+        labels : list, optional
+            Labels for the traces (default is None).
+        norm : bool, optional
+            Whether to normalize the traces (default is False).
+        smooth : bool, optional
+            Whether to smooth the traces (default is False).
+        window_size : int, optional
+            Window size for smoothing (default is 5).
+        lines_per_y : int, optional
+            Number of lines per y-axis unit (default is 1).
+        plot_legend : bool, optional
+            Whether to plot the legend (default is True).
+        yticks : str or list, optional
+            Y-axis tick labels (default is "default").
+        xlabel : str, optional
+            Label for the x-axis (default is "Bins").
+        ylabel : str, optional
+            Label for the y-axis (default is "Cell").
+        figsize_x : int, optional
+            Width of the figure in inches (default is 20).
+        figsize_y : int or None, optional
+            Height of the figure in inches (default is None).
+        use_discrete_colors : bool, optional
+            Whether to use discrete colors for the traces (default is True).
+        cmap : str, optional
+            Colormap to use for the traces (default is "inferno").
             good colormaps for black background: gray, inferno, magma, plasma, viridis
             white colormaps for black background: binary, blues
+
+        Returns
+        -------
+        ax : matplotlib.axes.Axes
+            The axes object with the plotted traces.
         """
         if smooth:
             traces = smooth_array(traces, window_size=window_size, axis=1)

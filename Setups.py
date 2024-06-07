@@ -356,9 +356,13 @@ class Treadmill:
 
 
 class RotaryEncoder:
+    """
+    The rotary encoder is used to measure the amount of rotation.
+    This can be used to calculate the distance moved by the wheel.
+    The rotary encoder is connected to a wheel.
+    """
+
     def __init__(self, sample_rate=10000, imaging_sample_rate=30):
-        # TODO: imaging_sample_rate should be read from the data or metadata
-        # TODO: imaging_sample_rate should be read from the data or metadata
         self.sample_rate = sample_rate  # 10kHz
         self.imaging_sample_rate = imaging_sample_rate  # 30Hz
 
@@ -538,131 +542,6 @@ class RotaryEncoder:
         mean_fit_ratio = np.mean(fit_ratios)
         fited_moved_distance_in_frame[0 : lap_sync_frame_indices[0]] *= mean_fit_ratio
         fited_moved_distance_in_frame[lap_sync_frame_indices[-1] : -1] *= mean_fit_ratio
-
-        """###########################################
-        # ...............plotting ............
-        cum_dist = np.cumsum(moved_distances_in_frame)
-
-        positions = Treadmill.get_position_from_cumdist(
-            cum_dist,
-            belt_len=1.8,
-            lap_start_frame=lap_start_frame,
-        )
-
-        seconds = np.arange(0, len(positions)) / self.imaging_sample_rate
-        # convert seconds to minutes
-        minutes = np.array(
-            [datetime.fromtimestamp(sec).strftime("%M:%S") for sec in seconds]
-        )
-        write_minutes = []
-        xticks_pos = []
-        for i, position in enumerate(positions):
-            if position - 0.008 < 0:
-                write_minutes.append(minutes[i])
-                xticks_pos.append(i)
-
-        print(xticks_pos)
-        # plt.figure(figsize=(30, 3))
-        # plt.plot(lap_sync)
-        # plt.xticks(xticks_pos, write_minutes)
-        # plt.show()
-
-        import matplotlib.pyplot as plt
-
-        plt.figure(figsize=(30, 3))
-        plt.plot(positions)
-        plt.xlim(0, len(positions))
-        plt.xticks(xticks_pos, write_minutes, rotation=90)
-        plt.show()
-
-        gdist = np.load(
-            r"d:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\temp_behavior_location\S1_position.npy"
-        )
-        #gdist = np.load(
-        #    r"d:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\temp_behavior_location\S1_distance.npy"
-        #)
-        gdist = gdist / 100
-        write_minutes = []
-        xticks_pos = []
-        for i, position in enumerate(gdist):
-            if position != 0 and position - 0.01 < 0:
-                write_minutes.append(minutes[i])
-                xticks_pos.append(i)
-
-        print(xticks_pos)
-
-        plt.figure(figsize=(30, 3))
-        plt.plot(gdist)
-        plt.xlim(0, len(gdist))
-        plt.xticks(xticks_pos, write_minutes, rotation=90)
-        plt.show()
-
-        # lap sync with compressed version of the data
-        write_minutes_lap_sync = []
-        xticks_pos_lap_sync = []
-        for i, lap_signal in enumerate(lap_sync_in_frame):
-            if lap_signal:
-                write_minutes_lap_sync.append(minutes[i])
-                xticks_pos_lap_sync.append(i)
-
-        print(xticks_pos_lap_sync)
-
-        plt.figure(figsize=(30, 3))
-        plt.plot(lap_sync_in_frame)
-        plt.xlim(0, len(positions))
-        plt.xticks(xticks_pos_lap_sync, write_minutes_lap_sync, rotation=90)
-        plt.show()
-
-        # boolean lap signal
-        plt.figure(figsize=(30, 3))
-        plt.plot(lap_start_boolean)
-        plt.xlim(0, len(lap_start_boolean))
-        # plt.xticks(xticks_pos_lap_sync, write_minutes_lap_sync, rotation=90)
-        plt.show()
-
-        # boolean lap signal
-        plt.figure(figsize=(30, 3))
-        plt.plot(lap_start_boolean)
-        plt.xlim(0, len(lap_start_boolean))
-        # plt.xticks(xticks_pos_lap_sync, write_minutes_lap_sync, rotation=90)
-        plt.show()
-
-        # fited stuff
-        cum_dist = np.cumsum(fited_moved_distance_in_frame)
-
-        positions = Treadmill.get_position_from_cumdist(
-            cum_dist,
-            belt_len=1.8,
-            lap_start_frame=lap_start_frame,
-        )
-
-        seconds = np.arange(0, len(positions)) / self.imaging_sample_rate
-        # convert seconds to minutes
-        minutes = np.array(
-            [datetime.fromtimestamp(sec).strftime("%M:%S") for sec in seconds]
-        )
-        write_minutes = []
-        xticks_pos = []
-        for i, position in enumerate(positions):
-            if position - 0.008 < 0:
-                write_minutes.append(minutes[i])
-                xticks_pos.append(i)
-
-        print(xticks_pos)
-        plt.figure(figsize=(30, 3))
-        plt.plot(positions)
-        plt.xlim(0, len(positions))
-        plt.xticks(xticks_pos, write_minutes, rotation=90)
-        plt.show()
-
-        # original lap_sync lap signal
-        plt.figure(figsize=(30, 3))
-        plt.plot(lap_sync[lap_start_indices[0] :])
-        plt.xlim(0, len(lap_sync[lap_start_indices[0] :]))
-        # plt.xticks(xticks_pos_lap_sync, write_minutes_lap_sync, rotation=90)
-        plt.show()
-
-        # ..........................."""
         return fited_moved_distance_in_frame, lap_start_frame
 
     def extract_data(
@@ -716,6 +595,8 @@ class Treadmill_Setup(Setup):
     """
     Class managing the treadmill setup of Steffen.
     Rotation data is stored in .mat files.
+    The wheel is connected to a rotary encoder.
+    The Belt is segmented in different segments with different stimuli.
     """
 
     # TODO: change naming of class to better describing treadmill setup
@@ -792,6 +673,7 @@ class Wheel_Setup(Setup):
     """
     Class managing the wheel setup of Steffen.
     Rotation data is stored in .mat files.
+    The wheel is connected to a rotary encoder.
     """
 
     def __init__(self, key, root_dir=None, metadata={}):
@@ -861,6 +743,8 @@ class Openfield_Setup(Setup):
         #
         raise NotImplementedError("Openfield setup not implemented yet")
 
+
+................
 
 class Box(Setup):
     def __init__(self, key, root_dir=None, metadata={}):

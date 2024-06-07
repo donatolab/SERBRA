@@ -217,6 +217,7 @@ class Animal:
 
 
 class Session:
+    """Represents a session in the dataset."""
     def __init__(
         self,
         animal_id,
@@ -315,10 +316,11 @@ class Session:
         # TODO: implement consistency session plot
         pass
 
-    ########################################################################################
+
+    # Place Cells for all sessions
     def plot_cell_activity_pos_by_time(
         self,
-        cell_ids: int = None,
+        cell_ids: int = None, # overrides the top_n parameter and plots only the cell with the given ids in the given order
         task_ids: str = None,
         movement_state: str = "moving",
         sort_by: str = "zscore",  # peak, spatial_information, spatial_content, zscore or indices
@@ -327,18 +329,70 @@ class Session:
         n_tests: int = 1000,
         provided_zscore: np.ndarray = None,
         zscore_thr: float = 2.5,
-        norm: bool = True,
         smooth: bool = True,
+        norm: bool = True,
         window_size: int = 5,
         lines_per_y: int = 3,
+        figsize_x=20,
+        use_discrete_colors=False,
         cmap: str = "inferno",
         show: bool = False,
         save_pdf: bool = True,
     ):
         """
         Plots the cell activity by position and time.
-        cmap: str
+
+        Parameters
+        ----------
+        cell_ids : int or list, optional
+            The IDs of the cells to plot. Overrides the top_n parameter (default is None).
+        task_ids : str or list, optional
+            The IDs of the tasks to include in the plot (default is None).
+        movement_state : str, optional
+            The movement state to filter by (default is "moving").
+        sort_by : str, optional
+            The criterion to sort by: "zscore", "peak", "spatial_information", "spatial_content", or "indices" (default is "zscore").
+        reference_task : str, optional
+            The task ID to use for sorting (default is None).
+        top_n : int or str, optional
+            The number of top cells to plot, or "significant" to plot all significant cells (default is 10).
+        n_tests : int, optional
+            The number of tests to perform for z-score calculation (default is 1000).
+        provided_zscore : np.ndarray, optional
+            An array of precomputed z-scores (default is None).
+        zscore_thr : float, optional
+            The z-score threshold for significance (default is 2.5).
+        smooth : bool, optional
+            Whether to smooth the data (default is True).
+        norm : bool, optional
+            Whether to normalize the data (default is True).
+        window_size : int, optional
+            The size of the smoothing window (default is 5).
+        lines_per_y : int, optional
+            The number of lines per y-axis unit (default is 3).
+        figsize_x : int, optional
+            The width of the figure in inches (default is 20).
+        use_discrete_colors : bool, optional
+            Whether to use discrete colors for the traces (default is False).
+        cmap : str, optional
+            The colormap to use for the traces (default is "inferno").
             Colormap to use for the plot. Default is 'inferno' (black to yellow) for better visibility.
+            colormaps for dark backgrounds: 'gray', 'inferno', 'magma', 'plasma', 'viridis'
+            colormaps for light backgrounds: 'binary', 'cividis', 'spring', 'summer', 'autumn', 'winter'
+        show : bool, optional
+            Whether to show the plot (default is False).
+        save_pdf : bool, optional
+            Whether to save the plot as a PDF (default is True).
+
+        Returns
+        -------
+        list
+            A list of figure objects containing the plots.
+
+        Raises
+        ------
+        ValueError
+            If the reference task is not found in the session.
         """
 
         sort_by = (
@@ -361,14 +415,15 @@ class Session:
                 else self.tasks[list(self.tasks.keys())[0]]
             )
             if not provided_zscore:
+                print(f"Extracting rate map info for reference task {task.id}")
                 (
-                    rate_map,
-                    time_map,
-                    zscore,
-                    si_rate,
-                    si_content,
-                    sorting_indices,
-                    labels,
+                    reference_rate_map,
+                    reference_time_map,
+                    reference_zscore,
+                    reference_si_rate,
+                    reference_si_content,
+                    reference_sorting_indices,
+                    reference_labels,
                 ) = task.extract_rate_map_info_for_sorting(
                     movement_state=movement_state,
                     smooth=smooth,
@@ -378,37 +433,48 @@ class Session:
                     provided_zscore=provided_zscore,
                     zscore_thr=zscore_thr,
                 )
-            cell_ids = sorting_indices
+            cell_ids = reference_sorting_indices
 
         cell_ids = make_list_ifnot(cell_ids) if cell_ids is not None else None
         task_cell_dict = {}
         for task_id, task in self.tasks.items():
             if task_ids and task_id not in task_ids:
                 continue
-            cell_ids = cell_ids or np.arange(task.neural.photon.data.shape[1])
 
-            # extract zscore and spatial information for labels
-            _, _, zscore, si_rate, _, _, _ = task.extract_rate_map_info_for_sorting(
-                movement_state=movement_state,
-                smooth=smooth,
-                window_size=window_size,
-                n_tests=1, #FIXME:....................change to n_tests
-            )
+            if task_id == reference_task:
+                zscore = reference_zscore
+                si_rate = reference_si_rate
+                labels = reference_labels
+            
+            else:
+                cell_ids = cell_ids or np.arange(task.neural.photon.data.shape[1])
 
-            labels = [
-                f"zscore: {zscore[cell]:.2f}, SI: {si_rate[cell]:.2f}"
-                for cell in cell_ids
-            ]
+                # extract zscore and spatial information for labels
+                print(f"Extracting rate map info for task {task_id}")
+                _, _, zscore, si_rate, _, _, _ = task.extract_rate_map_info_for_sorting(
+                    movement_state=movement_state,
+                    smooth=smooth,
+                    window_size=window_size,
+                    n_tests=n_tests,
+                )
+
+                labels = [
+                    f"zscore: {zscore[cell]:.2f}, SI: {si_rate[cell]:.2f}"
+                    for cell in cell_ids
+                ]
 
             cell_dict = PlaceCellDetectors.get_spike_maps_per_laps(
                 cell_ids=cell_ids,
-                neural_data=self.neural.photon.data,
-                behavior=self.behavior,
+                neural_data=task.neural.photon.data,
+                behavior=task.behavior,
             )
 
             for cell_id, label in zip(cell_ids, labels):
-                additional_title = f"Stimulus: {self.behavior_metadata['stimulus_type']}"
+                additional_title = (
+                    f"{task_id} Stimulus: {task.behavior_metadata['stimulus_type']}"
+                )
                 cell_dict[cell_id]["additional_title"] = additional_title
+                cell_dict[cell_id]["label"] = label
 
             task_cell_dict[task_id] = cell_dict
 
@@ -416,22 +482,43 @@ class Session:
         only_moving = True if movement_state == "moving" else False
 
         cell_task_activity_dict = {}
-        for task_id, cell_dict in task_cell_dict.items():
-            for cell_id, cell_dict in cell_dict.items():
-                cell_task_activity_dict[cell_id] = {task_id: cell_dict}
+        for cell_id in cell_ids:
+            cell_task_activity_dict[cell_id] = {}
+            for task_id, cell_dict in task_cell_dict.items():
+                cell_task_activity_dict[cell_id][task_id] = cell_dict[cell_id]
 
-        for cell_id, task_activity_dict in cell_task_activity_dict.items():
-            additional_title = (
-                f"{self.id} sorted by {sort_by if top_n != 'significant' else 'zscore'} Cell {cell_id}"
-            )
+        figures = [None] * len(cell_task_activity_dict)
+        for cell_num, (cell_id, cells_task_activity_dict) in enumerate(
+            cell_task_activity_dict.items()
+        ):
+            additional_title = f"{self.id} sorted by {sort_by if top_n != 'significant' else 'zscore'} Cell {cell_id}"
             if only_moving:
                 additional_title += " (Moving only)"
-            .......... function anfertigen 
-            Vizualizer.plot_multi_task_cell_activity_pos_by_time(
-                                                        )
+
+            fig = Vizualizer.plot_multi_task_cell_activity_pos_by_time(
+                cells_task_activity_dict,
+                figsize_x=figsize_x,
+                norm=norm,
+                smooth=smooth,
+                window_size=window_size,
+                additional_title=additional_title,
+                savepath=None,
+                lines_per_y=lines_per_y,
+                use_discrete_colors=use_discrete_colors,
+                cmap=cmap,
+                show=show,
+            )
+
+            figures[cell_num] = fig
+
+        if save_pdf:
+            with PdfPages(f"{self.id}_cell_task_activity.pdf") as pdf:
+                for fig in figures:
+                    pdf.savefig(fig)
 
 
 class Task:
+    """Represents a task in the dataset."""
     def __init__(
         self,
         session_id,
@@ -927,7 +1014,28 @@ class Task:
         window_size=2,
     ):
         """
-        Plots the rate maps of the place cells.
+        Gets the rate and time maps for the place cells.
+
+        Parameters
+        ----------
+        movement_state : str, optional
+            The movement state to filter by (default is "moving").
+        smooth : bool, optional
+            Whether to smooth the data (default is True).
+        window_size : int, optional
+            The size of the smoothing window (default is 2).
+
+        Returns
+        -------
+        tuple
+            rate_map : np.ndarray
+                The rate map of the place cells.
+            time_map : np.ndarray
+                The time map of the place cells.
+            activity : np.ndarray
+                The filtered neural activity data.
+            binned_pos : np.ndarray
+                The filtered binned position data.
         """
         idx_to_keep = self.behavior.moving.get_idx_to_keep(movement_state)
         activity = Dataset.filter_by_idx(
@@ -959,6 +1067,51 @@ class Task:
         provided_zscore=None,
         zscore_thr=2.5,
     ):
+        """
+        Extracts rate map information for sorting.
+
+        Parameters
+        ----------
+        sort_by : str, optional
+            The criterion to sort by: "zscore", "peak", "spatial_information", or "spatial_content" (default is "zscore").
+        movement_state : str, optional
+            The movement state to filter by (default is "moving").
+        smooth : bool, optional
+            Whether to smooth the data (default is True).
+        window_size : int, optional
+            The size of the smoothing window (default is 2).
+        n_tests : int, optional
+            The number of tests to perform for z-score calculation (default is 1000).
+        top_n : int or str, optional
+            The number of top cells to return, or "significant" to return all significant cells (default is 10).
+        provided_zscore : np.ndarray, optional
+            An array of precomputed z-scores (default is None).
+        zscore_thr : float, optional
+            The z-score threshold for significance (default is 2.5).
+
+        Returns
+        -------
+        tuple
+            rate_map : np.ndarray
+                The rate map of the place cells.
+            time_map : np.ndarray
+                The time map of the place cells.
+            zscore : np.ndarray
+                The z-scores of the place cells.
+            si_rate : np.ndarray
+                The spatial information rate of the place cells.
+            si_content : np.ndarray
+                The spatial information content of the place cells.
+            real_sorting_indices : np.ndarray
+                The indices of the sorted cells.
+            labels : np.ndarray
+                The labels for the sorted cells.
+        
+        Raises
+        ------
+        ValueError
+            If the sorting criterion is not supported.
+        """
         # get rate map and time map
         rate_map, time_map, activity, binned_pos = self.get_rate_time_map(
             movement_state=movement_state,
@@ -1187,7 +1340,7 @@ class Task:
             cell_ids=cell_ids,
             neural_data=self.neural.photon.data,
             behavior=self.behavior,
-        ) # cell_dict[cell_id]["lap_activity"] = cell_lap_activity
+        )  # cell_dict[cell_id]["lap_activity"] = cell_lap_activity
 
         for cell_id in cell_ids:
             additional_title = f"{self.id} Stimulus: {self.behavior_metadata['stimulus_type']} - Cell {cell_id}"
@@ -1214,7 +1367,7 @@ class Task:
                 for fig in figures:
                     pdf.savefig(fig)
 
-        return 
+        return
 
     def plot_place_cell_si_scores(
         self,

@@ -361,7 +361,47 @@ class PlaceCellDetectors(ModelsWrapper):
 
 
 class SpatialInformation(Model):
+    """
+    A class used to model spatial information in a neuroscience context.
+
+    Attributes
+    ----------
+    name : str
+        The name identifier for the model.
+    model_settings : dict
+        The settings used for the model.
+
+    Methods
+    -------
+    create_default_model()
+        Creates a default model configuration.
+    define_parameter_save_path(model)
+        Defines the path where model parameters are saved.
+    is_fitted(model)
+        Checks if the model has been fitted.
+    load_fitted_model(model)
+        Loads a fitted model from a saved path.
+    get_spatial_information(rate_map, time_map, spatial_information_method="opexebo")
+        Computes the spatial information rate and content.
+    compute_si_zscores(activity, binned_pos, rate_map, time_map, n_tests=500, spatial_information_method="skaggs", fps=None, max_bin=None)
+        Computes spatial information and corresponding z-scores.
+    """
+
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
+        """
+        Initializes the SpatialInformation model.
+
+        Parameters
+        ----------
+        model_dir : Path
+            The directory where the model is stored.
+        model_id : str
+            The identifier for the model.
+        model_settings : dict, optional
+            The settings for the model (default is None).
+        **kwargs : dict
+            Additional keyword arguments.
+        """
         super().__init__(model_dir, model_id, model_settings, **kwargs)
         self.name = "si"
         self.model_settings = model_settings
@@ -369,19 +409,69 @@ class SpatialInformation(Model):
         self.model_settings_end(self)
 
     def create_defaul_model(self):
-        self.si_formula = "skaags"
-        return self
+        """
+        Creates a default model configuration.
+
+        Returns
+        -------
+        model
+            The instance of the SpatialInformation model with default settings.
+        """
+        model = self
+        model.si_formula = "skaags"
+        return model
 
     def define_parameter_save_path(self, model):
+        """
+        Defines the path where model parameters are saved.
+
+        Parameters
+        ----------
+        model : Model
+            The model for which the save path is defined.
+
+        Returns
+        -------
+        Path
+            The path where the model parameters are saved.
+        """
+        # TODO: implement the usage of this function
         save_path = self.model_dir.joinpath(
             f"place_cell_{model.name}_{self.model_id}.npz"
         )
         return save_path
 
     def is_fitted(self, model):
+        """
+        Checks if the model has been fitted to the data.
+
+        Parameters
+        ----------
+        model : Model
+            The model to check.
+
+        Returns
+        -------
+        bool
+            True if the model has been fitted, False otherwise.
+        """
+        # TODO: implement the usage of this function
         return model.save_path.exists()
 
     def load_fitted_model(self, model):
+        """
+        Loads a fitted model parameters from from a saved path.
+
+        Parameters
+        ----------
+        model : Model
+            The model to load.
+
+        Returns
+        -------
+        Model
+            The SpatialInformation loaded model.
+        """
         fitted_model_path = model.save_path
         if fitted_model_path.exists():
             fitted_model = np.load(fitted_model_path)
@@ -403,9 +493,12 @@ class SpatialInformation(Model):
 
     @staticmethod
     def get_spatial_information(
-        rate_map, time_map, spatial_information_method="opexebo"
+        rate_map, time_map=None, spatial_information_method="opexebo"
     ):
         """
+        ... old documentation ...
+        Computes the spatial information rate and content.
+
         Parameters
         ----------
         rate_map: np.ma.MaskedArray
@@ -448,6 +541,7 @@ class SpatialInformation(Model):
 
         if spatial_information_method == "skaggs":
             inf_rate = np.nansum(rate_map * np.log2(log_argument), axis=1)
+            # FIXME: is this correct?
             # inf_rate = np.nansum(
             #    p_spike * np.log2(log_argument), axis=1
             # )
@@ -477,7 +571,37 @@ class SpatialInformation(Model):
         max_bin=None,
     ):
         """
-        return spatial information and corresponding zscores
+        Computes spatial information and corresponding z-scores.
+
+        Parameters
+        ----------
+        activity : np.ndarray, optional
+            The activity data (default is None).
+        binned_pos : np.ndarray, optional
+            The binned position data (default is None).
+        rate_map : np.ndarray, optional
+            The rate map data (default is None).
+        time_map : np.ndarray, optional
+            The time map data (default is None).
+        n_tests : int, optional
+            The number of tests for computing z-scores (default is 500).
+        spatial_information_method : str, optional
+            The method to compute spatial information (default is "skaggs").
+        fps : float, optional
+            Frames per second (default is None).
+        max_bin : int, optional
+            The maximum bin (default is None).
+
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            - zscore : np.ndarray
+                The z-scores for spatial information.
+            - si_rate : np.ndarray
+                The spatial information rate.
+            - si_content : np.ndarray
+                The spatial information content.
         """
 
         rate_map, time_map = PlaceCellDetectors.get_rate_map(
@@ -495,21 +619,16 @@ class SpatialInformation(Model):
         # calculate the information rate for shuffled data:
         si_shuffle = np.zeros((n_tests, num_cells))
         for test_num in trange(n_tests):
-            # shuffle the time map
-            # time_map_shuffled = np.roll(
-            #    time_map, np.random.choice(np.arange(time_map.shape[0]), 1)
-            # )................
+            # shuffle the position data
             binned_pos_shuffled = np.roll(
                 binned_pos, np.random.choice(np.arange(binned_pos.shape[0]), 1)
             )
-            rate_map_shuffled, time_map_shuffled = PlaceCellDetectors.get_rate_map(
+            rate_map_shuffled, _ = PlaceCellDetectors.get_rate_map(
                 activity, binned_pos_shuffled, max_bin=max_bin
             )
-            # inf_rate, _ = self.get_spatial_information(
-            #    rate_map, time_map_shuffled, spatial_information_method
-            # ).................
+
             inf_rate, _ = self.get_spatial_information(
-                rate_map_shuffled, time_map_shuffled, spatial_information_method
+                rate_map_shuffled, spatial_information_method
             )
             si_shuffle[test_num] = inf_rate
 
