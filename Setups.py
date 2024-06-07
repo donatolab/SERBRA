@@ -244,8 +244,7 @@ class NeuralSetup(Setup):
             fps = self.extract_fps()
         return fps
 
-
-## Behavior
+## Hardware
 class Wheel:
     def __init__(self, radius=0.1, clicks_per_rotation=500):
         self.radius = radius  # in meters
@@ -591,6 +590,8 @@ class RotaryEncoder:
         return data, lap_start_frame
 
 
+## Behavior
+
 class Treadmill_Setup(Setup):
     """
     Class managing the treadmill setup of Steffen.
@@ -743,8 +744,6 @@ class Openfield_Setup(Setup):
         #
         raise NotImplementedError("Openfield setup not implemented yet")
 
-
-................
 
 class Box(Setup):
     def __init__(self, key, root_dir=None, metadata={}):

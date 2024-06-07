@@ -1,6 +1,6 @@
 date: '20210228'
 comment: null
-expt_pipeline: rigid_plastic
+#expt_pipeline: rigid_plastic
 tasks_infos:
   S1: 
     neural_metadata:
