@@ -4676,3 +4676,13 @@
 2024-06-09 18:34:14,425 - GlobalLogger - INFO - Creating moving dataset based on raw data from velocity.
 2024-06-09 18:34:15,796 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\S3_acceleration.npy
 2024-06-09 18:34:17,197 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\S3_stimulus.npy
+2024-06-09 18:50:49,995 - GlobalLogger - WARNING - File D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\DON-004366_20210228_002P-F_S1.mesc not found. Choosing first matching multi task dataset found in D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file.
+2024-06-09 18:50:49,998 - GlobalLogger - WARNING - File D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\DON-004366_20210228_002P-F_S2.mesc not found. Choosing first matching multi task dataset found in D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file.
+2024-06-09 18:50:50,000 - GlobalLogger - WARNING - File D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\DON-004366_20210228_002P-F_S3.mesc not found. Choosing first matching multi task dataset found in D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file.
+2024-06-09 18:50:50,002 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\tif\suite2p\plane0\S1_photon.npy
+2024-06-09 18:50:50,038 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-09 18:50:53,412 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\S1_position.npy
+2024-06-09 18:50:54,758 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\S1_distance.npy
+2024-06-09 18:50:56,093 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\S1_velocity.npy
+2024-06-09 18:50:57,467 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\S1_moving.npy
+2024-06-09 18:50:58,747 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\S1_acceleration.npy
