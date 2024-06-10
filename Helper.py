@@ -635,18 +635,28 @@ def get_str_from_dict(dictionary, keys):
     return string
 
 
-def keys_present(dictionary, keys):
+def keys_missing(dictionary, keys):
     present_keys = dictionary.keys()
+    missing = []
     for key in keys:
         if key not in present_keys:
-            return key
-    return True
+            missing.append(key)
+    if len(missing) > 0:
+        return missing
+    return False
 
 
 def check_needed_keys(metadata, needed_attributes):
-    present = keys_present(metadata, needed_attributes)
-    if present != True:
-        raise NameError(f"Missing metadata for: {present} not defined")
+    missing = keys_missing(metadata, needed_attributes)
+    if missing:
+        raise NameError(f"Missing metadata for: {missing} not defined")
+
+def add_missing_keys(metadata, needed_attributes, fill_value=None):
+    missing = keys_missing(metadata, needed_attributes)
+    if missing:
+        for key in missing:
+            metadata[key] = fill_value
+    return metadata
 
 
 # class

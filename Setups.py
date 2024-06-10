@@ -270,6 +270,28 @@ class SteffensDataLoader:
         return rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync
 
 
+class AndresDataLoader:
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def fetch_rotary_data(fpath):
+        """
+        columns: roatry encoder state1 | roatry encoder state 2 |        lab sync      | frames
+        values          0 or   1       |       0 or   1         |0 or 1 reflecor strip | galvosync
+
+        lab sync is not alway detected
+        """
+        data = np.load(fpath)
+
+        # get wheel electricity contact values
+        rotary_ch_a = data["rotary_encoder1_abstime"]
+        rotary_ch_b = data["rotary_encoder2_abstime"]
+
+        # get reference times for alignment to imaging frames
+        return rotary_ch_a, rotary_ch_b
+
+
 class Track:
     def __init__(
         self,
@@ -357,14 +379,18 @@ class Track:
             length=self.length,
             lap_start_frame=lap_start_frame,
         )
+        data = {"position": positions}
 
-        stimulus = self.get_stimulus_at_position(
-            positions,
-            segment_lenghts=self.segment_len,
-            segment_seq=self.segment_seq,
-        )
+        if self.segment_len is None or self.segment_seq is None:
+            print("No segment lengths or sequence provided. Not extracting stimulus.")
+        else:
+            stimulus = self.get_stimulus_at_position(
+                positions,
+                segment_lenghts=self.segment_len,
+                segment_seq=self.segment_seq,
+            )
+            data["stimulus"] = stimulus
 
-        data = {"position": positions, "stimulus": stimulus}
         return data
 
 
@@ -461,6 +487,10 @@ class RotaryEncoder:
         """
         Synchronizes the moved distances in frames to lap starts using reference times and lap sync signals.
 
+        The reference times show times when the 2p obtained a frame.
+        |        lab sync      | frames
+        |0 or 1 reflecor strip | galvosync
+
         Parameters:
             - moved_distances_in_frame: np.ndarray
                 Array of distances moved in each frame.
@@ -489,7 +519,6 @@ class RotaryEncoder:
         5. Adjusts the moved distances between lap start signals to account for possible discrepancies due to the wheel continuing to move after the subject stops.
         6. Applies the mean adjustment ratio to distances before the first and after the last detected lap start signals to create a more realistic data set.
         """
-        # TODO: ................... make this function more general, so other reference times can be used
         mute_lap_detection_time = track_length / max_speed
 
         # get moved distance until start of track
@@ -565,37 +594,88 @@ class RotaryEncoder:
 
         return fited_moved_distance_in_frame, lap_start_frame
 
-    def rotary_to_distances(
-        self,
-        wheel_radius: float,
-        rotary_binarized: np.ndarray,
-        reference_times: np.ndarray,
-        start_frame_time: int,
-    ):
+    def rotarty_to_distances(self,
+                             wheel_radius: int, 
+                             ch_a: np.ndarray, 
+                             ch_b: np.ndarray):
         """
-        Convert rotary encoder data to distance
-        The trigger times show times when the 2p obtained a frame.
-        |        lab sync      | frames
-        |0 or 1 reflecor strip | galvosync
+        Converts rotary encoder data into distances moved.
+
+        Parameters:
+            - wheel_radius: int
+                The radius of the wheel in meters.
+            - ch_a: np.ndarray
+                The signal data from channel A of the rotary encoder.
+            - ch_b: np.ndarray
+                The signal data from channel B of the rotary encoder.
+
+        Returns:
+            - distances: np.ndarray
+                An array representing the distance moved in meters.
+
+        This function performs the following steps:
+        1. Calculates the distance per click of the rotary encoder based on the wheel radius and the number of clicks per rotation.
+        2. Binarizes the rotary encoder data using the `convert_rotary_data` method.
+        3. Converts the binarized data into distances by multiplying with the distance per click.
         """
-        # extract distance from rotary encoder
-        # calculate distance
         click_distance = (
             2 * np.pi * wheel_radius
         ) / self.clicks_per_rotation  # in meters
 
-        at_time_moved = rotary_binarized * click_distance
+        binarized = self.convert_rotary_data(ch_a, ch_b)
 
-        # calculate distance moved in each frame
-        # reduce the distance to the galvo trigger times
+        distances = binarized * click_distance
+        return distances
+
+    def convert_sampling_rate_to_imaging_rate(self,
+                                              data: np.ndarray, 
+                                              imaging_sample_rate: float, 
+                                              reference_times: np.ndarray):
+        """
+        Converts data sampled at the original sampling rate to data corresponding to imaging frame times.
+
+        Parameters:
+            - data: np.ndarray
+                Array of data sampled at the original sampling rate.
+            - imaging_sample_rate: float
+                The sample rate of the imaging data.
+            - reference_times: np.ndarray
+                Array of reference times for each frame.
+
+        Returns:
+            - moved_distances_in_frame: np.ndarray
+                An array of data resampled to match the imaging frame times.
+
+        This function performs the following steps:
+        1. Determines the start index for the first useful recording based on the reference times and imaging sample rate.
+        2. Initializes an array to hold the resampled data for each frame.
+        3. Iterates through the reference times to sum the data between each frame.
+        """
         moved_distances_in_frame = np.zeros(len(reference_times))
-        old_idx = start_frame_time
+        old_idx = self.get_first_usefull_recording(reference_times, imaging_sample_rate)
         for frame, idx in enumerate(reference_times):
-            moved_distances_in_frame[frame] = np.sum(at_time_moved[old_idx:idx])
+            moved_distances_in_frame[frame] = np.sum(data[old_idx:idx])
             old_idx = idx
         return moved_distances_in_frame
 
     def get_first_usefull_recording(self, reference_times, imaging_sample_rate):
+        """
+        Determines the start time of the first useful recording based on reference times and the imaging sample rate.
+
+        Parameters:
+            - reference_times: np.ndarray
+                Array of reference times for each frame.
+            - imaging_sample_rate: float
+                The sample rate of the imaging data.
+
+        Returns:
+            - start_frame_time: int
+                The start time of the first useful recording.
+
+        This function performs the following steps:
+        1. Calculates the ratio of the original sample rate to the imaging sample rate.
+        2. Determines the start time of the first useful recording by subtracting the ratio from the first reference time.
+        """
         # reduce the distances to the galvo trigger times to reduce the amount of data
         recording_ratio = int(self.sample_rate / imaging_sample_rate)
         start_frame_time = reference_times[0] - recording_ratio
@@ -611,7 +691,6 @@ class Treadmill_Setup(Setup):
     The Belt is segmented in different segments with different stimuli.
     """
 
-    # TODO: change naming of class to better describing treadmill setup
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir_name = f"TRD-{self.method}"
@@ -634,18 +713,17 @@ class Treadmill_Setup(Setup):
                 "{task_name}_moving.npy",
             ]
         }
-        needed_attributes = [
-            "stimulus_type",
-            "stimulus_sequence",
-            "stimulus_length",
-            "environment_dimensions",
-            "imaging_fps",
-        ]
         self.raw_data_path = self.define_raw_data_path()
+
+        needed_attributes = ["environment_dimensions", "imaging_fps", "radius"]
         check_needed_keys(metadata, needed_attributes)
         self.wheel = Wheel(
             radius=metadata["radius"],
         )
+
+        optional_attributes = ["stimulus_length", "stimulus_sequence", "stimulus_type"]
+        add_missing_keys(metadata, optional_attributes, fill_value=None)
+
         self.track = Track(
             length=metadata["environment_dimensions"],
             segment_len=metadata["stimulus_length"],
@@ -653,14 +731,11 @@ class Treadmill_Setup(Setup):
             type=metadata["stimulus_type"],
             circular=True,
         )
-        self.rotary_encoder = RotaryEncoder()
 
     def extract_rotary_data(
         self,
         max_speed: float = 0.6,  # in m/s
     ):
-        imaging_fps = self.metadata["imaging_fps"]
-
         rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync = (
             SteffensDataLoader.fetch_rotary_lapsync_data(self.raw_data_path)
         )
@@ -670,27 +745,32 @@ class Treadmill_Setup(Setup):
             sample_rate=self.metadata["fps"],
             clicks_per_rotation=self.metadata["clicks_per_rotation"],
         )
-        rotary_binarized = rotary_encoder.convert_rotary_data(rotary_ch_a, rotary_ch_b)
 
         # get galvo trigger times for 2P frame
         galvo_triggers_times = Femtonics.convert_galvo_trigger_signal(galvo_sync)
 
+        imaging_fps = self.metadata["imaging_fps"]
         start_frame_time = rotary_encoder.get_first_usefull_recording(
             galvo_triggers_times, imaging_fps
         )
 
+        rotary_distances = rotary_encoder.rotary_to_distances(
+                        wheel_radius=self.wheel.radius,
+                        rotary_ch_a=rotary_ch_a,
+                        rotary_ch_b=rotary_ch_b,
+        )
+        
         ## get distance of the wheel surface
-        moved_distances_in_frame = rotary_encoder.rotary_to_distances(
-            wheel_radius=self.wheel.radius,
-            rotary_binarized=rotary_binarized,
+        moved_distances_in_frame = rotary_encoder.convert_sampling_rate_to_imaging_rate(
+            data=rotary_distances,
             reference_times=galvo_triggers_times,
-            start_frame_time=start_frame_time,
+            imaging_fps=imaging_fps,
         )
 
         # syncronise moved distances, scale rotary encoder data to lap sync signal because of slipping wheel
         distances, lap_start_frame = rotary_encoder.sync_to_lap(
             moved_distances_in_frame,
-            start_frame_time=start_frame_time,
+            imaging_fps=imaging_fps,
             reference_times=galvo_triggers_times,
             lap_sync=lap_sync,
             track_length=self.track.length,
@@ -771,7 +851,8 @@ class Wheel_Setup(Setup):
         )
 
     def process_data(self, save: bool = True, overwrite: bool = False):
-        # .............. add ability to provide rotary encoder data directly
+        
+        .......................... look into treadmil to define data extraction correctly
         rotary_data, lap_start_frame = self.rotary_encoder.extract_data(
             self.raw_data_path,
             wheel=self.wheel,
@@ -877,12 +958,14 @@ class Femtonics(NeuralSetup):
     @staticmethod
     def convert_galvo_trigger_signal(galvo_sync):
         """
+        
+
         value > 0 for when 2P frame is obtained;
         value = 0 in between
 
         find rising edge of trigger. This is the start of the 2P frame.
         output:
-            triggers: indices of the rising edge of the trigger (start of 2P frame)
+            triggers: indices of the rising edge of the trigger (start of 2P frame).
         """
         indices = np.where(galvo_sync >= 1)[0]
         galvo_trigger = np.zeros(len(galvo_sync))
