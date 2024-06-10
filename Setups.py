@@ -34,6 +34,7 @@ class Output:
         self.root_dir_name = None
         self.root_dir = Path(root_dir) if root_dir else Path()
         self.method = metadata["method"] if "method" in metadata.keys() else None
+        # TODO: use preprocessing for wheel and treadmill setups (rotary or other data processing)
         self.preprocess_name = (
             metadata["preprocessing_software"]
             if "preprocessing_software" in metadata.keys()
@@ -209,8 +210,8 @@ class NeuralSetup(Setup):
             preprocess = Suite2p(
                 key=self.key, root_dir=self.root_dir, metadata=self.metadata
             )
-        elif preprocess_name == "inscopix":
-            preprocess = Inscopix_Processing(
+        elif preprocess_name == "opexebo":
+            preprocess = Opexebo(
                 key=self.key, root_dir=self.root_dir, metadata=self.metadata
             )
         else:
@@ -311,7 +312,7 @@ class Track:
     def get_position_from_cumdist(
         cumulative_distance: np.ndarray,
         length: List[int],
-        lap_start_frame: float = 0,
+        lap_start_frame: float = None,
     ):
         """
         Get position of the animal on the belt.
@@ -319,6 +320,8 @@ class Track:
             position: position of the animal on the belt
         """
         # shift distance up, so lap_start is at 0
+        lap_start_frame = 0 if lap_start_frame is None else lap_start_frame
+
         shifted_distance = cumulative_distance + (
             180 - cumulative_distance[lap_start_frame]
         )
@@ -364,14 +367,14 @@ class Track:
     def extract_data(
         self,
         cumulative_distance: np.ndarray,
-        lap_start_frame: float,
+        lap_start_frame: float = None,
     ):
         """
         Extract data from the cumulative distance of the belt.
         output:
             data: dictionary with
                 - position: position of the animal on the belt
-                - stimulus: stimulus type at the position
+                - stimulus: stimulus type at the position if track segments are provided
         """
         # Normalize cumulative distance to treadmill length
         positions = self.get_position_from_cumdist(
@@ -403,12 +406,11 @@ class Wheel:
     def circumfrence(self):
         return 2 * np.pi * self.radius
 
-    @property
-    def track(self, segment_lengths=None, segment_sequence=None, type=None):
+    def get_track(self, segment_len=None, segment_seq=None, type=None):
         return Track(
             length=self.circumfrence,
-            segment_lengths=segment_lengths,
-            segment_sequence=segment_sequence,
+            segment_len=segment_len,
+            segment_seq=segment_seq,
             type=type,
             circular=True,
         )
@@ -478,7 +480,7 @@ class RotaryEncoder:
     def sync_to_lap(
         self,
         moved_distances_in_frame,
-        start_frame_time: np.ndarray,
+        imaging_fps: np.ndarray,
         reference_times: np.ndarray,
         lap_sync: np.ndarray,
         track_length: float,  # in meters
@@ -519,7 +521,11 @@ class RotaryEncoder:
         5. Adjusts the moved distances between lap start signals to account for possible discrepancies due to the wheel continuing to move after the subject stops.
         6. Applies the mean adjustment ratio to distances before the first and after the last detected lap start signals to create a more realistic data set.
         """
+
         mute_lap_detection_time = track_length / max_speed
+        start_frame_time = self.get_first_usefull_recording(
+            reference_times, imaging_fps
+        )
 
         # get moved distance until start of track
         ## get first lab sync signal in frame
@@ -594,10 +600,9 @@ class RotaryEncoder:
 
         return fited_moved_distance_in_frame, lap_start_frame
 
-    def rotarty_to_distances(self,
-                             wheel_radius: int, 
-                             ch_a: np.ndarray, 
-                             ch_b: np.ndarray):
+    def rotary_to_distances(
+        self, wheel_radius: int, ch_a: np.ndarray, ch_b: np.ndarray
+    ):
         """
         Converts rotary encoder data into distances moved.
 
@@ -627,10 +632,9 @@ class RotaryEncoder:
         distances = binarized * click_distance
         return distances
 
-    def convert_sampling_rate_to_imaging_rate(self,
-                                              data: np.ndarray, 
-                                              imaging_sample_rate: float, 
-                                              reference_times: np.ndarray):
+    def convert_data_fps_to_imaging_fps(
+        self, data: np.ndarray, imaging_fps: float, reference_times: np.ndarray
+    ):
         """
         Converts data sampled at the original sampling rate to data corresponding to imaging frame times.
 
@@ -652,7 +656,7 @@ class RotaryEncoder:
         3. Iterates through the reference times to sum the data between each frame.
         """
         moved_distances_in_frame = np.zeros(len(reference_times))
-        old_idx = self.get_first_usefull_recording(reference_times, imaging_sample_rate)
+        old_idx = self.get_first_usefull_recording(reference_times, imaging_fps)
         for frame, idx in enumerate(reference_times):
             moved_distances_in_frame[frame] = np.sum(data[old_idx:idx])
             old_idx = idx
@@ -735,6 +739,7 @@ class Treadmill_Setup(Setup):
     def extract_rotary_data(
         self,
         max_speed: float = 0.6,  # in m/s
+        imaging_fps: float = None,
     ):
         rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync = (
             SteffensDataLoader.fetch_rotary_lapsync_data(self.raw_data_path)
@@ -745,23 +750,20 @@ class Treadmill_Setup(Setup):
             sample_rate=self.metadata["fps"],
             clicks_per_rotation=self.metadata["clicks_per_rotation"],
         )
+        rotary_distances = rotary_encoder.rotary_to_distances(
+            wheel_radius=self.wheel.radius,
+            ch_a=rotary_ch_a,
+            ch_b=rotary_ch_b,
+        )
 
         # get galvo trigger times for 2P frame
         galvo_triggers_times = Femtonics.convert_galvo_trigger_signal(galvo_sync)
 
-        imaging_fps = self.metadata["imaging_fps"]
-        start_frame_time = rotary_encoder.get_first_usefull_recording(
-            galvo_triggers_times, imaging_fps
-        )
+        if not imaging_fps:
+            imaging_fps = self.metadata["imaging_fps"]
 
-        rotary_distances = rotary_encoder.rotary_to_distances(
-                        wheel_radius=self.wheel.radius,
-                        rotary_ch_a=rotary_ch_a,
-                        rotary_ch_b=rotary_ch_b,
-        )
-        
         ## get distance of the wheel surface
-        moved_distances_in_frame = rotary_encoder.convert_sampling_rate_to_imaging_rate(
+        moved_distances_in_frame = rotary_encoder.convert_data_fps_to_imaging_fps(
             data=rotary_distances,
             reference_times=galvo_triggers_times,
             imaging_fps=imaging_fps,
@@ -779,11 +781,6 @@ class Treadmill_Setup(Setup):
 
         cumulative_distance = np.cumsum(distances)
         velocity_from_distances = np.diff(cumulative_distance) * imaging_fps
-
-        ## get velocity m/s of the wheel surface
-        # velocity = self.rotary_to_velocity(
-        #    rotary_binarized, wheel.click_distance, galvo_triggers_times
-        # )
 
         velocity_smoothed = butter_lowpass_filter(
             velocity_from_distances, cutoff=2, fs=imaging_fps, order=2
@@ -828,38 +825,92 @@ class Wheel_Setup(Setup):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir_name = f"TRD-{self.method}"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
-        self.static_outputs = {}
+        self.static_outputs = {self.root_dir: ["results.zip"]}
         self.data_naming_scheme = (
             "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}.mat"
         )
-        self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
-        needed_attributes = [
-            "radius",
-            "clicks_per_rotation",
-        ]
+        self.variable_outputs = {}  # {self.root_dir: [self.data_naming_scheme]}
+        needed_attributes = ["radius", "clicks_per_rotation", "fps"]
         check_needed_keys(metadata, needed_attributes)
+
         self.wheel = Wheel(
             radius=metadata["radius"],
-            clicks_per_rotation=metadata["clicks_per_rotation"],
-        )
-        self.track = Track(
-            length=metadata["environment_dimensions"],
-            circular=True,
-        )
-        self.rotary_encoder = RotaryEncoder(
-            sample_rate=metadata["fps"], imaging_sample_rate=metadata["fps"]
         )
 
-    def process_data(self, save: bool = True, overwrite: bool = False):
-        
-        .......................... look into treadmil to define data extraction correctly
-        rotary_data, lap_start_frame = self.rotary_encoder.extract_data(
-            self.raw_data_path,
-            wheel=self.wheel,
+        optional_attributes = ["stimulus_length", "stimulus_sequence", "stimulus_type"]
+        add_missing_keys(metadata, optional_attributes, fill_value=None)
+
+        self.track = self.wheel.get_track(
+            segment_len=metadata["stimulus_length"],
+            segment_seq=metadata["stimulus_sequence"],
+            type=metadata["stimulus_type"],
         )
+
+    def extract_rotary_data(self, max_speed: float = 0.4, smooth=False):
+        """
+        Extracts rotary encoder data from the raw data file. The rotary encoder data is used to calculate the distance moved by the wheel.
+        The distance moved is then used to calculate the velocity and acceleration of the wheel.
+        Optionally, the velocity can be smoothed using a low-pass filter.
+
+        Output is provided in meters per rotary encoder sampling rate.
+
+        Parameters:
+            - smooth: bool, optional (default=False)
+                A flag indicating whether to smooth the velocity data.
+            - max_speed: float, optional (default=0.4)
+                The maximum speed of movement in meters per second. This parameter currently not used.
+
+        Returns:
+            - data: dict
+                A dictionary containing the following data:
+                    - distance: np.ndarray
+                        An array representing the cumulative distance moved by the wheel.
+                    - velocity: np.ndarray
+                        An array representing the velocity of the wheel.
+                    - acceleration: np.ndarray
+                        An array representing the acceleration of the wheel.
+        """
+        # load data
+        rotary_ch_a, rotary_ch_b = AndresDataLoader.fetch_rotary_data(
+            self.raw_data_path
+        )
+
+        # convert rotary data
+        rotary_encoder = RotaryEncoder(
+            sample_rate=self.metadata["fps"],
+            clicks_per_rotation=self.metadata["clicks_per_rotation"],
+        )
+        rotary_distances = rotary_encoder.rotary_to_distances(
+            wheel_radius=self.wheel.radius,
+            ch_a=rotary_ch_a,
+            ch_b=rotary_ch_b,
+        )
+
+        cumulative_distance = np.cumsum(rotary_distances)
+        velocity_from_distances = np.diff(cumulative_distance) * self.metadata["fps"]
+
+        if smooth:
+            velocity_smoothed = butter_lowpass_filter(
+                velocity_from_distances, cutoff=2, fs=self.metadata["fps"], order=2
+            )
+        else:
+            velocity_smoothed = velocity_from_distances
+
+        acceleration = np.diff(velocity_smoothed)
+
+        data = {
+            "distance": cumulative_distance,
+            "velocity": velocity_smoothed,
+            "acceleration": acceleration,
+        }
+        return data
+
+    def process_data(self, save: bool = True, overwrite: bool = False):
+        rotary_data = self.extract_rotary_data()
+
         wheel_data = self.wheel.track.extract_data(
             rotary_data["distance"],
-            lap_start_frame=lap_start_frame,
+            lap_start_frame=None,
         )
         data = {**rotary_data, **wheel_data}
 
@@ -958,7 +1009,7 @@ class Femtonics(NeuralSetup):
     @staticmethod
     def convert_galvo_trigger_signal(galvo_sync):
         """
-        
+
 
         value > 0 for when 2P frame is obtained;
         value = 0 in between
@@ -1073,11 +1124,30 @@ class Thorlabs(NeuralSetup):
 
 
 class Inscopix(NeuralSetup):
-    def __init__(self, method):
-        root_folder = f"00{method}-I"
-        output_fname = None
+    def __init__(self, key, root_dir=None, metadata={}):
+        self.root_dir_name = f"00{self.method}-I"
+        self.root_dir = self.root_dir.joinpath(self.root_dir_name)
+        self.static_outputs = {}
+        self.data_naming_scheme = (
+            "UNDEFINED----{animal_id}_{date}_"
+            + self.root_dir_name
+            + "_{task_name}.UNDEFINED"
+        )
         # TODO: output files not defined
+        #####################################################################################################
+        # Femtonics
+        self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
+        self.fps = self.get_fps()
+        self.preprocess = self.get_preprocess()
+
+        #####################################################################################################
+        data = "*_binarized_traces_V3_curated.npz"
+        in_data_is = ["F_filtered.npy", "F_onphase.npy", "F_upphase.npy"]
+        behavior = "*_locs.npy"
         raise NotImplementedError("Inscopix setup not implemented yet")
+
+    def extract_fps(self):
+        raise NotImplementedError("{self.__class__} extract_fps not implemented yet")
 
 
 # Preprocessing Classes
@@ -1089,11 +1159,17 @@ class Preprocessing(Output):
 
 
 ## Neural
-class Inscopix_Processing(Preprocessing):
+class Opexebo(Preprocessing):
     def __init__(self, method):
         # TODO: implement inscopix manager
         # TODO: implement inscopix attributes
         raise NotImplementedError("Inscopix preprocessing not implemented yet")
+
+    def process_data(self, raw_data, task_name=None, save=True):
+        # TODO: Provide possibiltiy to load settings from file, because Nathalie has a lot of different settings
+        raise NotImplementedError(
+            f"Inscopix data processing not implemented for {self.__class__}"
+        )
 
 
 class Suite2p(Preprocessing):
