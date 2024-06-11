@@ -168,8 +168,8 @@ class Output:
 
     def get_data_path(self, task_id: str = None, fname: str = None):
         identifier = Output.extract_identifier(task_id)
-        task_name = identifier["task_name"]
-        fname = f"{task_name}_{self.key}.npy" if not fname else fname
+        animal_id, date, task_name = identifier.values()
+        fname = f"{animal_id}_{date}_{task_name}_{self.key}.npy" if not fname else fname
         fpath = self.get_file_path(fname)
         return fpath
 
@@ -200,6 +200,25 @@ class Setup(Output):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
 
 
+class BehavioralSetup(Setup):
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.root_dir_name = f"TRD-{self.method}"
+        self.root_dir = self.root_dir.joinpath(self.root_dir_name)
+
+        self.variable_outputs = {
+            self.root_dir: [
+                self.data_naming_scheme,
+                "{animal_id}_{date}_{task_name}_velocity.npy",
+                "{animal_id}_{date}_{task_name}_position.npy",
+                "{animal_id}_{date}_{task_name}_distance.npy",
+                "{animal_id}_{date}_{task_name}_acceleration.npy",
+                "{animal_id}_{date}_{task_name}_stimulus.npy",
+                "{animal_id}_{date}_{task_name}_moving.npy",
+            ]
+        }
+
+
 class NeuralSetup(Setup):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
@@ -226,6 +245,8 @@ class NeuralSetup(Setup):
         return fpath
 
     def process_data(self, task_id=None):
+        ....................... similar should be in BehavioralSetup class ................. implement!!!
+        .......................... maybe create a movement class for converting distances to positions and velocities ................
         animal_id, date, task_name = Output.extract_identifier(task_id)
         raw_data = self.load_data(identifier=task_name)
         data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
@@ -687,7 +708,7 @@ class RotaryEncoder:
 
 
 ## Behavior
-class Treadmill_Setup(Setup):
+class Treadmill_Setup(BehavioralSetup):
     """
     Class managing the treadmill setup of Steffen.
     Rotation data is stored in .mat files.
@@ -697,7 +718,6 @@ class Treadmill_Setup(Setup):
 
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        self.root_dir_name = f"TRD-{self.method}"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         # TODO: add posibility to provide data_naming_scheme in yaml file
         # DON-017115_20231120_TRD-2P_S5-ACQ.mat
@@ -705,18 +725,8 @@ class Treadmill_Setup(Setup):
         self.data_naming_scheme = (
             "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
         )
-        self.variable_outputs = {
-            self.root_dir: [
-                self.data_naming_scheme,
-                "{task_name}_velocity.npy",
-                "{task_name}_position.npy",
-                "{task_name}_distance.npy",
-                "{task_name}_velocity.npy",
-                "{task_name}_acceleration.npy",
-                "{task_name}_stimulus.npy",
-                "{task_name}_moving.npy",
-            ]
-        }
+        additional_variable_outputs_in_root_dir = []
+        self.variable_outputs[self.root_dir] += additional_variable_outputs_in_root_dir
         self.raw_data_path = self.define_raw_data_path()
 
         needed_attributes = ["environment_dimensions", "imaging_fps", "radius"]
@@ -814,7 +824,7 @@ class Treadmill_Setup(Setup):
     # get_output_paths is inherited from Output class
 
 
-class Wheel_Setup(Setup):
+class Wheel_Setup(BehavioralSetup):
     """
     Class managing the wheel setup of Steffen.
     Rotation data is stored in .mat files.
@@ -826,10 +836,11 @@ class Wheel_Setup(Setup):
         self.root_dir_name = f"TRD-{self.method}"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {self.root_dir: ["results.zip"]}
-        self.data_naming_scheme = (
-            "{animal_id}_{session_date}_" + self.root_dir_name + "_{task_names}.mat"
-        )
-        self.variable_outputs = {}  # {self.root_dir: [self.data_naming_scheme]}
+        self.data_naming_scheme = "results.npy"
+        # TODO: this is not a good way to do it, preprocessing should be defined the dataset class to use rotary encoder or other methods
+        additional_variable_outputs_in_root_dir = []
+        self.variable_outputs[self.root_dir] += additional_variable_outputs_in_root_dir
+
         needed_attributes = ["radius", "clicks_per_rotation", "fps"]
         check_needed_keys(metadata, needed_attributes)
 
@@ -920,60 +931,51 @@ class Wheel_Setup(Setup):
         return data[self.key]
 
 
-class Trackball_Setup(Setup):
+class Trackball_Setup(BehavioralSetup):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         root_folder = f"???-{self.method}"
         raise NotImplementedError("Treadmill setup not implemented yet")
 
 
-class Rotary_Wheel(Wheel_Setup):
-    def __init__(self, key, root_dir=None, metadata={}):
-        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        self.rotary_encoder = RotaryEncoder()
-
-    def process_data(self, task_name=None):
-        raise NotImplementedError(
-            f"Rotary wheel setup not implemented yet {self.__class__}"
-        )
-        rotary_binarized, lab_sync, galvo_sync = self.rotary_encoder.convert_wheel_data(
-            raw_data
-        )
-        data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
-        return data
-
-
-class VR_Wheel(Wheel_Setup):
-    def __init__(self, key, root_dir=None, metadata={}):
-        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        self.static_outputs = {}
-        self.variable_outputs = {self.root_dir: ["*"]}
-
-    def process_data(self, task_name=None):
-        raise NotImplementedError(
-            f"VR wheel setup not implemented yet {self.__class__}"
-        )
-
-
-class Openfield_Setup(Setup):
+class Openfield_Setup(BehavioralSetup):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
 
         # TODO: Typically data is gathered through a camera
         #
+        self.static_outputs = {}
+        self.data_naming_scheme = (
+            "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
+        )
+        additional_variable_outputs_in_root_dir = ["*_locs.npy"]
+        self.variable_outputs[self.root_dir] += additional_variable_outputs_in_root_dir
+        self.raw_data_path = self.define_raw_data_path()
+        ##########################################################################################
+        ......................... fit this to the openfield data .................................
+        needed_attributes = ["environment_dimensions", "imaging_fps", "radius"]
+        check_needed_keys(metadata, needed_attributes)
+        self.wheel = Wheel(
+            radius=metadata["radius"],
+        )
+
+        optional_attributes = ["stimulus_length", "stimulus_sequence", "stimulus_type"]
+        add_missing_keys(metadata, optional_attributes, fill_value=None)
+
+        self.track = Track(
+            length=metadata["environment_dimensions"],
+            segment_len=metadata["stimulus_length"],
+            segment_seq=metadata["stimulus_sequence"],
+            type=metadata["stimulus_type"],
+            circular=True,
+        )
+        #############################################################
         raise NotImplementedError("Openfield setup not implemented yet")
 
+    def process_data(self, task_id=None):
+        raise NotImplementedError("Openfield data extraction not implemented yet")
 
-class Box(Setup):
-    def __init__(self, key, root_dir=None, metadata={}):
-        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-
-        # TODO: Typically data is gathered through a camera
-        #
-        raise NotImplementedError("Box setup not implemented yet")
-
-
-class Active_Avoidance(Setup):
+class Active_Avoidance(BehavioralSetup):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         # TODO: Typically data is gathered through a camera
@@ -1125,26 +1127,19 @@ class Thorlabs(NeuralSetup):
 
 class Inscopix(NeuralSetup):
     def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir_name = f"00{self.method}-I"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {}
+        # TODO: output files not defined
         self.data_naming_scheme = (
             "UNDEFINED----{animal_id}_{date}_"
             + self.root_dir_name
             + "_{task_name}.UNDEFINED"
         )
-        # TODO: output files not defined
-        #####################################################################################################
-        # Femtonics
         self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
         self.fps = self.get_fps()
         self.preprocess = self.get_preprocess()
-
-        #####################################################################################################
-        data = "*_binarized_traces_V3_curated.npz"
-        in_data_is = ["F_filtered.npy", "F_onphase.npy", "F_upphase.npy"]
-        behavior = "*_locs.npy"
-        raise NotImplementedError("Inscopix setup not implemented yet")
 
     def extract_fps(self):
         raise NotImplementedError("{self.__class__} extract_fps not implemented yet")
@@ -1160,10 +1155,33 @@ class Preprocessing(Output):
 
 ## Neural
 class Opexebo(Preprocessing):
-    def __init__(self, method):
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         # TODO: implement inscopix manager
-        # TODO: implement inscopix attributes
-        raise NotImplementedError("Inscopix preprocessing not implemented yet")
+        self.data_dir = (
+            self.root_dir
+        )  # self.root_dir.joinpath("tif", "suite2p", "plane0")
+        self.static_outputs = {
+            # self.data_dir: [
+            #    "F.npy",
+            # ]
+        }
+        # ...............check how loading of variable_outputs is done
+        self.variable_outputs = {
+            self.data_dir: ["*_binarized_traces_V3_curated.npz"]
+            # self.data_dir: ["{animal_id}_{date}_{task_name}_binarized_traces_V3_curated.npz"]
+        }
+        self.output_fnames = {
+            "F_filtered": "F_filtered.npy",
+            "F_onphase": "F_onphase.npy",
+            "F_upphase": "F_upphase.npy",
+        }
+
+    def load_settings(self, settings_file):
+        # TODO: implement opexebo settings loading
+        raise NotImplementedError(
+            f"Inscopix settings not implemented for {self.__class__}"
+        )
 
     def process_data(self, raw_data, task_name=None, save=True):
         # TODO: Provide possibiltiy to load settings from file, because Nathalie has a lot of different settings
@@ -1190,7 +1208,9 @@ class Suite2p(Preprocessing):
                 "data.bin",
             ]
         }
-        self.variable_outputs = {self.data_dir: ["{task_name}_photon.npy"]}
+        self.variable_outputs = {
+            self.data_dir: ["{animal_id}_{date}_{task_name}_photon.npy"]
+        }
         self.output_fnames = {
             "f_raw": "F.npy",
             "f_neuropil": "F_neu.npy",

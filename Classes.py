@@ -218,11 +218,12 @@ class Animal:
 
 class Session:
     """Represents a session in the dataset."""
+
     def __init__(
         self,
         animal_id,
         date,
-        animal_dir,
+        animal_dir=None,
         session_dir=None,
         data_dir=None,
         model_dir=None,
@@ -231,11 +232,13 @@ class Session:
         model_settings={},
         **kwargs,
     ):
+        if not animal_dir and not session_dir:
+            raise ValueError(f"No animal_dir or session_dir given. for {self.__class__}")
+        
         self.animal_id = animal_id
         self.date = date
         self.id = f"{self.animal_id}_{self.date}"
-        self.animal_dir = animal_dir
-        self.dir = Path(session_dir or self.animal_dir.joinpath(date))
+        self.dir = Path(session_dir or animal_dir.joinpath(date))
         self.data_dir = data_dir or self.dir
         self.model_dir = Path(model_dir or self.dir.joinpath("models"))
         self.model_settings = model_settings
@@ -275,11 +278,11 @@ class Session:
         )
         if success:
             task_object = Task(
-                self.id,
-                task,
-                self.dir,
-                self.data_dir,
-                self.model_dir,
+                session_id=self.id,
+                task=task,
+                session_dir=self.dir,
+                # data_dir=self.data_dir,
+                model_dir=self.model_dir,  # FIXME: comment this line, if models should be saved inside task folders
                 metadata=metadata,
             )
             if not model_settings:
@@ -316,11 +319,10 @@ class Session:
         # TODO: implement consistency session plot
         pass
 
-
     # Place Cells for all sessions
     def plot_cell_activity_pos_by_time(
         self,
-        cell_ids: int = None, # overrides the top_n parameter and plots only the cell with the given ids in the given order
+        cell_ids: int = None,  # overrides the top_n parameter and plots only the cell with the given ids in the given order
         task_ids: str = None,
         movement_state: str = "moving",
         sort_by: str = "zscore",  # peak, spatial_information, spatial_content, zscore or indices
@@ -445,7 +447,7 @@ class Session:
                 zscore = reference_zscore
                 si_rate = reference_si_rate
                 labels = reference_labels
-            
+
             else:
                 cell_ids = cell_ids or np.arange(task.neural.photon.data.shape[1])
 
@@ -519,6 +521,7 @@ class Session:
 
 class Task:
     """Represents a task in the dataset."""
+
     def __init__(
         self,
         session_id,
@@ -533,7 +536,9 @@ class Task:
         self.name = task
 
         self.neural_metadata, self.behavior_metadata = self.load_metadata(metadata)
-        self.data_dir = data_dir or session_dir
+
+        self.data_dir = data_dir or self.define_data_dir(session_dir)
+
         self.neural = Datasets_Neural(
             root_dir=self.data_dir, metadata=self.neural_metadata, task_id=self.id
         )
@@ -544,6 +549,12 @@ class Task:
         self.model_dir = model_dir or self.data_dir.joinpath("models")
         self.models = None
         self.embeddings = {}
+
+    def define_data_dir(self, session_dir):
+        data_dir = session_dir
+        if self.name in get_directories(data_dir):
+            data_dir = data_dir.joinpath(self.name)
+        return data_dir
 
     def load_metadata(self, metadata: dict = {}):
         needed_attributes = ["neural_metadata", "behavior_metadata"]
@@ -1106,7 +1117,7 @@ class Task:
                 The indices of the sorted cells.
             labels : np.ndarray
                 The labels for the sorted cells.
-        
+
         Raises
         ------
         ValueError
