@@ -15,7 +15,7 @@ tasks_infos:
       clicks_per_rotation: 500 #default is 500
       stimulus_type: A
       stimulus_sequence: [1, 2, 3, 4, 5, 6]
-      stimulus_length: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3] # in m
+      stimulus_dimensions: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3] # in m
       stimulus_by: location
       environment_dimensions: 1.8 # meters
       fps: 10000
@@ -31,7 +31,7 @@ tasks_infos:
       clicks_per_rotation: 500 
       stimulus_type: B
       stimulus_sequence: [1, 1, 1, 1, 1, 1]
-      stimulus_length: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
+      stimulus_dimensions: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
       stimulus_by: location
       environment_dimensions: 1.8 # meters
       fps: 10000
@@ -47,7 +47,7 @@ tasks_infos:
       clicks_per_rotation: 500 
       stimulus_type: A'
       stimulus_sequence: [1, 6, 4, 2, 3, 5]
-      stimulus_length: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
+      stimulus_dimensions: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
       stimulus_by: location
       environment_dimensions: 1.8 # meters
       fps: 10000
