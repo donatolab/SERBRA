@@ -464,6 +464,18 @@ def check_correct_metadata(string_or_list, name_parts):
 
 
 # array
+def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
+    """
+    Force two arrays to have the same dimensions.
+    By cropping the larger array to the size of the smaller array.
+    """
+    shape_0_diff = array1.shape[0] - array2.shape[0]
+    if shape_0_diff > 0:
+        array1 = array1[:-shape_0_diff]
+    elif shape_0_diff < 0:
+        array2 = array2[:shape_0_diff]
+    return array1, array2
+
 def sort_arr_by(arr, axis=1, sorting_indices=None):
     """
     if no sorting indices are given array is sorted by maximum value of 2d array

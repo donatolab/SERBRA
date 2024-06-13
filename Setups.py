@@ -207,21 +207,22 @@ class BehavioralSetup(Setup):
         self.root_dir_name = f"TRD-{self.method}"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
 
-        self.variable_outputs = {
-            self.root_dir: [
-                "{animal_id}_{date}_{task_name}_velocity.npy",
-                "{animal_id}_{date}_{task_name}_position.npy",
-                "{animal_id}_{date}_{task_name}_distance.npy",
-                "{animal_id}_{date}_{task_name}_acceleration.npy",
-                "{animal_id}_{date}_{task_name}_stimulus.npy",
-                "{animal_id}_{date}_{task_name}_moving.npy",
-            ]
-        }
+        # TODO: this should be in preprocessing class, since it is not saved by setup
+        self.own_outputs = [
+            "{animal_id}_{date}_{task_name}_velocity.npy",
+            "{animal_id}_{date}_{task_name}_position.npy",
+            "{animal_id}_{date}_{task_name}_distance.npy",
+            "{animal_id}_{date}_{task_name}_acceleration.npy",
+            "{animal_id}_{date}_{task_name}_stimulus.npy",
+            "{animal_id}_{date}_{task_name}_moving.npy",
+        ]
 
 
 class NeuralSetup(Setup):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.root_dir_name = f"00{self.method}"
+        self.own_outputs = []
 
     def get_preprocess(self):
         preprocess_name = self.preprocess_name
@@ -878,8 +879,11 @@ class Treadmill_Setup(BehavioralSetup):
         self.data_naming_scheme = (
             "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
         )
-        additional_variable_outputs_in_root_dir = [self.data_naming_scheme]
-        self.variable_outputs[self.root_dir] += additional_variable_outputs_in_root_dir
+        self.variable_outputs = {self.root_dir: []}
+
+        # TODO: this should be in preprocessing class, since it is not saved by setup
+        for output in self.own_outputs:
+            self.variable_outputs[self.root_dir].append(output)
         self.raw_data_path = self.define_raw_data_path()
 
         needed_attributes = ["environment_dimensions", "imaging_fps", "radius"]
@@ -987,8 +991,11 @@ class Wheel_Setup(BehavioralSetup):
         self.static_outputs = {self.root_dir: ["results.zip"]}
         self.data_naming_scheme = "results.npy"
         # TODO: this is not a good way to do it, preprocessing should be defined the dataset class to use rotary encoder or other methods
-        additional_variable_outputs_in_root_dir = [self.data_naming_scheme]
-        self.variable_outputs[self.root_dir] += additional_variable_outputs_in_root_dir
+        self.variable_outputs = {self.root_dir: []}
+
+        # TODO: this should be in preprocessing class, since it is not saved by setup
+        for output in self.own_outputs:
+            self.variable_outputs[self.root_dir].append(output)
 
         needed_attributes = ["radius", "clicks_per_rotation", "fps"]
         check_needed_keys(metadata, needed_attributes)
@@ -1096,24 +1103,25 @@ class Openfield_Setup(BehavioralSetup):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
 
         # TODO: Typically data is gathered through a camera
-        #
         self.static_outputs = {}
         self.data_naming_scheme = (
-            "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
+            "UNDEFINDE{animal_id}_{date}_"
+            + self.root_dir_name
+            + "_{task_name}-UNDEFINED.bla"
         )
-        additional_variable_outputs_in_root_dir = [
-            self.data_naming_scheme,
-            "*_locs.npy",
-        ]
-        self.variable_outputs[self.root_dir] += additional_variable_outputs_in_root_dir
+
+        self.variable_outputs = {
+            self.root_dir: [
+                self.data_naming_scheme,
+                "*_locs.npy",
+            ]
+        }
+        for output in self.own_outputs:
+            self.variable_outputs[self.root_dir].append(output)
+
         self.raw_data_path = self.define_raw_data_path()
         needed_attributes = ["environment_dimensions", "imaging_fps"]
         check_needed_keys(metadata, needed_attributes)
-        ##########################################################################################
-        # ......................... fit this to the openfield data .................................
-        self.openfield = Openfield(
-            dimensions=metadata["environment_dimensions"],
-        )
 
         optional_attributes = [
             "stimulus_dimensions",
@@ -1122,15 +1130,13 @@ class Openfield_Setup(BehavioralSetup):
         ]
         add_missing_keys(metadata, optional_attributes, fill_value=None)
 
-        self.track = Track_2D(
+        self.openfield = Environment(
             dimensions=metadata["environment_dimensions"],
             segment_len=metadata["stimulus_dimensions"],
             segment_seq=metadata["stimulus_sequence"],
             type=metadata["stimulus_type"],
-            circular=True,
+            circular=False,
         )
-        #############################################################
-        raise NotImplementedError("Openfield setup not implemented yet")
 
     def process_data(self, task_id=None):
         raise NotImplementedError("Openfield data extraction not implemented yet")
@@ -1159,13 +1165,17 @@ class Cam(Setup):
 class Femtonics(NeuralSetup):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        self.root_dir_name = f"00{self.method}-F"
+        self.root_dir_name += "-F"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {}
         self.data_naming_scheme = (
             "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}.mesc"
         )
         self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
+
+        # TODO: this should be in preprocessing class, since it is not saved by setup
+        for output in self.own_outputs:
+            self.variable_outputs[self.root_dir].append(output)
         self.fps = self.get_fps()
         self.preprocess = self.get_preprocess()
 
@@ -1205,7 +1215,8 @@ class Femtonics(NeuralSetup):
             # Search for multi file dataset if no unique file is found
             if not raw_data_path.exists():
                 allowed_symbols = "\-A-Za-z_0-9"
-                regex_search = f"{self.identifier['animal_id']}_{self.identifier['date']}[{allowed_symbols}]*{self.identifier['task_name']}[{allowed_symbols}]*"
+                animal_id, date, task_name = self.identifier.values()
+                regex_search = f"{animal_id}_{date}[{allowed_symbols}]*{task_name}[{allowed_symbols}]*"
                 raw_data_paths = get_files(
                     raw_data_path.parent,
                     ending=raw_data_path.suffix,
@@ -1279,7 +1290,8 @@ class Femtonics(NeuralSetup):
 
 class Thorlabs(NeuralSetup):
     def __init__(self):
-        self.root_dir_name = Path(f"00{self.method}-T")
+        self.root_dir_name += "-T"
+        self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.data_dir = self.root_dir_name.joinpath("data")
         self.static_outputs = {self.data_dir: ["Image_001_001.raw"]}
         # TODO: output files not defined
@@ -1289,7 +1301,7 @@ class Thorlabs(NeuralSetup):
 class Inscopix(NeuralSetup):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        self.root_dir_name = f"00{self.method}-I"
+        self.root_dir_name += "-I"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {}
         # TODO: output files not defined
@@ -1298,9 +1310,24 @@ class Inscopix(NeuralSetup):
             + self.root_dir_name
             + "_{task_name}.UNDEFINED"
         )
-        self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
+        self.variable_outputs = {
+            self.root_dir: [
+                self.data_naming_scheme,
+                "{animal_id}_{date}_{task_name}_photon.npy",
+            ]
+        }
+        self.variable_outputs = {self.root_dir: []}
+
+        # TODO: this should be in preprocessing class, since it is not saved by setup
+        for output in self.own_outputs:
+            self.variable_outputs[self.root_dir].append(output)
         self.fps = self.get_fps()
         self.preprocess = self.get_preprocess()
+
+    def define_raw_data_path(self, fname: str = None):
+        raise NotImplementedError(
+            f"Raw data path definition not implemented for {self.__class__}"
+        )
 
     def extract_fps(self):
         raise NotImplementedError("{self.__class__} extract_fps not implemented yet")
@@ -1312,6 +1339,10 @@ class Preprocessing(Output):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir = root_dir
+
+        # TODO: this should be in processing class, since it is created by catalins code?
+        # TODO: create processing class
+        self.own_outputs = ["{animal_id}_{date}_{task_name}_photon.npy"]
 
 
 ## Neural
@@ -1327,7 +1358,6 @@ class Opexebo(Preprocessing):
             #    "F.npy",
             # ]
         }
-        # ...............check how loading of variable_outputs is done
         self.variable_outputs = {
             self.data_dir: ["*_binarized_traces_V3_curated.npz"]
             # self.data_dir: ["{animal_id}_{date}_{task_name}_binarized_traces_V3_curated.npz"]
@@ -1369,9 +1399,12 @@ class Suite2p(Preprocessing):
                 "data.bin",
             ]
         }
-        self.variable_outputs = {
-            self.data_dir: ["{animal_id}_{date}_{task_name}_photon.npy"]
-        }
+        self.variable_outputs = {self.root_dir: []}
+
+        # TODO: this should be in preprocessing class, since it is not saved by setup
+        for output in self.own_outputs:
+            self.variable_outputs[self.root_dir].append(output)
+
         self.output_fnames = {
             "f_raw": "F.npy",
             "f_neuropil": "F_neu.npy",

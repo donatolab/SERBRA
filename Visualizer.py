@@ -14,7 +14,6 @@ import pandas as pd
 
 # OWN
 from Helper import *
-from Datasets import Datasets
 
 
 class Vizualizer:
@@ -88,8 +87,8 @@ class Vizualizer:
 
     @staticmethod
     def default_plot_start(
-        self,
         plot_attributes: dict = None,
+        num_frames=None,
         figsize=None,
         title=None,
         xlable=None,
@@ -131,7 +130,11 @@ class Vizualizer:
         if plot_attributes["xticks"]:
             plt.xticks(plot_attributes["xticks"])
         else:
-            self.set_xticks_plot(
+            Vizualizer.set_xticks_plot(
+                plot_attributes=plot_attributes,
+                num_frames=num_frames,
+                fps=fps,
+                num_ticks=num_ticks,
                 seconds_interval=seconds_interval,
             )
 
@@ -157,6 +160,10 @@ class Vizualizer:
     def default_plot_ending(
         plot_attributes=None, regenerate_plot=False, save_path=None, show=False, dpi=300
     ):
+        if plot_attributes is None:
+            plot_attributes = Vizualizer.default_plot_attributes()
+        plot_attributes["save_path"] = plot_attributes["save_path"] or save_path
+
         if regenerate_plot:
             plt.savefig(plot_attributes["save_path"], dpi=dpi)
 
@@ -178,22 +185,32 @@ class Vizualizer:
 
     @staticmethod
     def set_xticks_plot(
-        self,
+        plot_attributes=None,
+        num_frames=None,
+        fps=None,
+        num_ticks=None,
         seconds_interval=5,
     ):
-        num_frames = self.data.shape[0]
+        if plot_attributes is None:
+            plot_attributes = Vizualizer.default_plot_attributes()
 
-        xticks, xpos = range_to_times_xlables_xpos(
-            end=num_frames,
-            fps=self.plot_attributes["fps"],
-            seconds_per_label=seconds_interval,
-        )
+        plot_attributes["fps"] = plot_attributes["fps"] or fps
+        plot_attributes["num_ticks"] = plot_attributes["num_ticks"] or num_ticks or 50
 
-        # reduce number of xticks
-        if len(xpos) > self.plot_attributes["num_ticks"]:
-            steps = round(len(xpos) / self.plot_attributes["num_ticks"])
-            xticks = xticks[::steps]
-            xpos = xpos[::steps]
+        if num_frames is not None:
+            xticks, xpos = range_to_times_xlables_xpos(
+                end=num_frames,
+                fps=plot_attributes["fps"],
+                seconds_per_label=seconds_interval,
+            )
+
+            # reduce number of xticks
+            if len(xpos) > plot_attributes["num_ticks"]:
+                steps = round(len(xpos) / plot_attributes["num_ticks"])
+                xticks = xticks[::steps]
+                xpos = xpos[::steps]
+        else:
+            xticks, xpos = None, None
 
         plt.xticks(xpos, xticks, rotation=40)
 
@@ -226,7 +243,7 @@ class Vizualizer:
         figsize=(10, 10),
         dpi=300,
     ):
-        embedding, labels = Datasets.force_equal_dimensions(
+        embedding, labels = force_equal_dimensions(
             embedding, embedding_labels["labels"]
         )
 

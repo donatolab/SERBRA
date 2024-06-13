@@ -233,8 +233,10 @@ class Session:
         **kwargs,
     ):
         if not animal_dir and not session_dir:
-            raise ValueError(f"No animal_dir or session_dir given. for {self.__class__}")
-        
+            raise ValueError(
+                f"No animal_dir or session_dir given. for {self.__class__}"
+            )
+
         self.animal_id = animal_id
         self.date = date
         self.id = f"{self.animal_id}_{self.date}"
@@ -613,7 +615,7 @@ class Task:
     # Cebra
     def get_multi_data(
         self,
-        datasets_object: Datasets,
+        datasets_object,
         data_types,
         data=None,
         movement_state="all",

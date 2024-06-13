@@ -142,10 +142,20 @@ class Dataset:
 
     def refine_plot_attributes(
         self,
+        title=None,
         ylable=None,
         xlimits=None,
         save_path=None,
     ):
+        self.plot_attributes["title"] = (
+            self.plot_attributes["title"] or title or f"{self.path.stem} data"
+        )
+        self.plot_attributes["title"] = (
+            self.plot_attributes["title"]
+            if self.plot_attributes["title"][-4:] == "data"
+            else self.plot_attributes["title"] + " data"
+        )
+
         self.plot_attributes["ylable"] = (
             self.plot_attributes["ylable"] or ylable or self.key
         )
@@ -153,6 +163,7 @@ class Dataset:
         self.plot_attributes["xlimits"] = (
             self.plot_attributes["xlimits"] or xlimits or (0, len(self.data))
         )
+
         descriptive_metadata_keys = [
             "area",
             "stimulus_type",
@@ -199,21 +210,20 @@ class Dataset:
             xlimits=None,
             save_path=save_path,
         ):
-            self.refine_plot_attributes()
+            self.refine_plot_attributes(
+                title=title, ylable=ylable, xlimits=xlimits, save_path=save_path
+            )
             Vizualizer.default_plot_start(
                 plot_attributes=self.plot_attributes,
+                num_frames=self.data.shape[0],
                 figsize=figsize,
-                title=title,
                 xlable=xlable,
-                xlimits=xlimits,
                 xticks=xticks,
-                ylable=ylable,
                 ylimits=ylimits,
                 yticks=yticks,
                 seconds_interval=seconds_interval,
                 fps=fps,
                 num_ticks=num_ticks,
-                save_path=save_path,
             )
             self.plot_data()
             Vizualizer.default_plot_ending(
@@ -465,6 +475,14 @@ class Data_Stimulus(BehaviorDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
+        optional_attributes = [
+            "stimulus_dimensions",
+            "stimulus_sequence",
+            "stimulus_type",
+            "stimulus_by",
+        ]
+        add_missing_keys(metadata, optional_attributes, fill_value=None)
+
         self.stimulus_sequence = self.metadata["stimulus_sequence"]
         self.stimulus_dimensions = self.metadata["stimulus_dimensions"]
         self.stimulus_type = self.metadata["stimulus_type"]
@@ -736,21 +754,10 @@ class Data_Photon(NeuralDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        descriptive_metadata_keys = [
-            "area",
-            "stimulus_type",
-            "method",
-            "setup",
-            "preprocessing_software",
-        ]
 
-        informative_metadata = get_str_from_dict(
-            dictionary=self.metadata, keys=descriptive_metadata_keys
-        )
+        self.define_plot_attributes()
 
-        self.plot_attributes["title"] = (
-            f"Raster Plot of Binarized {self.key} Data: {informative_metadata}"
-        )
+    def define_plot_attributes(self):
         self.plot_attributes["ylable"] = "Neuron ID"
         self.plot_attributes["figsize"] = (20, 10)
         if "fps" not in self.metadata.keys():
@@ -855,19 +862,6 @@ class Datasets:
             concatenated_data_shuffled, split_ratio
         )
         return concatenated_data_tain, concatenated_data_test
-
-    @staticmethod
-    def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
-        """
-        Force two arrays to have the same dimensions.
-        By cropping the larger array to the size of the smaller array.
-        """
-        shape_0_diff = array1.shape[0] - array2.shape[0]
-        if shape_0_diff > 0:
-            array1 = array1[:-shape_0_diff]
-        elif shape_0_diff < 0:
-            array2 = array2[:shape_0_diff]
-        return array1, array2
 
 
 class Datasets_Neural(Datasets):
