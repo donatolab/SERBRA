@@ -295,29 +295,6 @@ def smooth_array(data, window_size=5, axis=0):
     )
     return smoothed_data
 
-
-def continuouse_to_discrete(continuouse_array, lengths: list):
-    """
-    Converts continuouse data into discrete values based on track lengths using NumPy.
-
-    Parameters:
-    - continuouse_array: array of continuouse data.
-    - lengths:  containing lengths of track parts.
-
-    Returns:
-    - discrete_values: NumPy array of discrete values corresponding to continuouse data.
-    """
-    # Calculate cumulative track lengths
-    cumulative_lengths = np.cumsum(lengths)
-
-    # Broadcast and compare continuouses against track boundaries
-    discrete_values = np.sum(
-        continuouse_array[:, np.newaxis] >= cumulative_lengths, axis=1
-    )
-
-    return discrete_values
-
-
 def butter_lowpass(cutoff, fs, order=5):
     """
     Design a lowpass Butterworth filter.

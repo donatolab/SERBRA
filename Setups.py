@@ -176,7 +176,7 @@ class Output:
     def save_data(self, data, overwrite=False):
         for data_name, data_type in data.items():
             animal_id, date, task_name = self.identifier.values()
-            fname = f"{animal_id}_{data}_{task_name}_{data_name}"
+            fname = f"{animal_id}_{date}_{task_name}_{data_name}"
             fpath = self.raw_data_path.parent.joinpath(fname)
             if fpath.exists() and not overwrite:
                 print(f"File {fpath} already exists. Skipping.")
@@ -209,7 +209,6 @@ class BehavioralSetup(Setup):
 
         self.variable_outputs = {
             self.root_dir: [
-                self.data_naming_scheme,
                 "{animal_id}_{date}_{task_name}_velocity.npy",
                 "{animal_id}_{date}_{task_name}_position.npy",
                 "{animal_id}_{date}_{task_name}_distance.npy",
@@ -246,8 +245,8 @@ class NeuralSetup(Setup):
         return fpath
 
     def process_data(self, task_id=None):
-        ....................... similar should be in BehavioralSetup class ................. implement!!!
-        .......................... maybe create a movement class for converting distances to positions and velocities ................
+        # ....................... similar should be in BehavioralSetup class ................. implement!!!
+        # .......................... maybe create a movement class for converting distances to positions and velocities ................
         animal_id, date, task_name = Output.extract_identifier(task_id)
         raw_data = self.load_data(identifier=task_name)
         data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
@@ -314,18 +313,19 @@ class AndresDataLoader:
         # get reference times for alignment to imaging frames
         return rotary_ch_a, rotary_ch_b
 
+
 class Environment:
     def __init__(
         self,
-        dimensions: float = None,  # in m
+        dimensions: List[float] = None,  # in m
         segment_len: List[float] = None,  # [0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
         segment_seq: List[int] = None,  # [1, 2, 3, 4, 5, 6],
         type: str = None,  # "A",
         circular: bool = True,
     ):
-        self.dimensions = dimensions
-        self.segment_len = segment_len
-        self.segment_seq = segment_seq
+        self.dimensions = make_list_ifnot(dimensions)
+        self.segment_len = make_list_ifnot(segment_len)
+        self.segment_seq = make_list_ifnot(segment_seq)
         self.type = type
         self.circular = circular
 
@@ -336,9 +336,9 @@ class Environment:
         lap_start_frame: float = None,
     ):
         """
-        Get position of the animal on the belt.
+        Get position of the animal on the 1D or 2D track.
         output:
-            position: position of the animal on the belt
+            position: position of the animal on the track
         """
         # shift distance up, so lap_start is at 0
         lap_start_frame = 0 if lap_start_frame is None else lap_start_frame
@@ -347,42 +347,162 @@ class Environment:
             180 - cumulative_distance[lap_start_frame]
         )
 
-        positions = np.zeros(len(shifted_distance))
-        started_lap = 1
-        ended_lap = 0
-        undmapped_positions = True
-        while undmapped_positions:
-            distance_min = ended_lap * dimensions
-            distance_max = started_lap * dimensions
-            distances_in_range = np.where(
-                (shifted_distance >= distance_min) & (shifted_distance < distance_max)
-            )[0]
+        positions = np.zeros_like(shifted_distance)
+        if positions.ndim == 1:
+            positions = positions.reshape(1, -1)
+        for dimension in range(len(dimensions)):
+            environment_len = dimensions[dimension]
+            started_lap = 1
+            ended_lap = 0
+            undmapped_positions = True
+            while undmapped_positions:
+                distance_min = ended_lap * environment_len
+                distance_max = started_lap * environment_len
+                distances_in_range = np.where(
+                    (shifted_distance >= distance_min)
+                    & (shifted_distance < distance_max)
+                )[0]
 
-            positions[distances_in_range] = (
-                shifted_distance[distances_in_range] - distance_min
-            )
+                positions[dimension][distances_in_range] = (
+                    shifted_distance[distances_in_range] - distance_min
+                )
 
-            if max(shifted_distance) > distance_max:
-                ended_lap += 1
-                started_lap += 1
-            else:
-                undmapped_positions = False
+                if max(shifted_distance) > distance_max:
+                    ended_lap += 1
+                    started_lap += 1
+                else:
+                    undmapped_positions = False
         return positions
 
     @staticmethod
+    def get_velocity_from_cumdist(
+        cumulative_distance: np.ndarray, imaging_fps: float, smooth=True
+    ):
+        if cumulative_distance.ndim == 1:
+            cumulative_distance = cumulative_distance.reshape(1, -1)
+        velocity = np.diff(cumulative_distance, axis=1) * imaging_fps
+
+        if smooth:
+            velocity_smoothed = butter_lowpass_filter(
+                velocity, cutoff=2, fs=imaging_fps, order=2
+            )
+        else:
+            velocity_smoothed = velocity
+        return velocity_smoothed
+
+    @staticmethod
+    def get_acceleration_from_velocity(
+        velocity: np.ndarray, imaging_fps: float, smooth=False
+    ):
+        """
+        Get acceleration from velocity. Be cautious with the smoothing, it can lead to wrong results. Smoothing parameters are not well defined
+
+        """
+        if velocity.ndim == 1:
+            velocity = velocity.reshape(1, -1)
+
+        acceleration = np.diff(velocity, axis=1) * imaging_fps
+        if smooth:
+            print(
+                f"WARNING: Smoothing acceleration can lead to wrong results. Be cautious. Smoothing parameters are not well defined."
+            )
+            velocity_smoothed = butter_lowpass_filter(
+                acceleration, cutoff=0.2, fs=imaging_fps, order=2
+            )
+        else:
+            velocity_smoothed = acceleration
+
+        return velocity_smoothed
+
+    @staticmethod
+    def create_stimulus_map(
+        segment_dimensions: np.ndarray, segment_seq: List[List[int]], bin=0.01
+    ):
+        """
+        Create a map of the environment with stimulus at position. ONLY FOR 1D ENVIRONMENTS
+        Attributes:
+            segment_dimensions: list of segment lenghts for each dimension
+            segment_seq: list of stimulus sequence for each dimension
+
+        Output:
+            map: map of the environment with stimulus at position
+
+        Examples:
+
+            1D:
+                segment_dimensions=array([[0.3],
+                                    [0.3],
+                                    [0.3],
+                                    [0.3],
+                                    [0.3],
+                                    [0.3]])
+                segment_seq=array([[1],
+                                    [2],
+                                    [3],
+                                    [4],
+                                    [5],
+                                    [6]])
+            2D:
+                segment_dimensions = np.array([[0.3, 0.3],
+                                                [0.3, 0.3],
+                                                [0.3, 0.3]])
+                segment_seq = [[1, 2, 3],
+                                [4, 5, 6],
+                                [7, 8, 9]]
+        """
+        # TODO: implement for 2D environments
+        # Check if the length of segment_dimensions matches the length of segment_seq
+        if len(segment_dimensions) != len(segment_seq):
+            raise ValueError(
+                "The length of segment_dimensions and segment_seq must match."
+            )
+
+        num_dimensions = segment_dimensions[0].ndim
+        # Initialize an empty dictionary to hold the map
+        max_positions = [None] * num_dimensions
+        for dim in range(num_dimensions):
+            max_positions[dim] = np.sum(segment_dimensions, axis=0)[0] / bin
+
+        env_map = np.cumsum(segment_dimensions)
+        return env_map
+
+    @staticmethod
     def get_stimulus_at_position(
-        positions: np.ndarray, segment_lenghts: List[float], segment_seq: List[int]
+        positions: np.ndarray,
+        segment_dimensions: List[List[float]],
+        segment_seq: List[List[int]],
+        max_position: List[float],
     ):
         """
         Get stimulus type at the position.
         output:
             stimulus: stimulus type at the position
         """
-        # get segement/stimulus type at each frame
-        stimulus_type_indexes = continuouse_to_discrete(positions, segment_lenghts)
-        stimulus_type_at_frame = np.array(segment_seq)[
-            stimulus_type_indexes % len(segment_seq)
-        ]
+        segment_dimensions = np.array(segment_dimensions)
+        segment_seq = np.array(segment_seq)
+
+        if segment_dimensions.ndim == 1:
+            segment_dimensions = segment_dimensions.reshape(-1, 1)
+        if segment_seq.ndim == 1:
+            segment_seq = segment_seq.reshape(-1, 1)
+        if positions.ndim == 1:
+            positions = positions.reshape(1, -1)
+
+        if not positions.shape[0] == segment_dimensions[0].ndim == segment_seq[0].ndim:
+            raise ValueError(
+                f"Number of dimensions must be the same as the segment dimensions and sequence. Got {positions.ndim} and {segment_dimensions[0].ndim} and {segment_seq[0].ndim}"
+            )
+
+        stimulus_map = Environment.create_stimulus_map(segment_dimensions, segment_seq)
+        if stimulus_map[-1] != max_position[0]:
+            raise ValueError(
+                f"Size of stimulus_map {stimulus_map[-1]} must be the same as the max position {max_position[0]}. Ensure that segment dimensions and sequence are correct."
+            )
+
+        # Broadcast and compare continuouses against track boundaries
+        stimulus_type_indices = np.sum(positions.reshape(-1, 1) >= stimulus_map, axis=1)
+        stimulus_type_at_frame = segment_seq[stimulus_type_indices % len(segment_seq)]
+        stimulus_type_at_frame = stimulus_type_at_frame.reshape(1, -1)[0]
         return stimulus_type_at_frame
 
     def extract_data(
@@ -397,43 +517,56 @@ class Environment:
         output:
             data: dictionary with
                 - position: position of the animal on the belt
-                - stimulus: stimulus type at the position if Environment: segments are provided
+                - stimulus: stimulus type at the position if Environment segments are provided
         """
         if positions is None and cumulative_distance is None:
-            raise ValueError(f"No distance or position provided. Cannot extract data for {self.__class__}. {inspect.stack()[0][3]}")
-        
-        velocity_from_distances = np.diff(cumulative_distance) * imaging_fps
+            raise ValueError(
+                f"No distance or position provided. Cannot extract data for {self.__class__}"
+            )
+        elif positions is None:
+            positions = self.get_position_from_cumdist(
+                cumulative_distance,
+                dimensions=self.dimensions,
+                lap_start_frame=lap_start_frame,
+            )
+        elif cumulative_distance is None:
+            cumulative_distance = np.cumsum(positions)
 
-        velocity_smoothed = butter_lowpass_filter(
-            velocity_from_distances, cutoff=2, fs=imaging_fps, order=2
+        # TODO: check for multi dimensions!!!!!
+        # TODO: check for multi dimensions!!!!!
+        # TODO:.......................... check for multi dimensions!!!!!
+        # TODO: check for multi dimensions!!!!!
+
+        velocity_smoothed = self.get_velocity_from_cumdist(
+            cumulative_distance, imaging_fps, smooth=True
         )
-        acceleration = np.diff(velocity_smoothed)
 
-        # Normalize cumulative distance to treadmill dimensions
-        positions = self.get_position_from_cumdist(
-            cumulative_distance,
-            dimensions=self.dimensions,
-            lap_start_frame=lap_start_frame,
+        acceleration = self.get_acceleration_from_velocity(
+            velocity_smoothed, imaging_fps, smooth=False
         )
 
         data = {
-                "distance": cumulative_distance,
-                "position": positions,
-                "velocity": velocity_smoothed,
-                "acceleration": acceleration,
-                }
-        
+            "distance": cumulative_distance,
+            "position": positions,
+            "velocity": velocity_smoothed,
+            "acceleration": acceleration,
+        }
+
         if self.segment_len is None or self.segment_seq is None:
-            print("No segment dimensionss or sequence provided. Not extracting stimulus.")
+            print(
+                "No segment dimensionss or sequence provided. Not extracting stimulus."
+            )
         else:
             stimulus = self.get_stimulus_at_position(
                 positions,
-                segment_lenghts=self.segment_len,
+                segment_dimensions=self.segment_len,
                 segment_seq=self.segment_seq,
+                max_position=self.dimensions,
             )
             data["stimulus"] = stimulus
-        
+
         return data
+
 
 ## Hardware
 class Wheel:
@@ -445,7 +578,7 @@ class Wheel:
         return 2 * np.pi * self.radius
 
     def get_track(self, segment_len=None, segment_seq=None, type=None):
-        return Environment:(
+        return Environment(
             dimensions=self.circumfrence,
             segment_len=segment_len,
             segment_seq=segment_seq,
@@ -559,6 +692,8 @@ class RotaryEncoder:
         5. Adjusts the moved distances between lap start signals to account for possible discrepancies due to the wheel continuing to move after the subject stops.
         6. Applies the mean adjustment ratio to distances before the first and after the last detected lap start signals to create a more realistic data set.
         """
+        if isinstance(track_dimensions, list):
+            track_dimensions = track_dimensions[0]
 
         mute_lap_detection_time = track_dimensions / max_speed
         start_frame_time = self.get_first_usefull_recording(
@@ -735,14 +870,15 @@ class Treadmill_Setup(BehavioralSetup):
 
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        self.root_dir = self.root_dir.joinpath(self.root_dir_name)
+        # self.root_dir_name = f"TRD-{self.method}"
+        # self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         # TODO: add posibility to provide data_naming_scheme in yaml file
         # DON-017115_20231120_TRD-2P_S5-ACQ.mat
         self.static_outputs = {}
         self.data_naming_scheme = (
             "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
         )
-        additional_variable_outputs_in_root_dir = []
+        additional_variable_outputs_in_root_dir = [self.data_naming_scheme]
         self.variable_outputs[self.root_dir] += additional_variable_outputs_in_root_dir
         self.raw_data_path = self.define_raw_data_path()
 
@@ -752,10 +888,14 @@ class Treadmill_Setup(BehavioralSetup):
             radius=metadata["radius"],
         )
 
-        optional_attributes = ["stimulus_dimensions", "stimulus_sequence", "stimulus_type"]
+        optional_attributes = [
+            "stimulus_dimensions",
+            "stimulus_sequence",
+            "stimulus_type",
+        ]
         add_missing_keys(metadata, optional_attributes, fill_value=None)
 
-        self.track = Environment:(
+        self.track = Environment(
             dimensions=metadata["environment_dimensions"],
             segment_len=metadata["stimulus_dimensions"],
             segment_seq=metadata["stimulus_sequence"],
@@ -807,7 +947,7 @@ class Treadmill_Setup(BehavioralSetup):
         )
 
         cumulative_distance = np.cumsum(distances)
-        
+
         data = {
             "distance": cumulative_distance,
         }
@@ -817,7 +957,8 @@ class Treadmill_Setup(BehavioralSetup):
         rotary_data, lap_start_frame = self.extract_rotary_data(max_speed=0.3)
 
         treadmill_data = self.track.extract_data(
-            rotary_data["distance"],
+            imaging_fps=self.metadata["imaging_fps"],
+            cumulative_distance=rotary_data["distance"],
             lap_start_frame=lap_start_frame,
         )
 
@@ -841,12 +982,12 @@ class Wheel_Setup(BehavioralSetup):
 
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        self.root_dir_name = f"TRD-{self.method}"
-        self.root_dir = self.root_dir.joinpath(self.root_dir_name)
+        # self.root_dir_name = f"TRD-{self.method}"
+        # self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {self.root_dir: ["results.zip"]}
         self.data_naming_scheme = "results.npy"
         # TODO: this is not a good way to do it, preprocessing should be defined the dataset class to use rotary encoder or other methods
-        additional_variable_outputs_in_root_dir = []
+        additional_variable_outputs_in_root_dir = [self.data_naming_scheme]
         self.variable_outputs[self.root_dir] += additional_variable_outputs_in_root_dir
 
         needed_attributes = ["radius", "clicks_per_rotation", "fps"]
@@ -856,7 +997,11 @@ class Wheel_Setup(BehavioralSetup):
             radius=metadata["radius"],
         )
 
-        optional_attributes = ["stimulus_dimensions", "stimulus_sequence", "stimulus_type"]
+        optional_attributes = [
+            "stimulus_dimensions",
+            "stimulus_sequence",
+            "stimulus_type",
+        ]
         add_missing_keys(metadata, optional_attributes, fill_value=None)
 
         self.track = self.wheel.get_track(
@@ -956,19 +1101,25 @@ class Openfield_Setup(BehavioralSetup):
         self.data_naming_scheme = (
             "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
         )
-        additional_variable_outputs_in_root_dir = ["*_locs.npy"]
+        additional_variable_outputs_in_root_dir = [
+            self.data_naming_scheme,
+            "*_locs.npy",
+        ]
         self.variable_outputs[self.root_dir] += additional_variable_outputs_in_root_dir
         self.raw_data_path = self.define_raw_data_path()
         needed_attributes = ["environment_dimensions", "imaging_fps"]
         check_needed_keys(metadata, needed_attributes)
         ##########################################################################################
-        ......................... fit this to the openfield data .................................
+        # ......................... fit this to the openfield data .................................
         self.openfield = Openfield(
             dimensions=metadata["environment_dimensions"],
-
         )
 
-        optional_attributes = ["stimulus_dimensions", "stimulus_sequence", "stimulus_type"]
+        optional_attributes = [
+            "stimulus_dimensions",
+            "stimulus_sequence",
+            "stimulus_type",
+        ]
         add_missing_keys(metadata, optional_attributes, fill_value=None)
 
         self.track = Track_2D(
@@ -983,6 +1134,7 @@ class Openfield_Setup(BehavioralSetup):
 
     def process_data(self, task_id=None):
         raise NotImplementedError("Openfield data extraction not implemented yet")
+
 
 class Active_Avoidance(BehavioralSetup):
     def __init__(self, key, root_dir=None, metadata={}):

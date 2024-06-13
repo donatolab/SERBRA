@@ -26,7 +26,10 @@ class Vizualizer:
         # TODO: combine plots from top to bottom aligned by time
         # distance, velocity, acceleration, position, raster
         pass
-
+    ########################################################################################################################
+    def plot_position():
+        
+    ########################################################################################################################
     def plot_embedding(
         self,
         ax,
