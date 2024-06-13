@@ -26,9 +26,191 @@ class Vizualizer:
         # TODO: combine plots from top to bottom aligned by time
         # distance, velocity, acceleration, position, raster
         pass
-    ########################################################################################################################
-    def plot_position():
-        
+
+    #############################  Data Plots #################################################
+    @staticmethod
+    def default_plot_attributes():
+        return {
+            "fps": None,
+            "title": None,
+            "ylable": None,
+            "ylimits": None,
+            "yticks": None,
+            "xlable": None,
+            "xlimits": None,
+            "xticks": None,
+            "num_ticks": None,
+            "figsize": None,
+            "save_path": None,
+        }
+
+    @staticmethod
+    def define_plot_parameter(
+        plot_attributes=None,
+        fps=None,
+        title=None,
+        ylable=None,
+        ylimits=None,
+        yticks=None,
+        xlable=None,
+        xticks=None,
+        num_ticks=None,
+        xlimits=None,
+        figsize=None,
+        save_path=None,
+    ):
+        if plot_attributes is None:
+            plot_attributes = Vizualizer.default_plot_attributes()
+        plot_attributes["fps"] = plot_attributes["fps"] or fps
+        plot_attributes["title"] = plot_attributes["title"] or title
+        plot_attributes["title"] = (
+            plot_attributes["title"]
+            if plot_attributes["title"][-4:] == "data"
+            else plot_attributes["title"] + " data"
+        )
+
+        plot_attributes["ylable"] = plot_attributes["ylable"] or ylable
+        plot_attributes["ylimits"] = plot_attributes["ylimits"] or ylimits or None
+        plot_attributes["yticks"] = plot_attributes["yticks"] or yticks or None
+        plot_attributes["xlable"] = plot_attributes["xlable"] or xlable or "seconds"
+        plot_attributes["xlimits"] = plot_attributes["xlimits"] or xlimits
+        plot_attributes["xticks"] = plot_attributes["xticks"] or xticks or None
+        plot_attributes["num_ticks"] = plot_attributes["num_ticks"] or num_ticks or 100
+        plot_attributes["figsize"] = plot_attributes["figsize"] or figsize or (20, 3)
+        plot_attributes["save_path"] = plot_attributes["save_path"] or save_path
+
+        # create plot dir if missing
+        plot_attributes["save_path"] = Path(plot_attributes["save_path"])
+        if not plot_attributes["save_path"].parent.exists():
+            plot_attributes["save_path"].parent.mkdir(parents=True, exist_ok=True)
+
+        return plot_attributes
+
+    @staticmethod
+    def default_plot_start(
+        self,
+        plot_attributes: dict = None,
+        figsize=None,
+        title=None,
+        xlable=None,
+        xlimits=None,
+        xticks=None,
+        ylable=None,
+        ylimits=None,
+        yticks=None,
+        seconds_interval=5,
+        fps=None,
+        num_ticks=50,
+        save_path=None,
+    ):
+        plot_attributes = Vizualizer.define_plot_parameter(
+            plot_attributes=plot_attributes,
+            figsize=figsize,
+            title=title,
+            ylable=ylable,
+            ylimits=ylimits,
+            yticks=yticks,
+            xlable=xlable,
+            xlimits=xlimits,
+            xticks=xticks,
+            num_ticks=num_ticks,
+            fps=fps,
+            save_path=save_path,
+        )
+        plt.figure(figsize=plot_attributes["figsize"])
+        plt.title(plot_attributes["title"])
+        plt.ylabel(plot_attributes["ylable"])
+        if plot_attributes["ylimits"]:
+            plt.ylim(plot_attributes["ylimits"])
+        if plot_attributes["yticks"]:
+            plt.yticks(plot_attributes["yticks"][0], plot_attributes["yticks"][1])
+        plt.xlabel(plot_attributes["xlable"])
+        plt.tight_layout()
+        plt.xlim(plot_attributes["xlimits"])
+
+        if plot_attributes["xticks"]:
+            plt.xticks(plot_attributes["xticks"])
+        else:
+            self.set_xticks_plot(
+                seconds_interval=seconds_interval,
+            )
+
+    @staticmethod
+    def plot_image(
+        plot_attributes=None,
+        figsize=(10, 10),
+        save_path=None,
+    ):
+        if plot_attributes is None:
+            plot_attributes = Vizualizer.default_plot_attributes()
+
+        plot_attributes["figsize"] = plot_attributes["figsize"] or figsize
+        plot_attributes["save_path"] = plot_attributes["save_path"] or save_path
+
+        plt.figure(figsize=plot_attributes["figsize"])
+        # Load the image
+        image = plt.imread(plot_attributes["save_path"])
+        plt.imshow(image)
+        plt.axis("off")
+
+    @staticmethod
+    def default_plot_ending(
+        plot_attributes=None, regenerate_plot=False, save_path=None, show=False, dpi=300
+    ):
+        if regenerate_plot:
+            plt.savefig(plot_attributes["save_path"], dpi=dpi)
+
+        if show:
+            plt.show()
+            plt.close()
+
+    @staticmethod
+    def data_plot(data, marker_pos=None, marker=None):
+        plt.plot(data, zorder=1)
+
+        if marker_pos is not None:
+            marker = "." if marker is None else marker
+        else:
+            marker_pos = range(len(data)) if marker is not None else None
+
+        if marker:
+            plt.scatter(marker_pos, data[marker_pos], marker=marker, s=10, color="red")
+
+    @staticmethod
+    def set_xticks_plot(
+        self,
+        seconds_interval=5,
+    ):
+        num_frames = self.data.shape[0]
+
+        xticks, xpos = range_to_times_xlables_xpos(
+            end=num_frames,
+            fps=self.plot_attributes["fps"],
+            seconds_per_label=seconds_interval,
+        )
+
+        # reduce number of xticks
+        if len(xpos) > self.plot_attributes["num_ticks"]:
+            steps = round(len(xpos) / self.plot_attributes["num_ticks"])
+            xticks = xticks[::steps]
+            xpos = xpos[::steps]
+
+        plt.xticks(xpos, xticks, rotation=40)
+
+    @staticmethod
+    def plot_neural_activity_raster(data):
+        binarized_data = data
+        num_time_steps, num_neurons = binarized_data.shape
+        # Find spike indices for each neuron
+        spike_indices = np.nonzero(binarized_data)
+        # Creating an empty image grid
+        image = np.zeros((num_neurons, num_time_steps))
+        # Marking spikes as pixels in the image grid
+        image[spike_indices[1], spike_indices[0]] = 1
+        # Plotting the raster plot using pixels
+        plt.imshow(image, cmap="gray", aspect="auto", interpolation="none")
+        plt.gca().invert_yaxis()  # Invert y-axis for better visualization of trials/neurons
+
     ########################################################################################################################
     def plot_embedding(
         self,
