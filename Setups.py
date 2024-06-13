@@ -36,9 +36,7 @@ class Output:
         self.method = metadata["method"] if "method" in metadata.keys() else None
         # TODO: use preprocessing for wheel and treadmill setups (rotary or other data processing)
         self.preprocess_name = (
-            metadata["preprocessing_software"]
-            if "preprocessing_software" in metadata.keys()
-            else None
+            metadata["preprocessing"] if "preprocessing" in metadata.keys() else None
         )
         self.static_outputs: dict = None
         self.variable_outputs: dict = None
@@ -200,6 +198,20 @@ class Setup(Output):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
 
+    def get_data_path(self, task_id):
+        fpath = self.preprocess.get_data_path(task_id)
+        if not fpath.exists():
+            raise ValueError(
+                f"File {fpath} not found in preprocessing class. Implement searching inside {self.__class__}"
+            )
+        return fpath
+
+    def process_data(self, task_id=None):
+        animal_id, date, task_name = Output.extract_identifier(task_id)
+        raw_data = self.load_data(identifier=task_name)
+        data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
+        return data
+
 
 class BehavioralSetup(Setup):
     def __init__(self, key, root_dir=None, metadata={}):
@@ -207,15 +219,24 @@ class BehavioralSetup(Setup):
         self.root_dir_name = f"TRD-{self.method}"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
 
-        # TODO: this should be in preprocessing class, since it is not saved by setup
-        self.own_outputs = [
-            "{animal_id}_{date}_{task_name}_velocity.npy",
-            "{animal_id}_{date}_{task_name}_position.npy",
-            "{animal_id}_{date}_{task_name}_distance.npy",
-            "{animal_id}_{date}_{task_name}_acceleration.npy",
-            "{animal_id}_{date}_{task_name}_stimulus.npy",
-            "{animal_id}_{date}_{task_name}_moving.npy",
-        ]
+    def get_preprocess(self):
+        preprocess_name = self.preprocess_name
+        if preprocess_name == "rotary_encoder":
+            preprocess = RotaryEncoder(
+                key=self.key, root_dir=self.root_dir, metadata=self.metadata
+            )
+        elif preprocess_name == "cam":
+            preprocess = Cam(
+                key=self.key, root_dir=self.root_dir, metadata=self.metadata
+            )
+        else:
+            global_logger.error(
+                f"Preprocessing software {preprocess_name} not supported for {self.__class__}."
+            )
+            raise ValueError(
+                f"Preprocessing software {preprocess_name} not supported for {self.__class__}."
+            )
+        return preprocess
 
 
 class NeuralSetup(Setup):
@@ -236,22 +257,12 @@ class NeuralSetup(Setup):
             )
         else:
             global_logger.error(
-                f"Preprocessing software {preprocess_name} not supported."
+                f"Preprocessing software {preprocess_name} not supported for {self.__class__}."
             )
-            raise ValueError(f"Preprocessing software {preprocess_name} not supported.")
+            raise ValueError(
+                f"Preprocessing software {preprocess_name} not supported for {self.__class__}."
+            )
         return preprocess
-
-    def get_data_path(self, task_id):
-        fpath = self.preprocess.get_data_path(task_id)
-        return fpath
-
-    def process_data(self, task_id=None):
-        # ....................... similar should be in BehavioralSetup class ................. implement!!!
-        # .......................... maybe create a movement class for converting distances to positions and velocities ................
-        animal_id, date, task_name = Output.extract_identifier(task_id)
-        raw_data = self.load_data(identifier=task_name)
-        data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
-        return data
 
     def extract_fps(self):
         raise NotImplementedError(
@@ -315,261 +326,7 @@ class AndresDataLoader:
         return rotary_ch_a, rotary_ch_b
 
 
-class Environment:
-    def __init__(
-        self,
-        dimensions: List[float] = None,  # in m
-        segment_len: List[float] = None,  # [0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
-        segment_seq: List[int] = None,  # [1, 2, 3, 4, 5, 6],
-        type: str = None,  # "A",
-        circular: bool = True,
-    ):
-        self.dimensions = make_list_ifnot(dimensions)
-        self.segment_len = make_list_ifnot(segment_len)
-        self.segment_seq = make_list_ifnot(segment_seq)
-        self.type = type
-        self.circular = circular
-
-    @staticmethod
-    def get_position_from_cumdist(
-        cumulative_distance: np.ndarray,
-        dimensions: List[int],
-        lap_start_frame: float = None,
-    ):
-        """
-        Get position of the animal on the 1D or 2D track.
-        output:
-            position: position of the animal on the track
-        """
-        # shift distance up, so lap_start is at 0
-        lap_start_frame = 0 if lap_start_frame is None else lap_start_frame
-
-        shifted_distance = cumulative_distance + (
-            180 - cumulative_distance[lap_start_frame]
-        )
-
-        positions = np.zeros_like(shifted_distance)
-        if positions.ndim == 1:
-            positions = positions.reshape(1, -1)
-        for dimension in range(len(dimensions)):
-            environment_len = dimensions[dimension]
-            started_lap = 1
-            ended_lap = 0
-            undmapped_positions = True
-            while undmapped_positions:
-                distance_min = ended_lap * environment_len
-                distance_max = started_lap * environment_len
-                distances_in_range = np.where(
-                    (shifted_distance >= distance_min)
-                    & (shifted_distance < distance_max)
-                )[0]
-
-                positions[dimension][distances_in_range] = (
-                    shifted_distance[distances_in_range] - distance_min
-                )
-
-                if max(shifted_distance) > distance_max:
-                    ended_lap += 1
-                    started_lap += 1
-                else:
-                    undmapped_positions = False
-        return positions
-
-    @staticmethod
-    def get_velocity_from_cumdist(
-        cumulative_distance: np.ndarray, imaging_fps: float, smooth=True
-    ):
-        if cumulative_distance.ndim == 1:
-            cumulative_distance = cumulative_distance.reshape(1, -1)
-        velocity = np.diff(cumulative_distance, axis=1) * imaging_fps
-
-        if smooth:
-            velocity_smoothed = butter_lowpass_filter(
-                velocity, cutoff=2, fs=imaging_fps, order=2
-            )
-        else:
-            velocity_smoothed = velocity
-        return velocity_smoothed
-
-    @staticmethod
-    def get_acceleration_from_velocity(
-        velocity: np.ndarray, imaging_fps: float, smooth=False
-    ):
-        """
-        Get acceleration from velocity. Be cautious with the smoothing, it can lead to wrong results. Smoothing parameters are not well defined
-
-        """
-        if velocity.ndim == 1:
-            velocity = velocity.reshape(1, -1)
-
-        acceleration = np.diff(velocity, axis=1) * imaging_fps
-        if smooth:
-            print(
-                f"WARNING: Smoothing acceleration can lead to wrong results. Be cautious. Smoothing parameters are not well defined."
-            )
-            velocity_smoothed = butter_lowpass_filter(
-                acceleration, cutoff=0.2, fs=imaging_fps, order=2
-            )
-        else:
-            velocity_smoothed = acceleration
-
-        return velocity_smoothed
-
-    @staticmethod
-    def create_stimulus_map(
-        segment_dimensions: np.ndarray, segment_seq: List[List[int]], bin=0.01
-    ):
-        """
-        Create a map of the environment with stimulus at position. ONLY FOR 1D ENVIRONMENTS
-        Attributes:
-            segment_dimensions: list of segment lenghts for each dimension
-            segment_seq: list of stimulus sequence for each dimension
-
-        Output:
-            map: map of the environment with stimulus at position
-
-        Examples:
-
-            1D:
-                segment_dimensions=array([[0.3],
-                                    [0.3],
-                                    [0.3],
-                                    [0.3],
-                                    [0.3],
-                                    [0.3]])
-                segment_seq=array([[1],
-                                    [2],
-                                    [3],
-                                    [4],
-                                    [5],
-                                    [6]])
-            2D:
-                segment_dimensions = np.array([[0.3, 0.3],
-                                                [0.3, 0.3],
-                                                [0.3, 0.3]])
-                segment_seq = [[1, 2, 3],
-                                [4, 5, 6],
-                                [7, 8, 9]]
-        """
-        # TODO: implement for 2D environments
-        # Check if the length of segment_dimensions matches the length of segment_seq
-        if len(segment_dimensions) != len(segment_seq):
-            raise ValueError(
-                "The length of segment_dimensions and segment_seq must match."
-            )
-
-        num_dimensions = segment_dimensions[0].ndim
-        # Initialize an empty dictionary to hold the map
-        max_positions = [None] * num_dimensions
-        for dim in range(num_dimensions):
-            max_positions[dim] = np.sum(segment_dimensions, axis=0)[0] / bin
-
-        env_map = np.cumsum(segment_dimensions)
-        return env_map
-
-    @staticmethod
-    def get_stimulus_at_position(
-        positions: np.ndarray,
-        segment_dimensions: List[List[float]],
-        segment_seq: List[List[int]],
-        max_position: List[float],
-    ):
-        """
-        Get stimulus type at the position.
-        output:
-            stimulus: stimulus type at the position
-        """
-        segment_dimensions = np.array(segment_dimensions)
-        segment_seq = np.array(segment_seq)
-
-        if segment_dimensions.ndim == 1:
-            segment_dimensions = segment_dimensions.reshape(-1, 1)
-        if segment_seq.ndim == 1:
-            segment_seq = segment_seq.reshape(-1, 1)
-        if positions.ndim == 1:
-            positions = positions.reshape(1, -1)
-
-        if not positions.shape[0] == segment_dimensions[0].ndim == segment_seq[0].ndim:
-            raise ValueError(
-                f"Number of dimensions must be the same as the segment dimensions and sequence. Got {positions.ndim} and {segment_dimensions[0].ndim} and {segment_seq[0].ndim}"
-            )
-
-        stimulus_map = Environment.create_stimulus_map(segment_dimensions, segment_seq)
-        if stimulus_map[-1] != max_position[0]:
-            raise ValueError(
-                f"Size of stimulus_map {stimulus_map[-1]} must be the same as the max position {max_position[0]}. Ensure that segment dimensions and sequence are correct."
-            )
-
-        # Broadcast and compare continuouses against track boundaries
-        stimulus_type_indices = np.sum(positions.reshape(-1, 1) >= stimulus_map, axis=1)
-        stimulus_type_at_frame = segment_seq[stimulus_type_indices % len(segment_seq)]
-        stimulus_type_at_frame = stimulus_type_at_frame.reshape(1, -1)[0]
-        return stimulus_type_at_frame
-
-    def extract_data(
-        self,
-        imaging_fps: float,
-        cumulative_distance: np.ndarray = None,
-        positions: np.ndarray = None,
-        lap_start_frame: float = None,
-    ):
-        """
-        Extract data from the cumulative distance of the belt.
-        output:
-            data: dictionary with
-                - position: position of the animal on the belt
-                - stimulus: stimulus type at the position if Environment segments are provided
-        """
-        if positions is None and cumulative_distance is None:
-            raise ValueError(
-                f"No distance or position provided. Cannot extract data for {self.__class__}"
-            )
-        elif positions is None:
-            positions = self.get_position_from_cumdist(
-                cumulative_distance,
-                dimensions=self.dimensions,
-                lap_start_frame=lap_start_frame,
-            )
-        elif cumulative_distance is None:
-            cumulative_distance = np.cumsum(positions)
-
-        # TODO: check for multi dimensions!!!!!
-        # TODO: check for multi dimensions!!!!!
-        # TODO:.......................... check for multi dimensions!!!!!
-        # TODO: check for multi dimensions!!!!!
-
-        velocity_smoothed = self.get_velocity_from_cumdist(
-            cumulative_distance, imaging_fps, smooth=True
-        )
-
-        acceleration = self.get_acceleration_from_velocity(
-            velocity_smoothed, imaging_fps, smooth=False
-        )
-
-        data = {
-            "distance": cumulative_distance,
-            "position": positions,
-            "velocity": velocity_smoothed,
-            "acceleration": acceleration,
-        }
-
-        if self.segment_len is None or self.segment_seq is None:
-            print(
-                "No segment dimensionss or sequence provided. Not extracting stimulus."
-            )
-        else:
-            stimulus = self.get_stimulus_at_position(
-                positions,
-                segment_dimensions=self.segment_len,
-                segment_seq=self.segment_seq,
-                max_position=self.dimensions,
-            )
-            data["stimulus"] = stimulus
-
-        return data
-
-
-## Hardware
+#######################           Hardware            ##############################################
 class Wheel:
     def __init__(self, radius):
         self.radius = radius  # in meters
@@ -586,278 +343,6 @@ class Wheel:
             type=type,
             circular=True,
         )
-
-
-class RotaryEncoder:
-    """
-    The rotary encoder is used to measure the amount of rotation.
-    This can be used to calculate the distance moved by the wheel.
-    The rotary encoder is connected to a wheel.
-    """
-
-    def __init__(self, sample_rate=10000, clicks_per_rotation=500):
-        self.sample_rate = sample_rate  # 10kHz
-        self.clicks_per_rotation = clicks_per_rotation
-
-    @staticmethod
-    @njit(parallel=True)
-    def quadrature_rotation_encoder(ch_a, ch_b):
-        """
-        Calculates the rotation direction of a quadrature rotary encoder.
-
-        <ch_a, ch_b> two encoder channels with High (1) and Low (0) states
-        <out> rotation vector with fwd (1) and rev (-1) motion, same size as input
-
-        This code was originally written in MATLAB
-        20050528 Steffen Kandler
-        """
-        # encode-state look-up table
-        # create a state map for fast lookup
-        state_map = {
-            (0, 0): 0,  # state 1
-            (1, 0): 1,  # state 2
-            (1, 1): 2,  # state 3
-            (0, 1): 3,  # state 4
-        }
-
-        # create rotation vector
-        rot_dirs = np.zeros(len(ch_a))
-        old_state = (ch_a[0], ch_b[0])
-
-        for i in prange(1, len(ch_a)):
-            state = (ch_a[i], ch_b[i])
-            state_diff = state_map[state] - state_map[old_state]
-
-            if state_diff == -3:
-                rot_dirs[i] = 1  # fwd
-            elif state_diff == 3:
-                rot_dirs[i] = -1  # rev
-
-            old_state = state
-
-        return rot_dirs
-
-    @staticmethod
-    def convert_rotary_data(ch_a, ch_b):
-        # filter out noise
-        ch_a_bin = convert_values_to_binary(ch_a)
-        ch_b_bin = convert_values_to_binary(ch_b)
-
-        # calulates rotation direction of quadrature rotary encoder
-        rotary_binarized = -RotaryEncoder.quadrature_rotation_encoder(
-            ch_a_bin, ch_b_bin
-        )
-        return rotary_binarized
-
-    def sync_to_lap(
-        self,
-        moved_distances_in_frame,
-        imaging_fps: np.ndarray,
-        reference_times: np.ndarray,
-        lap_sync: np.ndarray,
-        track_dimensions: float,  # in meters
-        max_speed=0.6,  # in m/s
-    ):
-        """
-        Synchronizes the moved distances in frames to lap starts using reference times and lap sync signals.
-
-        The reference times show times when the 2p obtained a frame.
-        |        lab sync      | frames
-        |0 or 1 reflecor strip | galvosync
-
-        Parameters:
-            - moved_distances_in_frame: np.ndarray
-                Array of distances moved in each frame.
-            - start_frame_time: np.ndarray
-                The start time of the frames.
-            - reference_times: np.ndarray
-                Array of reference times corresponding to each frame.
-            - lap_sync: np.ndarray
-                Array of lap sync signals indicating the start of each lap.
-            - track_dimensions: float
-                The dimensions of the track in meters.
-            - max_speed: float, optional (default=0.5)
-                The maximum speed of movement in meters per second.
-
-        Returns:
-            - fited_moved_distance_in_frame: np.ndarray
-                Array of moved distances in frames, adjusted based on lap sync signals.
-            - lap_start_frame: int
-                The index of the first frame where a lap start signal is detected.
-
-        This function performs the following steps:
-        1. Determines the time window (`mute_lap_detection_time`) in which lap detection is muted, based on `track_dimensions` and `max_speed`.
-        2. Identifies unique lap start indices by muting subsequent lap start signals within the determined time window.
-        3. Maps lap start signals to imaging frames using `reference_times`.
-        4. Finds the first lap start signal that occurs after the `start_frame_time`.
-        5. Adjusts the moved distances between lap start signals to account for possible discrepancies due to the wheel continuing to move after the subject stops.
-        6. Applies the mean adjustment ratio to distances before the first and after the last detected lap start signals to create a more realistic data set.
-        """
-        if isinstance(track_dimensions, list):
-            track_dimensions = track_dimensions[0]
-
-        mute_lap_detection_time = track_dimensions / max_speed
-        start_frame_time = self.get_first_usefull_recording(
-            reference_times, imaging_fps
-        )
-
-        # get moved distance until start of track
-        ## get first lab sync signal in frame
-        ## get unique lap start indices
-        lap_start_boolean = lap_sync > lap_sync.max() * 0.9  # 80% of max value
-        mute_detection_sampling_frames = self.sample_rate * mute_lap_detection_time
-        unique_lap_start_boolean = lap_start_boolean.copy()
-
-        # get unique lap start signals
-        muted_sampling_frames = 0
-        for index, lap_start_bool in enumerate(lap_start_boolean):
-            if muted_sampling_frames == 0:
-                if lap_start_bool:
-                    muted_sampling_frames = mute_detection_sampling_frames
-            else:
-                muted_sampling_frames = (
-                    muted_sampling_frames - 1 if muted_sampling_frames > 0 else 0
-                )
-                unique_lap_start_boolean[index] = False
-        lap_start_indices = np.where(unique_lap_start_boolean)[0]
-
-        # get lap start signals in imaging frames
-        lap_sync_in_frame = np.full(len(reference_times), False)
-        old_idx = start_frame_time
-        for lap_start_index in lap_start_indices:
-            for frame, idx in enumerate(reference_times):
-                if old_idx < lap_start_index and lap_start_index < idx:
-                    lap_sync_in_frame[frame] = True
-                    old_idx = idx
-                    break
-                old_idx = idx
-
-        # get first lap start signal in imaging frame
-        first_lap_start_time = 0
-        for lap_start_time in lap_start_indices:
-            if lap_start_time > start_frame_time:
-                first_lap_start_time = lap_start_time
-                break
-        lap_start_frame = len(np.where(reference_times < first_lap_start_time)[0])
-
-        # squeze moved distance based on lap sync to compensate for the fact that the wheel continues moving if mouse stops fast after running
-        lap_sync_frame_indices = np.where(lap_sync_in_frame == True)[0]
-        old_lap_sync_frame_index = lap_sync_frame_indices[0]
-        fited_moved_distance_in_frame = moved_distances_in_frame.copy()
-        fit_ratios = np.zeros(len(lap_sync_frame_indices) - 1)
-        for i, lap_sync_frame_index in enumerate(lap_sync_frame_indices[1:]):
-            moved_distances_between_laps = np.sum(
-                moved_distances_in_frame[old_lap_sync_frame_index:lap_sync_frame_index]
-            )
-            # check if lap sync was not detected by comparing with moved distance
-            # assuming maximal additional tracked distance distance is < 5%
-            max_moved_distance_difference = 0.1
-            probable_moved_laps = round(track_dimensions / moved_distances_between_laps)
-            real_moved_distance = track_dimensions * probable_moved_laps
-
-            # fit moved distances between laps to create more realistic data
-            fit_ratio = real_moved_distance / moved_distances_between_laps
-            fit_ratios[i] = fit_ratio
-            if fit_ratio > 5 or fit_ratio < 0.2:
-                raise ValueError(
-                    "Fit ratio is too different. Check data. Maybe wrong lap sync signal detection. Could be because of wrong maximum speed setting."
-                )
-            fited_moved_distance_in_frame[
-                old_lap_sync_frame_index:lap_sync_frame_index
-            ] *= fit_ratio
-            old_lap_sync_frame_index = lap_sync_frame_index
-
-        # fit moved distances before and after first and last lap sync
-        mean_fit_ratio = np.mean(fit_ratios)
-        fited_moved_distance_in_frame[0 : lap_sync_frame_indices[0]] *= mean_fit_ratio
-        fited_moved_distance_in_frame[lap_sync_frame_indices[-1] : -1] *= mean_fit_ratio
-
-        return fited_moved_distance_in_frame, lap_start_frame
-
-    def rotary_to_distances(
-        self, wheel_radius: int, ch_a: np.ndarray, ch_b: np.ndarray
-    ):
-        """
-        Converts rotary encoder data into distances moved.
-
-        Parameters:
-            - wheel_radius: int
-                The radius of the wheel in meters.
-            - ch_a: np.ndarray
-                The signal data from channel A of the rotary encoder.
-            - ch_b: np.ndarray
-                The signal data from channel B of the rotary encoder.
-
-        Returns:
-            - distances: np.ndarray
-                An array representing the distance moved in meters.
-
-        This function performs the following steps:
-        1. Calculates the distance per click of the rotary encoder based on the wheel radius and the number of clicks per rotation.
-        2. Binarizes the rotary encoder data using the `convert_rotary_data` method.
-        3. Converts the binarized data into distances by multiplying with the distance per click.
-        """
-        click_distance = (
-            2 * np.pi * wheel_radius
-        ) / self.clicks_per_rotation  # in meters
-
-        binarized = self.convert_rotary_data(ch_a, ch_b)
-
-        distances = binarized * click_distance
-        return distances
-
-    def convert_data_fps_to_imaging_fps(
-        self, data: np.ndarray, imaging_fps: float, reference_times: np.ndarray
-    ):
-        """
-        Converts data sampled at the original sampling rate to data corresponding to imaging frame times.
-
-        Parameters:
-            - data: np.ndarray
-                Array of data sampled at the original sampling rate.
-            - imaging_sample_rate: float
-                The sample rate of the imaging data.
-            - reference_times: np.ndarray
-                Array of reference times for each frame.
-
-        Returns:
-            - moved_distances_in_frame: np.ndarray
-                An array of data resampled to match the imaging frame times.
-
-        This function performs the following steps:
-        1. Determines the start index for the first useful recording based on the reference times and imaging sample rate.
-        2. Initializes an array to hold the resampled data for each frame.
-        3. Iterates through the reference times to sum the data between each frame.
-        """
-        moved_distances_in_frame = np.zeros(len(reference_times))
-        old_idx = self.get_first_usefull_recording(reference_times, imaging_fps)
-        for frame, idx in enumerate(reference_times):
-            moved_distances_in_frame[frame] = np.sum(data[old_idx:idx])
-            old_idx = idx
-        return moved_distances_in_frame
-
-    def get_first_usefull_recording(self, reference_times, imaging_sample_rate):
-        """
-        Determines the start time of the first useful recording based on reference times and the imaging sample rate.
-
-        Parameters:
-            - reference_times: np.ndarray
-                Array of reference times for each frame.
-            - imaging_sample_rate: float
-                The sample rate of the imaging data.
-
-        Returns:
-            - start_frame_time: int
-                The start time of the first useful recording.
-
-        This function performs the following steps:
-        1. Calculates the ratio of the original sample rate to the imaging sample rate.
-        2. Determines the start time of the first useful recording by subtracting the ratio from the first reference time.
-        """
-        # reduce the distances to the galvo trigger times to reduce the amount of data
-        recording_ratio = int(self.sample_rate / imaging_sample_rate)
-        start_frame_time = reference_times[0] - recording_ratio
-        return start_frame_time
 
 
 ## Behavior
@@ -1149,33 +634,22 @@ class Active_Avoidance(BehavioralSetup):
         raise NotImplementedError("Active Avoidance setup not implemented yet")
 
 
-class Cam(Setup):
-    def __init__(self, key, root_dir=None, metadata={}):
-        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        vr_root_folder = "0000VR"  # VR
-        cam_root_folder = "0000MC"  # Cam Data
-        cam_top_root_folder = "000BSM"  # Top View Mousecam
-        cam_top_root_folder = "TR-BSL"  # Top View Mousecam Inscopix
-        # TODO: implement cam data loading
-        root_folder = f"???-{self.method}"
-        raise NotImplementedError("Treadmill setup not implemented yet")
-
-
-## Imaging
+########################        Imaging          ############################################################
 class Femtonics(NeuralSetup):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir_name += "-F"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
+        self.data_dir = self.root_dir
         self.static_outputs = {}
         self.data_naming_scheme = (
             "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}.mesc"
         )
-        self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
+        self.variable_outputs = {self.data_dir: [self.data_naming_scheme]}
 
         # TODO: this should be in preprocessing class, since it is not saved by setup
         for output in self.own_outputs:
-            self.variable_outputs[self.root_dir].append(output)
+            self.variable_outputs[self.data_dir].append(output)
         self.fps = self.get_fps()
         self.preprocess = self.get_preprocess()
 
@@ -1303,6 +777,7 @@ class Inscopix(NeuralSetup):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir_name += "-I"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
+        self.data_dir = self.root_dir
         self.static_outputs = {}
         # TODO: output files not defined
         self.data_naming_scheme = (
@@ -1310,17 +785,12 @@ class Inscopix(NeuralSetup):
             + self.root_dir_name
             + "_{task_name}.UNDEFINED"
         )
-        self.variable_outputs = {
-            self.root_dir: [
-                self.data_naming_scheme,
-                "{animal_id}_{date}_{task_name}_photon.npy",
-            ]
-        }
-        self.variable_outputs = {self.root_dir: []}
+        self.variable_outputs = {self.data_dir: [self.data_naming_scheme]}
+        self.variable_outputs = {self.data_dir: []}
 
         # TODO: this should be in preprocessing class, since it is not saved by setup
         for output in self.own_outputs:
-            self.variable_outputs[self.root_dir].append(output)
+            self.variable_outputs[self.data_dir].append(output)
         self.fps = self.get_fps()
         self.preprocess = self.get_preprocess()
 
@@ -1334,54 +804,318 @@ class Inscopix(NeuralSetup):
 
 
 # Preprocessing Classes
-## Meta Class
-class Preprocessing(Output):
+
+#######################       Preprocessing         ############################################################
+
+class Behavior_Preprocessing(Output):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir = root_dir
+        self.own_outputs = [
+            "{animal_id}_{date}_{task_name}_position.npy",
+            "{animal_id}_{date}_{task_name}_distance.npy",
+        ]
 
-        # TODO: this should be in processing class, since it is created by catalins code?
-        # TODO: create processing class
-        self.own_outputs = ["{animal_id}_{date}_{task_name}_photon.npy"]
 
-
-## Neural
-class Opexebo(Preprocessing):
+class Neural_Preprocessing(Output):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        # TODO: implement inscopix manager
-        self.data_dir = (
-            self.root_dir
-        )  # self.root_dir.joinpath("tif", "suite2p", "plane0")
-        self.static_outputs = {
-            # self.data_dir: [
-            #    "F.npy",
-            # ]
-        }
-        self.variable_outputs = {
-            self.data_dir: ["*_binarized_traces_V3_curated.npz"]
-            # self.data_dir: ["{animal_id}_{date}_{task_name}_binarized_traces_V3_curated.npz"]
-        }
-        self.output_fnames = {
-            "F_filtered": "F_filtered.npy",
-            "F_onphase": "F_onphase.npy",
-            "F_upphase": "F_upphase.npy",
+        self.root_dir = root_dir
+        .................... create other funnction for fetching data, so self.get_data_path is still possible to use for searching files
+
+class RotaryEncoder(Behavior_Preprocessing):
+    """
+    The rotary encoder is used to measure the amount of rotation.
+    This can be used to calculate the distance moved by the wheel.
+    The rotary encoder is connected to a wheel.
+    """
+
+    def __init__(self, sample_rate=10000, clicks_per_rotation=500):
+        self.sample_rate = sample_rate  # 10kHz
+        self.clicks_per_rotation = clicks_per_rotation
+
+    @staticmethod
+    @njit(parallel=True)
+    def quadrature_rotation_encoder(ch_a, ch_b):
+        """
+        Calculates the rotation direction of a quadrature rotary encoder.
+
+        <ch_a, ch_b> two encoder channels with High (1) and Low (0) states
+        <out> rotation vector with fwd (1) and rev (-1) motion, same size as input
+
+        This code was originally written in MATLAB
+        20050528 Steffen Kandler
+        """
+        # encode-state look-up table
+        # create a state map for fast lookup
+        state_map = {
+            (0, 0): 0,  # state 1
+            (1, 0): 1,  # state 2
+            (1, 1): 2,  # state 3
+            (0, 1): 3,  # state 4
         }
 
-    def load_settings(self, settings_file):
-        # TODO: implement opexebo settings loading
-        raise NotImplementedError(
-            f"Inscopix settings not implemented for {self.__class__}"
+        # create rotation vector
+        rot_dirs = np.zeros(len(ch_a))
+        old_state = (ch_a[0], ch_b[0])
+
+        for i in prange(1, len(ch_a)):
+            state = (ch_a[i], ch_b[i])
+            state_diff = state_map[state] - state_map[old_state]
+
+            if state_diff == -3:
+                rot_dirs[i] = 1  # fwd
+            elif state_diff == 3:
+                rot_dirs[i] = -1  # rev
+
+            old_state = state
+
+        return rot_dirs
+
+    @staticmethod
+    def convert_rotary_data(ch_a, ch_b):
+        # filter out noise
+        ch_a_bin = convert_values_to_binary(ch_a)
+        ch_b_bin = convert_values_to_binary(ch_b)
+
+        # calulates rotation direction of quadrature rotary encoder
+        rotary_binarized = -RotaryEncoder.quadrature_rotation_encoder(
+            ch_a_bin, ch_b_bin
         )
+        return rotary_binarized
+
+    def sync_to_lap(
+        self,
+        moved_distances_in_frame,
+        imaging_fps: np.ndarray,
+        reference_times: np.ndarray,
+        lap_sync: np.ndarray,
+        track_dimensions: float,  # in meters
+        max_speed=0.6,  # in m/s
+    ):
+        """
+        Synchronizes the moved distances in frames to lap starts using reference times and lap sync signals.
+
+        The reference times show times when the 2p obtained a frame.
+        |        lab sync      | frames
+        |0 or 1 reflecor strip | galvosync
+
+        Parameters:
+            - moved_distances_in_frame: np.ndarray
+                Array of distances moved in each frame.
+            - start_frame_time: np.ndarray
+                The start time of the frames.
+            - reference_times: np.ndarray
+                Array of reference times corresponding to each frame.
+            - lap_sync: np.ndarray
+                Array of lap sync signals indicating the start of each lap.
+            - track_dimensions: float
+                The dimensions of the track in meters.
+            - max_speed: float, optional (default=0.5)
+                The maximum speed of movement in meters per second.
+
+        Returns:
+            - fited_moved_distance_in_frame: np.ndarray
+                Array of moved distances in frames, adjusted based on lap sync signals.
+            - lap_start_frame: int
+                The index of the first frame where a lap start signal is detected.
+
+        This function performs the following steps:
+        1. Determines the time window (`mute_lap_detection_time`) in which lap detection is muted, based on `track_dimensions` and `max_speed`.
+        2. Identifies unique lap start indices by muting subsequent lap start signals within the determined time window.
+        3. Maps lap start signals to imaging frames using `reference_times`.
+        4. Finds the first lap start signal that occurs after the `start_frame_time`.
+        5. Adjusts the moved distances between lap start signals to account for possible discrepancies due to the wheel continuing to move after the subject stops.
+        6. Applies the mean adjustment ratio to distances before the first and after the last detected lap start signals to create a more realistic data set.
+        """
+        if isinstance(track_dimensions, list):
+            track_dimensions = track_dimensions[0]
+
+        mute_lap_detection_time = track_dimensions / max_speed
+        start_frame_time = self.get_first_usefull_recording(
+            reference_times, imaging_fps
+        )
+
+        # get moved distance until start of track
+        ## get first lab sync signal in frame
+        ## get unique lap start indices
+        lap_start_boolean = lap_sync > lap_sync.max() * 0.9  # 80% of max value
+        mute_detection_sampling_frames = self.sample_rate * mute_lap_detection_time
+        unique_lap_start_boolean = lap_start_boolean.copy()
+
+        # get unique lap start signals
+        muted_sampling_frames = 0
+        for index, lap_start_bool in enumerate(lap_start_boolean):
+            if muted_sampling_frames == 0:
+                if lap_start_bool:
+                    muted_sampling_frames = mute_detection_sampling_frames
+            else:
+                muted_sampling_frames = (
+                    muted_sampling_frames - 1 if muted_sampling_frames > 0 else 0
+                )
+                unique_lap_start_boolean[index] = False
+        lap_start_indices = np.where(unique_lap_start_boolean)[0]
+
+        # get lap start signals in imaging frames
+        lap_sync_in_frame = np.full(len(reference_times), False)
+        old_idx = start_frame_time
+        for lap_start_index in lap_start_indices:
+            for frame, idx in enumerate(reference_times):
+                if old_idx < lap_start_index and lap_start_index < idx:
+                    lap_sync_in_frame[frame] = True
+                    old_idx = idx
+                    break
+                old_idx = idx
+
+        # get first lap start signal in imaging frame
+        first_lap_start_time = 0
+        for lap_start_time in lap_start_indices:
+            if lap_start_time > start_frame_time:
+                first_lap_start_time = lap_start_time
+                break
+        lap_start_frame = len(np.where(reference_times < first_lap_start_time)[0])
+
+        # squeze moved distance based on lap sync to compensate for the fact that the wheel continues moving if mouse stops fast after running
+        lap_sync_frame_indices = np.where(lap_sync_in_frame == True)[0]
+        old_lap_sync_frame_index = lap_sync_frame_indices[0]
+        fited_moved_distance_in_frame = moved_distances_in_frame.copy()
+        fit_ratios = np.zeros(len(lap_sync_frame_indices) - 1)
+        for i, lap_sync_frame_index in enumerate(lap_sync_frame_indices[1:]):
+            moved_distances_between_laps = np.sum(
+                moved_distances_in_frame[old_lap_sync_frame_index:lap_sync_frame_index]
+            )
+            # check if lap sync was not detected by comparing with moved distance
+            # assuming maximal additional tracked distance distance is < 5%
+            max_moved_distance_difference = 0.1
+            probable_moved_laps = round(track_dimensions / moved_distances_between_laps)
+            real_moved_distance = track_dimensions * probable_moved_laps
+
+            # fit moved distances between laps to create more realistic data
+            fit_ratio = real_moved_distance / moved_distances_between_laps
+            fit_ratios[i] = fit_ratio
+            if fit_ratio > 5 or fit_ratio < 0.2:
+                raise ValueError(
+                    "Fit ratio is too different. Check data. Maybe wrong lap sync signal detection. Could be because of wrong maximum speed setting."
+                )
+            fited_moved_distance_in_frame[
+                old_lap_sync_frame_index:lap_sync_frame_index
+            ] *= fit_ratio
+            old_lap_sync_frame_index = lap_sync_frame_index
+
+        # fit moved distances before and after first and last lap sync
+        mean_fit_ratio = np.mean(fit_ratios)
+        fited_moved_distance_in_frame[0 : lap_sync_frame_indices[0]] *= mean_fit_ratio
+        fited_moved_distance_in_frame[lap_sync_frame_indices[-1] : -1] *= mean_fit_ratio
+
+        return fited_moved_distance_in_frame, lap_start_frame
+
+    def rotary_to_distances(
+        self, wheel_radius: int, ch_a: np.ndarray, ch_b: np.ndarray
+    ):
+        """
+        Converts rotary encoder data into distances moved.
+
+        Parameters:
+            - wheel_radius: int
+                The radius of the wheel in meters.
+            - ch_a: np.ndarray
+                The signal data from channel A of the rotary encoder.
+            - ch_b: np.ndarray
+                The signal data from channel B of the rotary encoder.
+
+        Returns:
+            - distances: np.ndarray
+                An array representing the distance moved in meters.
+
+        This function performs the following steps:
+        1. Calculates the distance per click of the rotary encoder based on the wheel radius and the number of clicks per rotation.
+        2. Binarizes the rotary encoder data using the `convert_rotary_data` method.
+        3. Converts the binarized data into distances by multiplying with the distance per click.
+        """
+        click_distance = (
+            2 * np.pi * wheel_radius
+        ) / self.clicks_per_rotation  # in meters
+
+        binarized = self.convert_rotary_data(ch_a, ch_b)
+
+        distances = binarized * click_distance
+        return distances
+
+    def convert_data_fps_to_imaging_fps(
+        self, data: np.ndarray, imaging_fps: float, reference_times: np.ndarray
+    ):
+        """
+        Converts data sampled at the original sampling rate to data corresponding to imaging frame times.
+
+        Parameters:
+            - data: np.ndarray
+                Array of data sampled at the original sampling rate.
+            - imaging_sample_rate: float
+                The sample rate of the imaging data.
+            - reference_times: np.ndarray
+                Array of reference times for each frame.
+
+        Returns:
+            - moved_distances_in_frame: np.ndarray
+                An array of data resampled to match the imaging frame times.
+
+        This function performs the following steps:
+        1. Determines the start index for the first useful recording based on the reference times and imaging sample rate.
+        2. Initializes an array to hold the resampled data for each frame.
+        3. Iterates through the reference times to sum the data between each frame.
+        """
+        moved_distances_in_frame = np.zeros(len(reference_times))
+        old_idx = self.get_first_usefull_recording(reference_times, imaging_fps)
+        for frame, idx in enumerate(reference_times):
+            moved_distances_in_frame[frame] = np.sum(data[old_idx:idx])
+            old_idx = idx
+        return moved_distances_in_frame
+
+    def get_first_usefull_recording(self, reference_times, imaging_sample_rate):
+        """
+        Determines the start time of the first useful recording based on reference times and the imaging sample rate.
+
+        Parameters:
+            - reference_times: np.ndarray
+                Array of reference times for each frame.
+            - imaging_sample_rate: float
+                The sample rate of the imaging data.
+
+        Returns:
+            - start_frame_time: int
+                The start time of the first useful recording.
+
+        This function performs the following steps:
+        1. Calculates the ratio of the original sample rate to the imaging sample rate.
+        2. Determines the start time of the first useful recording by subtracting the ratio from the first reference time.
+        """
+        # reduce the distances to the galvo trigger times to reduce the amount of data
+        recording_ratio = int(self.sample_rate / imaging_sample_rate)
+        start_frame_time = reference_times[0] - recording_ratio
+        return start_frame_time
+
+class Cam(Behavior_Preprocessing):
+    """
+    vr_root_folder = "0000VR"  # VR
+    cam_root_folder = "0000MC"  # Cam Data
+    cam_top_root_folder = "000BSM"  # Top View Mousecam
+    cam_top_root_folder = "TR-BSL"  # Top View Mousecam Inscopix
+    """
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.data_dir = self.root_dir.joinpath("000BSM")
+        self.static_outputs = {self.data_dir: ["NoClue.data"]}
+
+        self.output_path = self.data_dir.parent.joinpath(f"TRD-{self.method}")
+        self.variable_outputs = {self.self.output_path: []}
+        
 
     def process_data(self, raw_data, task_name=None, save=True):
-        # TODO: Provide possibiltiy to load settings from file, because Nathalie has a lot of different settings
         raise NotImplementedError(
-            f"Inscopix data processing not implemented for {self.__class__}"
+            f"cam data processing not implemented for {self.__class__}"
         )
 
-
-class Suite2p(Preprocessing):
+class Suite2p(Neural_Preprocessing):
     def __init__(self, key, root_dir=None, metadata={}):
         # TODO: implement suite2p manager
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
@@ -1394,29 +1128,11 @@ class Suite2p(Preprocessing):
                 "ops.npy",
                 "spks.npy",
                 "stat.npy",
-                "binarized_traces.npz",
                 "cell_drying.npy",
                 "data.bin",
             ]
         }
-        self.variable_outputs = {self.root_dir: []}
-
-        # TODO: this should be in preprocessing class, since it is not saved by setup
-        for output in self.own_outputs:
-            self.variable_outputs[self.root_dir].append(output)
-
-        self.output_fnames = {
-            "f_raw": "F.npy",
-            "f_neuropil": "F_neu.npy",
-            "f_upphase": "F_neu.npy",
-            "iscell": "iscell.npy",
-            "ops": "ops.npy",
-            "spks": "spks.npy",
-            "stat": "stat.npy",
-            "cabincorr": "binarized_traces.npz",
-            "cell_geldrying": "cell_drying.npy",
-            "binary": "data.bin",
-        }
+        self.variable_outputs = {self.data_dir: []}
 
         self.ops_settings = {
             "tau": 1,  # 0.7 for GCaMP6f,   1.0 for GCaMP6m,    1.25-1.5 for GCaMP6s
@@ -1433,3 +1149,320 @@ class Suite2p(Preprocessing):
     # load_data is inherited from Output class
     # self.load_data(file_name, full_root_dir=self.root_dir)
     # get_file_path is inherited from Output class
+    
+class Opexebo(Neural_Preprocessing):
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.data_dir = self.root_dir
+        self.static_outputs = {}
+
+    def load_settings(self, settings_file):
+        # TODO: implement opexebo settings loading
+        raise NotImplementedError(
+            f"Inscopix settings not implemented for {self.__class__}"
+        )
+
+    def process_data(self, raw_data, task_name=None, save=True):
+        # TODO: Provide possibiltiy to load settings from file, because Nathalie has a lot of different settings
+        raise NotImplementedError(
+            f"Inscopix data processing not implemented for {self.__class__}"
+        )
+#######################       Processing         ############################################################
+class Behavior_Processing(Output):
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.root_dir = root_dir
+        self.own_outputs = [
+            "{animal_id}_{date}_{task_name}_velocity.npy",
+            "{animal_id}_{date}_{task_name}_position.npy",
+            "{animal_id}_{date}_{task_name}_distance.npy",
+            "{animal_id}_{date}_{task_name}_acceleration.npy",
+            "{animal_id}_{date}_{task_name}_stimulus.npy",
+            "{animal_id}_{date}_{task_name}_moving.npy",
+        ]
+
+
+class Neural_Processing(Output):
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.root_dir = root_dir
+        self.own_outputs = ["{animal_id}_{date}_{task_name}_photon.npy"]
+
+
+class Environment(Behavior_Processing):
+    def __init__(
+        self,
+        dimensions: List[float] = None,  # in m
+        segment_len: List[float] = None,  # [0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
+        segment_seq: List[int] = None,  # [1, 2, 3, 4, 5, 6],
+        type: str = None,  # "A",
+        circular: bool = True,
+    ):
+        self.dimensions = make_list_ifnot(dimensions)
+        self.segment_len = make_list_ifnot(segment_len)
+        self.segment_seq = make_list_ifnot(segment_seq)
+        self.type = type
+        self.circular = circular
+
+    @staticmethod
+    def get_position_from_cumdist(
+        cumulative_distance: np.ndarray,
+        dimensions: List[int],
+        lap_start_frame: float = None,
+    ):
+        """
+        Get position of the animal on the 1D or 2D track.
+        output:
+            position: position of the animal on the track
+        """
+        # shift distance up, so lap_start is at 0
+        lap_start_frame = 0 if lap_start_frame is None else lap_start_frame
+
+        shifted_distance = cumulative_distance + (
+            180 - cumulative_distance[lap_start_frame]
+        )
+
+        positions = np.zeros_like(shifted_distance)
+        if positions.ndim == 1:
+            positions = positions.reshape(1, -1)
+        for dimension in range(len(dimensions)):
+            environment_len = dimensions[dimension]
+            started_lap = 1
+            ended_lap = 0
+            undmapped_positions = True
+            while undmapped_positions:
+                distance_min = ended_lap * environment_len
+                distance_max = started_lap * environment_len
+                distances_in_range = np.where(
+                    (shifted_distance >= distance_min)
+                    & (shifted_distance < distance_max)
+                )[0]
+
+                positions[dimension][distances_in_range] = (
+                    shifted_distance[distances_in_range] - distance_min
+                )
+
+                if max(shifted_distance) > distance_max:
+                    ended_lap += 1
+                    started_lap += 1
+                else:
+                    undmapped_positions = False
+        return positions
+
+    @staticmethod
+    def get_velocity_from_cumdist(
+        cumulative_distance: np.ndarray, imaging_fps: float, smooth=True
+    ):
+        if cumulative_distance.ndim == 1:
+            cumulative_distance = cumulative_distance.reshape(1, -1)
+        velocity = np.diff(cumulative_distance, axis=1) * imaging_fps
+
+        if smooth:
+            velocity_smoothed = butter_lowpass_filter(
+                velocity, cutoff=2, fs=imaging_fps, order=2
+            )
+        else:
+            velocity_smoothed = velocity
+        return velocity_smoothed
+
+    @staticmethod
+    def get_acceleration_from_velocity(
+        velocity: np.ndarray, imaging_fps: float, smooth=False
+    ):
+        """
+        Get acceleration from velocity. Be cautious with the smoothing, it can lead to wrong results. Smoothing parameters are not well defined
+
+        """
+        if velocity.ndim == 1:
+            velocity = velocity.reshape(1, -1)
+
+        acceleration = np.diff(velocity, axis=1) * imaging_fps
+        if smooth:
+            print(
+                f"WARNING: Smoothing acceleration can lead to wrong results. Be cautious. Smoothing parameters are not well defined."
+            )
+            velocity_smoothed = butter_lowpass_filter(
+                acceleration, cutoff=0.2, fs=imaging_fps, order=2
+            )
+        else:
+            velocity_smoothed = acceleration
+
+        return velocity_smoothed
+
+    @staticmethod
+    def create_stimulus_map(
+        segment_dimensions: np.ndarray, segment_seq: List[List[int]], bin=0.01
+    ):
+        """
+        Create a map of the environment with stimulus at position. ONLY FOR 1D ENVIRONMENTS
+        Attributes:
+            segment_dimensions: list of segment lenghts for each dimension
+            segment_seq: list of stimulus sequence for each dimension
+
+        Output:
+            map: map of the environment with stimulus at position
+
+        Examples:
+
+            1D:
+                segment_dimensions=array([[0.3],
+                                    [0.3],
+                                    [0.3],
+                                    [0.3],
+                                    [0.3],
+                                    [0.3]])
+                segment_seq=array([[1],
+                                    [2],
+                                    [3],
+                                    [4],
+                                    [5],
+                                    [6]])
+            2D:
+                segment_dimensions = np.array([[0.3, 0.3],
+                                                [0.3, 0.3],
+                                                [0.3, 0.3]])
+                segment_seq = [[1, 2, 3],
+                                [4, 5, 6],
+                                [7, 8, 9]]
+        """
+        # TODO: implement for 2D environments
+        # Check if the length of segment_dimensions matches the length of segment_seq
+        if len(segment_dimensions) != len(segment_seq):
+            raise ValueError(
+                "The length of segment_dimensions and segment_seq must match."
+            )
+
+        num_dimensions = segment_dimensions[0].ndim
+        # Initialize an empty dictionary to hold the map
+        max_positions = [None] * num_dimensions
+        for dim in range(num_dimensions):
+            max_positions[dim] = np.sum(segment_dimensions, axis=0)[0] / bin
+
+        env_map = np.cumsum(segment_dimensions)
+        return env_map
+
+    @staticmethod
+    def get_stimulus_at_position(
+        positions: np.ndarray,
+        segment_dimensions: List[List[float]],
+        segment_seq: List[List[int]],
+        max_position: List[float],
+    ):
+        """
+        Get stimulus type at the position.
+        output:
+            stimulus: stimulus type at the position
+        """
+        segment_dimensions = np.array(segment_dimensions)
+        segment_seq = np.array(segment_seq)
+
+        if segment_dimensions.ndim == 1:
+            segment_dimensions = segment_dimensions.reshape(-1, 1)
+        if segment_seq.ndim == 1:
+            segment_seq = segment_seq.reshape(-1, 1)
+        if positions.ndim == 1:
+            positions = positions.reshape(1, -1)
+
+        if not positions.shape[0] == segment_dimensions[0].ndim == segment_seq[0].ndim:
+            raise ValueError(
+                f"Number of dimensions must be the same as the segment dimensions and sequence. Got {positions.ndim} and {segment_dimensions[0].ndim} and {segment_seq[0].ndim}"
+            )
+
+        stimulus_map = Environment.create_stimulus_map(segment_dimensions, segment_seq)
+        if stimulus_map[-1] != max_position[0]:
+            raise ValueError(
+                f"Size of stimulus_map {stimulus_map[-1]} must be the same as the max position {max_position[0]}. Ensure that segment dimensions and sequence are correct."
+            )
+
+        # Broadcast and compare continuouses against track boundaries
+        stimulus_type_indices = np.sum(positions.reshape(-1, 1) >= stimulus_map, axis=1)
+        stimulus_type_at_frame = segment_seq[stimulus_type_indices % len(segment_seq)]
+        stimulus_type_at_frame = stimulus_type_at_frame.reshape(1, -1)[0]
+        return stimulus_type_at_frame
+
+    def extract_data(
+        self,
+        imaging_fps: float,
+        cumulative_distance: np.ndarray = None,
+        positions: np.ndarray = None,
+        lap_start_frame: float = None,
+    ):
+        """
+        Extract data from the cumulative distance of the belt.
+        output:
+            data: dictionary with
+                - position: position of the animal on the belt
+                - stimulus: stimulus type at the position if Environment segments are provided
+        """
+        if positions is None and cumulative_distance is None:
+            raise ValueError(
+                f"No distance or position provided. Cannot extract data for {self.__class__}"
+            )
+        elif positions is None:
+            positions = self.get_position_from_cumdist(
+                cumulative_distance,
+                dimensions=self.dimensions,
+                lap_start_frame=lap_start_frame,
+            )
+        elif cumulative_distance is None:
+            cumulative_distance = np.cumsum(positions)
+
+        # TODO: check for multi dimensions!!!!!
+        # TODO: check for multi dimensions!!!!!
+        # TODO:.......................... check for multi dimensions!!!!!
+        # TODO: check for multi dimensions!!!!!
+
+        velocity_smoothed = self.get_velocity_from_cumdist(
+            cumulative_distance, imaging_fps, smooth=True
+        )
+
+        acceleration = self.get_acceleration_from_velocity(
+            velocity_smoothed, imaging_fps, smooth=False
+        )
+
+        data = {
+            "distance": cumulative_distance,
+            "position": positions,
+            "velocity": velocity_smoothed,
+            "acceleration": acceleration,
+        }
+
+        if self.segment_len is None or self.segment_seq is None:
+            print(
+                "No segment dimensionss or sequence provided. Not extracting stimulus."
+            )
+        else:
+            stimulus = self.get_stimulus_at_position(
+                positions,
+                segment_dimensions=self.segment_len,
+                segment_seq=self.segment_seq,
+                max_position=self.dimensions,
+            )
+            data["stimulus"] = stimulus
+
+        return data
+
+
+class CaBinCorr(Processing):
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.data_dir = self.root_dir
+        self.static_outputs = {self.data_dir: ["binarized_traces.npz"]}
+        
+        self.variable_outputs = {
+            self.data_dir: ["*binarized_traces*.npz"] #TODO...... this need to be defined correctly
+        }
+
+        self.output_fnames = {
+            "F_filtered": "F_filtered.npy",
+            "F_onphase": "F_onphase.npy",
+            "F_upphase": "F_upphase.npy",
+        }
+
+        for output in self.own_outputs:
+            self.variable_outputs[self.data_dir].append(output)
+
+    def process_data(self, raw_data, save=True):
+        raise NotImplementedError(
+            f"CaBinCorr data processing not implemented for {self.__class__}"
+        )

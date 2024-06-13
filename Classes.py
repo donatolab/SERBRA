@@ -723,7 +723,7 @@ class Task:
 
         # get neural data
         neural_data_types = (
-            neural_data_types or self.neural_metadata["preprocessing_software"]
+            neural_data_types or self.neural_metadata["preprocessing"]
         )
         neural_data_train, neural_data_test = self.get_multi_data(
             datasets_object=self.neural,
