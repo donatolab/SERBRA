@@ -33,13 +33,18 @@ class Output:
         self.key = key
         self.root_dir_name = None
         self.root_dir = Path(root_dir) if root_dir else Path()
-        self.method = metadata["method"] if "method" in metadata.keys() else None
-        # TODO: use preprocessing for wheel and treadmill setups (rotary or other data processing)
-        self.preprocess_name = (
-            metadata["preprocessing"] if "preprocessing" in metadata.keys() else None
-        )
-        self.static_outputs: dict = None
-        self.variable_outputs: dict = None
+        needed_attributes = ["method", "preprocessing", "processing"]
+        if key != "photon":
+            metadata["processing"] = (
+                "environment"  # TODO: change this if more behavioral processing methods are added
+            )
+        check_needed_keys(metadata, needed_attributes)
+        self.method = metadata["method"]
+        self.preprocess_name = metadata["preprocessing"]
+        self.process_name = metadata["processing"]
+        self.static_outputs: dict = {}
+        self.variable_outputs: dict = {}
+        self.own_outputs: List[str] = []
         self.data_naming_scheme = None
         self.identifier: dict = self.extract_identifier(metadata["task_id"])
         self.raw_data_path = None
@@ -51,7 +56,7 @@ class Output:
     def define_raw_data_path(self, fname: str = None):
         if not fname:
             fname = self.data_naming_scheme.format(**self.identifier)
-        raw_data_path = self.get_file_path(file_name=fname)
+        raw_data_path = self.define_file_path(file_name=fname)
         return raw_data_path
 
     def get_static_output_paths(self, full_root_dir: Path = None):
@@ -115,7 +120,7 @@ class Output:
                 transposed_output_paths[file_name] = path
         return transposed_output_paths
 
-    def get_file_path(self, file_name=None, full_root_dir: Path = None):
+    def define_file_path(self, file_name=None, full_root_dir: Path = None):
         if not file_name:
             global_logger.error("No file_name provided.")
             raise ValueError("file_name must be provided to get file path.")
@@ -124,20 +129,14 @@ class Output:
         output_paths = self.get_output_paths(full_root_dir)
         transposed_output_paths = self.transpose_output_paths(output_paths)
 
-        fpath = transposed_output_paths[file_name].joinpath(file_name)
-        """else:
-            if len(transposed_output_paths.keys()) > 1:
-                raise ValueError(
-                    "Multiple files found. Please provide file_name to select one."
-                )
-            elif len(transposed_output_paths.keys()) == 0:
-                raise ValueError("No files found.")
-            else:
-                fpath = list(transposed_output_paths.values())[0]"""
+        fpath = None
+        if file_name in transposed_output_paths.keys():
+            fpath = transposed_output_paths[file_name].joinpath(file_name)
         return fpath
 
     def load_data(
         self,
+        fpath: Path = None,
         file_name=None,
         full_root_dir: Path = None,
     ):
@@ -153,10 +152,11 @@ class Output:
             - Pickle files: p, pkl;
             - MAT-files: mat.
         """
-        fpath = self.get_file_path(
-            file_name=file_name,
-            full_root_dir=full_root_dir,
-        )
+        if not fpath:
+            fpath = self.define_file_path(
+                file_name=file_name,
+                full_root_dir=full_root_dir,
+            )
 
         if fpath.exists():
             data = cebra.load_data(fpath)
@@ -164,12 +164,15 @@ class Output:
             print(f"File {file_name} not found in {fpath}")
         return data
 
-    def get_data_path(self, task_id: str = None, fname: str = None):
+    def define_data_path(self, task_id: str = None, fname: str = None):
         identifier = Output.extract_identifier(task_id)
         animal_id, date, task_name = identifier.values()
         fname = f"{animal_id}_{date}_{task_name}_{self.key}.npy" if not fname else fname
-        fpath = self.get_file_path(fname)
+        fpath = self.define_file_path(fname)
         return fpath
+
+    def get_data_path(self, task_id: str = None):
+        raise NotImplementedError(f"get_data_path not implemented for {self.__class__}")
 
     def save_data(self, data, overwrite=False):
         for data_name, data_type in data.items():
@@ -200,16 +203,17 @@ class Setup(Output):
 
     def get_data_path(self, task_id):
         fpath = self.preprocess.get_data_path(task_id)
-        if not fpath.exists():
-            raise ValueError(
-                f"File {fpath} not found in preprocessing class. Implement searching inside {self.__class__}"
-            )
+        if not fpath:
+            fpath = self.define_data_path(task_id)
         return fpath
 
     def process_data(self, task_id=None):
         animal_id, date, task_name = Output.extract_identifier(task_id)
-        raw_data = self.load_data(identifier=task_name)
-        data = self.preprocess.process_data(raw_data=raw_data, task_name=task_name)
+        # raw_data = self.load_data()
+        raw_data_path = self.define_raw_data_path()
+        data = self.preprocess.process_data(
+            raw_data_path=raw_data_path, task_name=task_name
+        )
         return data
 
 
@@ -223,11 +227,11 @@ class BehavioralSetup(Setup):
         preprocess_name = self.preprocess_name
         if preprocess_name == "rotary_encoder":
             preprocess = RotaryEncoder(
-                key=self.key, root_dir=self.root_dir, metadata=self.metadata
+                key=self.key, root_dir=self.data_dir, metadata=self.metadata
             )
         elif preprocess_name == "cam":
             preprocess = Cam(
-                key=self.key, root_dir=self.root_dir, metadata=self.metadata
+                key=self.key, root_dir=self.data_dir, metadata=self.metadata
             )
         else:
             global_logger.error(
@@ -278,11 +282,41 @@ class NeuralSetup(Setup):
             fps = self.extract_fps()
         return fps
 
+#######################           Hardware            ##############################################
+class Wheel:
+    def __init__(self, radius):
+        self.radius = radius  # in meters
 
-## Environment
-class SteffensDataLoader:
-    def __init__(self):
-        pass
+    @property
+    def circumfrence(self):
+        return 2 * np.pi * self.radius
+
+
+
+## Behavior
+class Treadmill_Setup(BehavioralSetup):
+    """
+    Class managing the treadmill setup of Steffen.
+    Rotation data is stored in .mat files.
+    The wheel is connected to a rotary encoder.
+    The Belt is segmented in different segments with different stimuli.
+    """
+
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        # self.root_dir_name = f"TRD-{self.method}"
+        # self.root_dir = self.root_dir.joinpath(self.root_dir_name)
+        # TODO: add posibility to provide data_naming_scheme in yaml file
+        self.data_dir = self.root_dir
+        self.data_naming_scheme = (
+            "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
+        )
+        self.variable_outputs = {self.root_dir: []}
+        for output in self.own_outputs:
+            self.variable_outputs[self.root_dir].append(output)
+
+        self.raw_data_path = self.define_raw_data_path()
+        self.preprocess = self.get_preprocess()
 
     @staticmethod
     def fetch_rotary_lapsync_data(fpath):
@@ -303,162 +337,19 @@ class SteffensDataLoader:
         galvo_sync = np.array(data[:, 3]).reshape(-1, 1)
         return rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync
 
-
-class AndresDataLoader:
-    def __init__(self):
-        pass
-
-    @staticmethod
-    def fetch_rotary_data(fpath):
-        """
-        columns: roatry encoder state1 | roatry encoder state 2 |        lab sync      | frames
-        values          0 or   1       |       0 or   1         |0 or 1 reflecor strip | galvosync
-
-        lab sync is not alway detected
-        """
-        data = np.load(fpath)
-
-        # get wheel electricity contact values
-        rotary_ch_a = data["rotary_encoder1_abstime"]
-        rotary_ch_b = data["rotary_encoder2_abstime"]
-
-        # get reference times for alignment to imaging frames
-        return rotary_ch_a, rotary_ch_b
-
-
-#######################           Hardware            ##############################################
-class Wheel:
-    def __init__(self, radius):
-        self.radius = radius  # in meters
-
-    @property
-    def circumfrence(self):
-        return 2 * np.pi * self.radius
-
-    def get_track(self, segment_len=None, segment_seq=None, type=None):
-        return Environment(
-            dimensions=self.circumfrence,
-            segment_len=segment_len,
-            segment_seq=segment_seq,
-            type=type,
-            circular=True,
-        )
-
-
-## Behavior
-class Treadmill_Setup(BehavioralSetup):
-    """
-    Class managing the treadmill setup of Steffen.
-    Rotation data is stored in .mat files.
-    The wheel is connected to a rotary encoder.
-    The Belt is segmented in different segments with different stimuli.
-    """
-
-    def __init__(self, key, root_dir=None, metadata={}):
-        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        # self.root_dir_name = f"TRD-{self.method}"
-        # self.root_dir = self.root_dir.joinpath(self.root_dir_name)
-        # TODO: add posibility to provide data_naming_scheme in yaml file
-        # DON-017115_20231120_TRD-2P_S5-ACQ.mat
-        self.static_outputs = {}
-        self.data_naming_scheme = (
-            "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
-        )
-        self.variable_outputs = {self.root_dir: []}
-
-        # TODO: this should be in preprocessing class, since it is not saved by setup
-        for output in self.own_outputs:
-            self.variable_outputs[self.root_dir].append(output)
-        self.raw_data_path = self.define_raw_data_path()
-
-        needed_attributes = ["environment_dimensions", "imaging_fps", "radius"]
-        check_needed_keys(metadata, needed_attributes)
-        self.wheel = Wheel(
-            radius=metadata["radius"],
-        )
-
-        optional_attributes = [
-            "stimulus_dimensions",
-            "stimulus_sequence",
-            "stimulus_type",
-        ]
-        add_missing_keys(metadata, optional_attributes, fill_value=None)
-
-        self.track = Environment(
-            dimensions=metadata["environment_dimensions"],
-            segment_len=metadata["stimulus_dimensions"],
-            segment_seq=metadata["stimulus_sequence"],
-            type=metadata["stimulus_type"],
-            circular=True,
-        )
-
-    def extract_rotary_data(
-        self,
-        max_speed: float = 0.6,  # in m/s
-        imaging_fps: float = None,
-    ):
-        rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync = (
-            SteffensDataLoader.fetch_rotary_lapsync_data(self.raw_data_path)
-        )
-
-        # convert rotary data
-        rotary_encoder = RotaryEncoder(
-            sample_rate=self.metadata["fps"],
-            clicks_per_rotation=self.metadata["clicks_per_rotation"],
-        )
-        rotary_distances = rotary_encoder.rotary_to_distances(
-            wheel_radius=self.wheel.radius,
-            ch_a=rotary_ch_a,
-            ch_b=rotary_ch_b,
-        )
-
-        # get galvo trigger times for 2P frame
-        galvo_triggers_times = Femtonics.convert_galvo_trigger_signal(galvo_sync)
-
-        if not imaging_fps:
-            imaging_fps = self.metadata["imaging_fps"]
-
-        ## get distance of the wheel surface
-        moved_distances_in_frame = rotary_encoder.convert_data_fps_to_imaging_fps(
-            data=rotary_distances,
-            reference_times=galvo_triggers_times,
-            imaging_fps=imaging_fps,
-        )
-
-        # syncronise moved distances, scale rotary encoder data to lap sync signal because of slipping wheel
-        distances, lap_start_frame = rotary_encoder.sync_to_lap(
-            moved_distances_in_frame,
-            imaging_fps=imaging_fps,
-            reference_times=galvo_triggers_times,
-            lap_sync=lap_sync,
-            track_dimensions=self.track.dimensions,
-            max_speed=max_speed,  # in m/s,
-        )
-
-        cumulative_distance = np.cumsum(distances)
-
-        data = {
-            "distance": cumulative_distance,
-        }
-        return data, lap_start_frame
+    def sync_wheel_to_belt........write this function umklammert mit **************************
+    
 
     def process_data(self, save: bool = True, overwrite: bool = False):
-        rotary_data, lap_start_frame = self.extract_rotary_data(max_speed=0.3)
-
-        treadmill_data = self.track.extract_data(
-            imaging_fps=self.metadata["imaging_fps"],
-            cumulative_distance=rotary_data["distance"],
-            lap_start_frame=lap_start_frame,
-        )
-
-        data = {**rotary_data, **treadmill_data}
-
-        if save:
-            self.save_data(data, overwrite)
+        if self.preprocess_name == "rotary_encoder":
+            rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync = self.fetch_rotary_lapsync_data(self.raw_data_path)
+        else:
+            raise ValueError(f"data loading not supported for {self.preprocess_name} in {self.__class__}.")
+        data = self.preprocess.process_data(rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync, max_speed=0.3, save=save, overwrite=overwrite)
 
         return data[self.key]
 
-    # get_file_path is inherited from Output class
+    # define_file_path is inherited from Output class
     # get_output_paths is inherited from Output class
 
 
@@ -475,6 +366,7 @@ class Wheel_Setup(BehavioralSetup):
         # self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.static_outputs = {self.root_dir: ["results.zip"]}
         self.data_naming_scheme = "results.npy"
+
         # TODO: this is not a good way to do it, preprocessing should be defined the dataset class to use rotary encoder or other methods
         self.variable_outputs = {self.root_dir: []}
 
@@ -489,89 +381,31 @@ class Wheel_Setup(BehavioralSetup):
             radius=metadata["radius"],
         )
 
-        optional_attributes = [
-            "stimulus_dimensions",
-            "stimulus_sequence",
-            "stimulus_type",
-        ]
-        add_missing_keys(metadata, optional_attributes, fill_value=None)
+        self.preprocess = self.get_preprocess()
 
-        self.track = self.wheel.get_track(
-            segment_len=metadata["stimulus_dimensions"],
-            segment_seq=metadata["stimulus_sequence"],
-            type=metadata["stimulus_type"],
-        )
-
-    def extract_rotary_data(self, max_speed: float = 0.4, smooth=False):
+    def fetch_rotary_data(fpath):
         """
-        Extracts rotary encoder data from the raw data file. The rotary encoder data is used to calculate the distance moved by the wheel.
-        The distance moved is then used to calculate the velocity and acceleration of the wheel.
-        Optionally, the velocity can be smoothed using a low-pass filter.
+        columns: roatry encoder state1 | roatry encoder state 2
+        values          0 or   1       |       0 or   1        
 
-        Output is provided in meters per rotary encoder sampling rate.
-
-        Parameters:
-            - smooth: bool, optional (default=False)
-                A flag indicating whether to smooth the velocity data.
-            - max_speed: float, optional (default=0.4)
-                The maximum speed of movement in meters per second. This parameter currently not used.
-
-        Returns:
-            - data: dict
-                A dictionary containing the following data:
-                    - distance: np.ndarray
-                        An array representing the cumulative distance moved by the wheel.
-                    - velocity: np.ndarray
-                        An array representing the velocity of the wheel.
-                    - acceleration: np.ndarray
-                        An array representing the acceleration of the wheel.
+        lab sync is not alway detected
         """
-        # load data
-        rotary_ch_a, rotary_ch_b = AndresDataLoader.fetch_rotary_data(
-            self.raw_data_path
-        )
+        data = np.load(fpath)
 
-        # convert rotary data
-        rotary_encoder = RotaryEncoder(
-            sample_rate=self.metadata["fps"],
-            clicks_per_rotation=self.metadata["clicks_per_rotation"],
-        )
-        rotary_distances = rotary_encoder.rotary_to_distances(
-            wheel_radius=self.wheel.radius,
-            ch_a=rotary_ch_a,
-            ch_b=rotary_ch_b,
-        )
+        # get wheel electricity contact values
+        rotary_ch_a = data["rotary_encoder1_abstime"]
+        rotary_ch_b = data["rotary_encoder2_abstime"]
 
-        cumulative_distance = np.cumsum(rotary_distances)
-        velocity_from_distances = np.diff(cumulative_distance) * self.metadata["fps"]
-
-        if smooth:
-            velocity_smoothed = butter_lowpass_filter(
-                velocity_from_distances, cutoff=2, fs=self.metadata["fps"], order=2
-            )
-        else:
-            velocity_smoothed = velocity_from_distances
-
-        acceleration = np.diff(velocity_smoothed)
-
-        data = {
-            "distance": cumulative_distance,
-            "velocity": velocity_smoothed,
-            "acceleration": acceleration,
-        }
-        return data
+        # get reference times for alignment to imaging frames
+        return rotary_ch_a, rotary_ch_b, None, None
 
     def process_data(self, save: bool = True, overwrite: bool = False):
-        rotary_data = self.extract_rotary_data()
+        if self.preprocess_name == "rotary_encoder":
+            rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync = self.fetch_rotary_lapsync_data(self.raw_data_path)
+        else:
+            raise ValueError(f"data loading not supported for {self.preprocess_name} in {self.__class__}.")
 
-        wheel_data = self.wheel.track.extract_data(
-            rotary_data["distance"],
-            lap_start_frame=None,
-        )
-        data = {**rotary_data, **wheel_data}
-
-        if save:
-            self.save_data(data, overwrite)
+        data = self.preprocess.process_data(rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync, max_speed=0.5, save=save, overwrite=overwrite)
 
         return data[self.key]
 
@@ -588,7 +422,6 @@ class Openfield_Setup(BehavioralSetup):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
 
         # TODO: Typically data is gathered through a camera
-        self.static_outputs = {}
         self.data_naming_scheme = (
             "UNDEFINDE{animal_id}_{date}_"
             + self.root_dir_name
@@ -620,8 +453,9 @@ class Openfield_Setup(BehavioralSetup):
             segment_len=metadata["stimulus_dimensions"],
             segment_seq=metadata["stimulus_sequence"],
             type=metadata["stimulus_type"],
-            circular=False,
         )
+
+        self.preprocess = self.get_preprocess()
 
     def process_data(self, task_id=None):
         raise NotImplementedError("Openfield data extraction not implemented yet")
@@ -641,7 +475,6 @@ class Femtonics(NeuralSetup):
         self.root_dir_name += "-F"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.data_dir = self.root_dir
-        self.static_outputs = {}
         self.data_naming_scheme = (
             "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}.mesc"
         )
@@ -656,8 +489,6 @@ class Femtonics(NeuralSetup):
     @staticmethod
     def convert_galvo_trigger_signal(galvo_sync):
         """
-
-
         value > 0 for when 2P frame is obtained;
         value = 0 in between
 
@@ -684,7 +515,7 @@ class Femtonics(NeuralSetup):
         if not self.raw_data_path:
             if not fname:
                 fname = self.data_naming_scheme.format(**self.identifier)
-            raw_data_path = self.get_file_path(file_name=fname)
+            raw_data_path = self.define_file_path(file_name=fname)
 
             # Search for multi file dataset if no unique file is found
             if not raw_data_path.exists():
@@ -786,7 +617,6 @@ class Inscopix(NeuralSetup):
             + "_{task_name}.UNDEFINED"
         )
         self.variable_outputs = {self.data_dir: [self.data_naming_scheme]}
-        self.variable_outputs = {self.data_dir: []}
 
         # TODO: this should be in preprocessing class, since it is not saved by setup
         for output in self.own_outputs:
@@ -805,34 +635,181 @@ class Inscopix(NeuralSetup):
 
 # Preprocessing Classes
 
-#######################       Preprocessing         ############################################################
 
-class Behavior_Preprocessing(Output):
+#######################       Preprocessing         ############################################################
+class Preprocessing(Output):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir = root_dir
+
+    def get_data_path(self, task_id):
+        fpath = self.process.get_data_path(task_id)
+        if not fpath:
+            fpath = self.define_data_path(task_id)
+        return fpath
+
+    def process_data(self, task_id=None):
+        animal_id, date, task_name = Output.extract_identifier(task_id)
+        # raw_data = self.load_data(identifier=task_name)
+        # TODO: implement intern processing data of data bevore sending to process
+        raw_data_path = self.define_raw_data_path()
+        data = self.process.process_data(
+            raw_data_path=raw_data_path, task_name=task_name
+        )
+        return data
+
+
+class Behavior_Preprocessing(Preprocessing):
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.own_outputs = [
             "{animal_id}_{date}_{task_name}_position.npy",
             "{animal_id}_{date}_{task_name}_distance.npy",
         ]
 
+    def get_process(self):
+        process_name = self.process_name
+        if process_name == "environment":
+            process = Environment(
+                key=self.key, root_dir=self.data_dir, metadata=self.metadata
+            )
+        else:
+            raise ValueError(
+                f"processing software {process_name} not supported for {self.__class__}."
+            )
+        return process
 
-class Neural_Preprocessing(Output):
+
+class Neural_Preprocessing(Preprocessing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        self.root_dir = root_dir
-        .................... create other funnction for fetching data, so self.get_data_path is still possible to use for searching files
+
+    def get_process(self):
+        process_name = self.process_name
+        if process_name == "cabincorr":
+            process = CaBinCorr(
+                key=self.key, root_dir=self.data_dir, metadata=self.metadata
+            )
+        else:
+            raise ValueError(
+                f"processing software {process_name} not supported for {self.__class__}."
+            )
+        return process
+
 
 class RotaryEncoder(Behavior_Preprocessing):
     """
     The rotary encoder is used to measure the amount of rotation.
     This can be used to calculate the distance moved by the wheel.
     The rotary encoder is connected to a wheel.
+
+    - needed_metadata: radius, clicks_per_rotation, fps
     """
 
-    def __init__(self, sample_rate=10000, clicks_per_rotation=500):
-        self.sample_rate = sample_rate  # 10kHz
-        self.clicks_per_rotation = clicks_per_rotation
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.data_dir = self.root_dir
+        self.variable_outputs = {self.root_dir: []}
+        for output in self.own_outputs:
+            self.variable_outputs[self.root_dir].append(output)
+
+        needed_attributes = ["radius", "fps", "clicks_per_rotation"]
+        check_needed_keys(metadata, needed_attributes)
+        self.wheel = Wheel(
+            radius=metadata["radius"],
+        )
+
+        self.sample_rate = self.metadata["fps"]  # 10kHz
+        self.clicks_per_rotation = self.metadata["clicks_per_rotation"]
+
+        self.process = self.get_process()
+
+    def preprocess_data(self, 
+                        rotary_ch_a: np.ndarray,
+                        rotary_ch_b: np.ndarray,
+                        lap_sync: np.ndarray = None,
+                        galvo_sync: np.ndarray = None,
+                        max_speed: float = 0.6,
+                        save: bool = True,
+                        overwrite: bool = False,
+    )
+        # convert rotary data
+        rotary_encoder = RotaryEncoder(
+            sample_rate=self.metadata["fps"],
+            clicks_per_rotation=self.metadata["clicks_per_rotation"],
+        )
+        rotary_distances = rotary_encoder.rotary_to_distances(
+            wheel_radius=self.wheel.radius,
+            ch_a=rotary_ch_a,
+            ch_b=rotary_ch_b,
+        )
+
+**************************This functions below
+        if lap_sync is None or galvo_sync is None:
+            lap_start_frame = 0
+        else:
+            # get galvo trigger times for 2P frame
+            galvo_triggers_times = Femtonics.convert_galvo_trigger_signal(galvo_sync)
+
+            needed_attributes = ["imaging_fps"]
+            check_needed_keys(self.metadata, needed_attributes)
+            if not imaging_fps:
+                imaging_fps = self.metadata["imaging_fps"]
+
+            ## get distance of the wheel surface
+            moved_distances_in_frame = rotary_encoder.convert_data_fps_to_imaging_fps(
+                data=rotary_distances,
+                reference_times=galvo_triggers_times,
+                imaging_fps=imaging_fps,
+            )
+
+            # syncronise moved distances, scale rotary encoder data to lap sync signal because of slipping wheel
+            distances, lap_start_frame = rotary_encoder.sync_to_lap(
+                moved_distances_in_frame,
+                imaging_fps=imaging_fps,
+                reference_times=galvo_triggers_times,
+                lap_sync=lap_sync,
+                track_dimensions=self.process.dimensions,
+                max_speed=max_speed,  # in m/s,
+            )
+**************************This functions above
+            cumulative_distance = np.cumsum(distances)
+
+        data = {
+            "distance": cumulative_distance,
+        }
+        return data, lap_start_frame
+
+    def process_data(
+        self,
+        rotary_ch_a: np.ndarray,
+        rotary_ch_b: np.ndarray,
+        lap_sync: np.ndarray = None,
+        galvo_sync: np.ndarray = None,
+        max_speed: float = 0.6,  # in m/s
+        save: bool = True,
+        overwrite: bool = False,
+    ):
+        data, lap_start_frame = self.preprocess_data(
+            rotary_ch_a=rotary_ch_a,
+            rotary_ch_b=rotary_ch_b,
+            lap_sync=lap_sync,
+            galvo_sync=galvo_sync,
+            max_speed=max_speed
+            save=save,
+            overwrite=overwrite,
+            )
+
+        processed_data = self.process.process_data(
+            cumulative_distance=data["distance"],
+            lap_start_frame=lap_start_frame,
+            save=save,
+            overwrite=overwrite,
+        )
+
+        data = {**data, **processed_data}
+        
+        return data
 
     @staticmethod
     @njit(parallel=True)
@@ -1094,6 +1071,7 @@ class RotaryEncoder(Behavior_Preprocessing):
         start_frame_time = reference_times[0] - recording_ratio
         return start_frame_time
 
+
 class Cam(Behavior_Preprocessing):
     """
     vr_root_folder = "0000VR"  # VR
@@ -1101,6 +1079,7 @@ class Cam(Behavior_Preprocessing):
     cam_top_root_folder = "000BSM"  # Top View Mousecam
     cam_top_root_folder = "TR-BSL"  # Top View Mousecam Inscopix
     """
+
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir.joinpath("000BSM")
@@ -1108,12 +1087,12 @@ class Cam(Behavior_Preprocessing):
 
         self.output_path = self.data_dir.parent.joinpath(f"TRD-{self.method}")
         self.variable_outputs = {self.self.output_path: []}
-        
 
     def process_data(self, raw_data, task_name=None, save=True):
         raise NotImplementedError(
             f"cam data processing not implemented for {self.__class__}"
         )
+
 
 class Suite2p(Neural_Preprocessing):
     def __init__(self, key, root_dir=None, metadata={}):
@@ -1138,6 +1117,7 @@ class Suite2p(Neural_Preprocessing):
             "tau": 1,  # 0.7 for GCaMP6f,   1.0 for GCaMP6m,    1.25-1.5 for GCaMP6s
             "max_overlap": 0.75,  # percentage of allowed overlap between cells
         }
+        self.process = self.get_process()
 
     def process_data(self, raw_data, task_name=None, save=True):
         raise NotImplementedError(
@@ -1148,8 +1128,9 @@ class Suite2p(Neural_Preprocessing):
     # process_raw_data(self, task_name) is inherited from Preprocessing class
     # load_data is inherited from Output class
     # self.load_data(file_name, full_root_dir=self.root_dir)
-    # get_file_path is inherited from Output class
-    
+    # define_file_path is inherited from Output class
+
+
 class Opexebo(Neural_Preprocessing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
@@ -1167,8 +1148,23 @@ class Opexebo(Neural_Preprocessing):
         raise NotImplementedError(
             f"Inscopix data processing not implemented for {self.__class__}"
         )
+
+
 #######################       Processing         ############################################################
-class Behavior_Processing(Output):
+class Processing(Output):
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key, root_dir, metadata)
+
+    def get_data_path(self, task_id: str = None):
+        return self.define_data_path(task_id)
+
+    def process_data(self, raw_data_path: Path, task_name: str = None):
+        raise NotImplementedError(
+            f"Data processing not implemented for {self.__class__}"
+        )
+
+
+class Behavior_Processing(Processing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir = root_dir
@@ -1182,7 +1178,7 @@ class Behavior_Processing(Output):
         ]
 
 
-class Neural_Processing(Output):
+class Neural_Processing(Processing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir = root_dir
@@ -1190,19 +1186,35 @@ class Neural_Processing(Output):
 
 
 class Environment(Behavior_Processing):
-    def __init__(
-        self,
-        dimensions: List[float] = None,  # in m
-        segment_len: List[float] = None,  # [0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
-        segment_seq: List[int] = None,  # [1, 2, 3, 4, 5, 6],
-        type: str = None,  # "A",
-        circular: bool = True,
-    ):
-        self.dimensions = make_list_ifnot(dimensions)
-        self.segment_len = make_list_ifnot(segment_len)
-        self.segment_seq = make_list_ifnot(segment_seq)
-        self.type = type
-        self.circular = circular
+    def __init__(self, key, root_dir=None, metadata={}):
+        super().__init__(key=key, root_dir=root_dir, metadata=metadata)
+        self.data_dir = self.root_dir
+
+        self.variable_outputs = {self.data_dir: []}
+        for output in self.own_outputs:
+            self.variable_outputs[self.data_dir].append(output)
+
+        needed_attributes = ["environment_dimensions", "imaging_fps"]
+        check_needed_keys(metadata, needed_attributes)
+        optional_attributes = [
+            "stimulus_dimensions",
+            "stimulus_sequence",
+            "stimulus_type",
+        ]
+        add_missing_keys(metadata, optional_attributes, fill_value=None)
+
+        self.dimensions = make_list_ifnot(metadata["environment_dimensions"])  # in m
+        self.segment_len = (
+            make_list_ifnot(metadata["stimulus_dimensions"])
+            if metadata["stimulus_dimensions"] is not None
+            else None
+        )  # [0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
+        self.segment_seq = (
+            make_list_ifnot(metadata["stimulus_sequence"])
+            if metadata["stimulus_sequence"] is not None
+            else None
+        )  # [1, 2, 3, 4, 5, 6],
+        self.type = type if type is not None else None  # "A",
 
     @staticmethod
     def get_position_from_cumdist(
@@ -1380,12 +1392,14 @@ class Environment(Behavior_Processing):
         stimulus_type_at_frame = stimulus_type_at_frame.reshape(1, -1)[0]
         return stimulus_type_at_frame
 
-    def extract_data(
+    def process_data(
         self,
         imaging_fps: float,
         cumulative_distance: np.ndarray = None,
         positions: np.ndarray = None,
         lap_start_frame: float = None,
+        save: bool = True,
+        overwrite: bool = False,
     ):
         """
         Extract data from the cumulative distance of the belt.
@@ -1440,18 +1454,22 @@ class Environment(Behavior_Processing):
             )
             data["stimulus"] = stimulus
 
+        if save:
+            self.save_data(data, overwrite)
+
         return data
 
 
-class CaBinCorr(Processing):
+class CaBinCorr(Neural_Processing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
         self.static_outputs = {self.data_dir: ["binarized_traces.npz"]}
-        
-        self.variable_outputs = {
-            self.data_dir: ["*binarized_traces*.npz"] #TODO...... this need to be defined correctly
-        }
+        self.data_naming_scheme = (
+            "*binarized_traces*.npz"
+            # "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}.mesc"
+        )
+        self.variable_outputs = {self.data_dir: [self.data_naming_scheme]}
 
         self.output_fnames = {
             "F_filtered": "F_filtered.npy",
@@ -1462,7 +1480,7 @@ class CaBinCorr(Processing):
         for output in self.own_outputs:
             self.variable_outputs[self.data_dir].append(output)
 
-    def process_data(self, raw_data, save=True):
+    def process_data(self, raw_data, task_name=None, save=True):
         raise NotImplementedError(
             f"CaBinCorr data processing not implemented for {self.__class__}"
         )

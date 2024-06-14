@@ -374,7 +374,7 @@ class NeuralDataset(Dataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        needed_attributes = ["method", "preprocessing_software", "setup"]
+        needed_attributes = ["method", "preprocessing", "processing", "setup"]
         check_needed_keys(metadata, needed_attributes)
 
     def process_raw_data(self):
