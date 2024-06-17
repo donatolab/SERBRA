@@ -208,14 +208,14 @@ class Setup(Output):
             fpath = self.define_data_path(task_id)
         return fpath
 
-    def process_data(self, task_id=None):
+    """def process_data(self, task_id=None):
         animal_id, date, task_name = Output.extract_identifier(task_id)
         # raw_data = self.load_data()
         raw_data_path = self.define_raw_data_path()
         data = self.preprocess.process_data(
             raw_data_path=raw_data_path, task_name=task_name
         )
-        return data
+        return data"""
 
 
 class BehavioralSetup(Setup):
@@ -454,8 +454,7 @@ class Trackball_Setup(BehavioralSetup):
 class Openfield_Setup(BehavioralSetup):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-
-        # TODO: Typically data is gathered through a camera
+        self.data_dir = self.root_dir
         self.data_naming_scheme = (
             "UNDEFINDE{animal_id}_{date}_"
             + self.root_dir_name
@@ -481,13 +480,6 @@ class Openfield_Setup(BehavioralSetup):
             "stimulus_type",
         ]
         add_missing_keys(metadata, optional_attributes, fill_value=None)
-
-        self.openfield = Environment(
-            dimensions=metadata["environment_dimensions"],
-            segment_len=metadata["stimulus_dimensions"],
-            segment_seq=metadata["stimulus_sequence"],
-            type=metadata["stimulus_type"],
-        )
 
         self.preprocess = self.get_preprocess()
 
@@ -658,16 +650,15 @@ class Inscopix(NeuralSetup):
         self.fps = self.get_fps()
         self.preprocess = self.get_preprocess()
 
-    def define_raw_data_path(self, fname: str = None):
-        raise NotImplementedError(
-            f"Raw data path definition not implemented for {self.__class__}"
-        )
-
     def extract_fps(self):
         raise NotImplementedError("{self.__class__} extract_fps not implemented yet")
 
-
-# Preprocessing Classes
+    def process_data(self, save: bool = True, overwrite: bool = False):
+        raw_data_path = self.define_raw_data_path()
+        binarized_data = self.preprocess.process_data(
+            raw_data_path=raw_data_path, save=save, overwrite=overwrite
+        )
+        return binarized_data
 
 
 #######################       Preprocessing         ############################################################
@@ -1120,15 +1111,51 @@ class Cam(Behavior_Preprocessing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir.joinpath("000BSM")
-        self.static_outputs = {self.data_dir: ["NoClue.data"]}
+        self.data_naming_scheme = "camdata.npy"
+        self.static_outputs = {self.data_dir: [self.data_naming_scheme]}
 
         self.output_path = self.data_dir.parent.joinpath(f"TRD-{self.method}")
-        self.variable_outputs = {self.self.output_path: []}
+        self.variable_outputs = {self.output_path: []}
 
-    def process_data(self, raw_data, task_name=None, save=True):
+        for output in self.own_outputs:
+            self.variable_outputs[self.output_path].append(output)
+
+        self.process = self.get_process()
+
+    def run_cam_processing(self, cam_data, save=True, overwrite=False):
         raise NotImplementedError(
             f"cam data processing not implemented for {self.__class__}"
         )
+
+    def preprocess_data(self, cam_data, save=True, overwrite=False):
+        position = self.run_cam_processing(cam_data, save=save, overwrite=overwrite)
+
+        data = {"position": position}
+
+        if save:
+            self.save_data(data, overwrite)
+
+        return data
+
+    def process_data(
+        self, raw_data, task_name=None, save=True, smooth=True, overwrite=False
+    ):
+
+        data = self.preprocess.process_data(
+            cam_data=raw_data,
+            save=save,
+            overwrite=overwrite,
+        )
+
+        processed_data = self.process.process_data(
+            cumulative_distance=data["position"],
+            lap_start_frame=0,
+            smooth=smooth,
+            save=save,
+            overwrite=overwrite,
+        )
+
+        data = {**data, **processed_data}
 
 
 class Suite2p(Neural_Preprocessing):
@@ -1173,6 +1200,8 @@ class Opexebo(Neural_Preprocessing):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
         self.static_outputs = {}
+        self.variable_outputs = {self.data_dir: []}
+        self.process = self.get_process()
 
     def load_settings(self, settings_file):
         # TODO: implement opexebo settings loading
@@ -1180,11 +1209,27 @@ class Opexebo(Neural_Preprocessing):
             f"Inscopix settings not implemented for {self.__class__}"
         )
 
-    def process_data(self, raw_data, task_name=None, save=True):
-        # TODO: Provide possibiltiy to load settings from file, because Nathalie has a lot of different settings
+    def preprocess_data(self, raw_data_path, save=True, overwrite=False):
         raise NotImplementedError(
-            f"Inscopix data processing not implemented for {self.__class__}"
+            f"Opexebo data preprocessing not implemented for {self.__class__}"
         )
+
+        if save:
+            self.save_data(data, overwrite)
+
+        return data
+
+    def process_data(self, raw_data_path=None, save=True, overwrite=False):
+        # TODO: Provide possibiltiy to load settings from file, because Nathalie has a lot of different settings
+        binarized_data = self.process.process_data(save=save, overwrite=overwrite)
+
+        if binarized_data is None:
+            data = self.preprocess.process_data(raw_data_path)
+            binarized_data = self.process.process_data(
+                raw_data_path=data, save=save, overwrite=overwrite
+            )
+
+        return binarized_data
 
 
 #######################       Processing         ############################################################
@@ -1194,11 +1239,6 @@ class Processing(Output):
 
     def get_data_path(self, task_id: str = None):
         return self.define_data_path(task_id)
-
-    def process_data(self, raw_data_path: Path, task_name: str = None):
-        raise NotImplementedError(
-            f"Data processing not implemented for {self.__class__}"
-        )
 
 
 class Behavior_Processing(Processing):
@@ -1506,12 +1546,11 @@ class CaBinCorr(Neural_Processing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
-        self.static_outputs = {self.data_dir: ["binarized_traces.npz"]}
-        self.data_naming_scheme = (
-            "*binarized_traces*.npz"
-            # "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}.mesc"
-        )
-        self.variable_outputs = {self.data_dir: [self.data_naming_scheme]}
+        self.data_naming_scheme = "binarized_traces.npz"
+        self.static_outputs = {self.data_dir: [self.data_naming_scheme]}
+        self.variable_outputs = {self.data_dir: []}
+        for output in self.own_outputs:
+            self.variable_outputs[self.data_dir].append(output)
 
         self.output_fnames = {
             "F_filtered": "F_filtered.npy",
@@ -1522,7 +1561,51 @@ class CaBinCorr(Neural_Processing):
         for output in self.own_outputs:
             self.variable_outputs[self.data_dir].append(output)
 
-    def process_data(self, raw_data, task_name=None, save=True):
+    def define_raw_data_path(self):
+        ............... this is not raw_data, change it!
+        if not self.raw_data_path:
+            if not fname:
+                fname = self.data_naming_scheme.format(**self.identifier)
+            raw_data_path = self.define_file_path(file_name=fname)
+
+            if not raw_data_path.exists():
+                allowed_symbols = "A-Za-z0-9_-"
+                #animal_id, date, task_name = self.identifier.values()
+                regex_search = f"[{allowed_symbols}]*{self.data_naming_scheme[:-4]}[{allowed_symbols}]*"
+                raw_data_paths = get_files(
+                    raw_data_path.parent,
+                    ending=raw_data_path.suffix,
+                    regex_search=regex_search,
+                )
+                if len(raw_data_paths) != 0:
+                    print(
+                        f"WARNING: File {raw_data_path} not found. Choosing first .npz file inheritin binarized_traces dataset found in {raw_data_path.parent}."
+                    )
+                    global_logger.warning(
+                        f"File {raw_data_path} not found. Choosing first .npz file with binarized_traces in namedataset found in {raw_data_path.parent}."
+                    )
+                    raw_data_path = raw_data_path.parent.joinpath(raw_data_paths[0])
+
+                self.raw_data_path = raw_data_path
+            return self.raw_data_path
+                
+
+    def run_cabincorr(self, raw_data_path):
         raise NotImplementedError(
-            f"CaBinCorr data processing not implemented for {self.__class__}"
+            f"CaBinCorr processing not implemented for {self.__class__}"
         )
+
+    def process_data(self, raw_data_path=None, save=True, overwrite=False):
+        self.output_fname = "binarized_traces.npz"......... this needs to be refined
+        output_path = self.define_data_path(self.output_fname)
+        if output_path.exists():
+            data = self.load_data(output_path)
+            binarized_data = data["F_upphase"]
+        else:
+            raw_data_path = raw_data_path or self.define_raw_data_path()
+            binarized_data = self.run_cabincorr(raw_data_path)
+
+        if save:
+            self.save_data(binarized_data, overwrite)
+
+        return binarized_data

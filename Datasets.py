@@ -97,8 +97,8 @@ class Dataset:
             else:
                 global_logger.warning(f"No {self.key} data found at {self.path}.")
                 print(f"No {self.key} data found at {self.path}.")
-                self.create_dataset(self.raw_data_object)
-                if save:
+                self.create_dataset(self.raw_data_object, save=save)
+                if save and not self.path.exists():
                     np.save(self.path, self.data)
         self.data = self.correct_data(self.data)
         if plot:
@@ -106,7 +106,7 @@ class Dataset:
         self.binned_data = self.bin_data(self.data)
         return self.data
 
-    def create_dataset(self, raw_data_object=None):
+    def create_dataset(self, raw_data_object=None, save=True):
         raw_data_object = raw_data_object or self.raw_data_object
         if self.raw_data_object:
             global_logger.info(
@@ -115,7 +115,7 @@ class Dataset:
             print(
                 f"Creating {self.key} dataset based on raw data from {raw_data_object.key}."
             )
-            data = self.process_raw_data()
+            data = self.process_raw_data(save=save)
             return data
         else:
             global_logger.warning(
@@ -123,7 +123,7 @@ class Dataset:
             )
             print(f"No raw data given. Creation not possible. Skipping.")
 
-    def process_raw_data(self):
+    def process_raw_data(self, save=True):
         global_logger.critical(
             f"Function for creating {self.key} dataset from raw data is not defined."
         )
@@ -377,8 +377,9 @@ class NeuralDataset(Dataset):
         needed_attributes = ["method", "preprocessing", "processing", "setup"]
         check_needed_keys(metadata, needed_attributes)
 
-    def process_raw_data(self):
-        self.setup.preprocess.process_data()
+    def create_dataset(self, raw_data_object=None, save=True):
+        self.data = self.process_raw_data(save=save)
+        return
 
 
 class Data_Position(BehaviorDataset):
@@ -438,12 +439,12 @@ class Data_Position(BehaviorDataset):
         self.max_bin = int(max_bin / bin_size)
         return self.binned_data
 
-    def create_dataset(self, raw_data_object=None):
-        data = self.process_raw_data()
+    def create_dataset(self, raw_data_object=None, save=True):
+        data = self.process_raw_data(save=save)
         return data
 
-    def process_raw_data(self):
-        self.data = self.setup.process_data(self.task_id)
+    def process_raw_data(self, save=True):
+        self.data = self.setup.process_data(save=save)
         return self.data
 
     def get_lap_starts(self, fps=None, sec_thr=5):
@@ -489,7 +490,7 @@ class Data_Stimulus(BehaviorDataset):
         self.stimulus_by = self.metadata["stimulus_by"]
         self.fps = self.metadata["fps"] if "fps" in self.metadata.keys() else None
 
-    def process_raw_data(self):
+    def process_raw_data(self, save=True):
         """ "
         Returns:
             - data: Numpy array composed of stimulus type at frames.
@@ -555,7 +556,7 @@ class Data_Distance(BehaviorDataset):
         binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
         return binned_data
 
-    def process_raw_data(self):
+    def process_raw_data(self, save=True):
         track_positions = self.raw_data_object.data
         if len(self.environment_dimensions) == 1:
             self.data = self.process_1D_data(track_positions)
@@ -608,7 +609,7 @@ class Data_Velocity(BehaviorDataset):
         binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
         return binned_data
 
-    def process_raw_data(self):
+    def process_raw_data(self, save=True):
         """
         calculating velocity based on velocity data in raw_data_object
         """
@@ -651,7 +652,7 @@ class Data_Acceleration(BehaviorDataset):
         binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
         return binned_data
 
-    def process_raw_data(self):
+    def process_raw_data(self, save=True):
         """
         calculating acceleration based on velocity data in raw_data_object
         """
@@ -696,7 +697,7 @@ class Data_Moving(BehaviorDataset):
         needed_attributes = ["setup"]
         check_needed_keys(metadata, needed_attributes)
 
-    def process_raw_data(self):
+    def process_raw_data(self, save=True):
         velocities = self.raw_data_object.data
         moving_frames = velocities > self.velocity_threshold
         self.data = self.fit_moving_to_brainarea(moving_frames, self.metadata["area"])
@@ -764,8 +765,8 @@ class Data_Photon(NeuralDataset):
             self.metadata["fps"] = self.setup.get_fps()
             self.plot_attributes["fps"] = self.metadata["fps"]
 
-    def process_raw_data(self):
-        self.data = self.setup.process_raw_data()
+    def process_raw_data(self, save=True):
+        self.data = self.setup.process_data(save=save)
         return self.data
 
     def plot_data(self):

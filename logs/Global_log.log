@@ -5087,3 +5087,70 @@
 2024-06-17 10:46:09,601 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\tif\suite2p\plane0\DON-004366_20210228_S1_photon.npy
 2024-06-17 10:46:09,638 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
 2024-06-17 10:46:12,918 - GlobalLogger - WARNING - No position data found at D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_position.npy.
+2024-06-17 10:53:17,220 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_distance.npy
+2024-06-17 10:53:18,493 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_velocity.npy
+2024-06-17 10:53:18,498 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 10:53:19,796 - GlobalLogger - WARNING - No moving data found at D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_moving.npy.
+2024-06-17 10:53:19,796 - GlobalLogger - INFO - Creating moving dataset based on raw data from velocity.
+2024-06-17 10:53:21,043 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_acceleration.npy
+2024-06-17 10:53:21,047 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 10:53:22,365 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_stimulus.npy
+2024-06-17 10:53:23,650 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\tif\suite2p\plane0\DON-004366_20210228_S2_photon.npy
+2024-06-17 10:53:23,668 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 10:53:26,107 - GlobalLogger - WARNING - No position data found at D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S2_position.npy.
+2024-06-17 10:53:37,527 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S2_distance.npy
+2024-06-17 10:53:38,369 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S2_velocity.npy
+2024-06-17 10:53:38,373 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 10:53:39,241 - GlobalLogger - WARNING - No moving data found at D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S2_moving.npy.
+2024-06-17 10:53:39,241 - GlobalLogger - INFO - Creating moving dataset based on raw data from velocity.
+2024-06-17 10:53:40,047 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S2_acceleration.npy
+2024-06-17 10:53:40,051 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 10:53:40,927 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S2_stimulus.npy
+2024-06-17 10:53:41,741 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\tif\suite2p\plane0\DON-004366_20210228_S3_photon.npy
+2024-06-17 10:53:41,774 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 10:53:45,108 - GlobalLogger - WARNING - No position data found at D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S3_position.npy.
+2024-06-17 10:54:06,699 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S3_distance.npy
+2024-06-17 10:54:07,930 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S3_velocity.npy
+2024-06-17 10:54:07,934 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 10:54:09,225 - GlobalLogger - WARNING - No moving data found at D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S3_moving.npy.
+2024-06-17 10:54:09,225 - GlobalLogger - INFO - Creating moving dataset based on raw data from velocity.
+2024-06-17 10:54:10,466 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S3_acceleration.npy
+2024-06-17 10:54:10,470 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 10:54:11,766 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S3_stimulus.npy
+2024-06-17 12:18:14,395 - GlobalLogger - WARNING - File D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\DON-004366_20210228_002P-F_S1.mesc not found. Choosing first matching multi task dataset found in D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file.
+2024-06-17 12:18:14,401 - GlobalLogger - WARNING - File D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\DON-004366_20210228_002P-F_S2.mesc not found. Choosing first matching multi task dataset found in D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file.
+2024-06-17 12:18:14,404 - GlobalLogger - WARNING - File D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\DON-004366_20210228_002P-F_S3.mesc not found. Choosing first matching multi task dataset found in D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file.
+2024-06-17 12:18:14,407 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\tif\suite2p\plane0\DON-004366_20210228_S1_photon.npy
+2024-06-17 12:18:14,441 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 12:18:17,646 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_position.npy
+2024-06-17 12:18:17,651 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 12:18:19,006 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_distance.npy
+2024-06-17 12:18:20,326 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_velocity.npy
+2024-06-17 12:18:20,327 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 12:18:21,757 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_moving.npy
+2024-06-17 12:18:23,090 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_acceleration.npy
+2024-06-17 12:18:23,091 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 12:18:24,489 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_stimulus.npy
+2024-06-17 12:18:25,830 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\tif\suite2p\plane0\DON-004366_20210228_S2_photon.npy
+2024-06-17 12:18:25,849 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 12:18:28,158 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S2_position.npy
+2024-06-17 12:18:28,163 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 13:11:14,013 - GlobalLogger - WARNING - File D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\DON-004366_20210228_002P-F_S1.mesc not found. Choosing first matching multi task dataset found in D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file.
+2024-06-17 13:11:14,018 - GlobalLogger - WARNING - File D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\DON-004366_20210228_002P-F_S2.mesc not found. Choosing first matching multi task dataset found in D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file.
+2024-06-17 13:11:14,021 - GlobalLogger - WARNING - File D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\DON-004366_20210228_002P-F_S3.mesc not found. Choosing first matching multi task dataset found in D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file.
+2024-06-17 13:11:14,024 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\tif\suite2p\plane0\DON-004366_20210228_S1_photon.npy
+2024-06-17 13:11:14,057 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 13:11:17,414 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_position.npy
+2024-06-17 13:11:17,415 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 13:11:18,770 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_distance.npy
+2024-06-17 13:11:20,108 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_velocity.npy
+2024-06-17 13:11:20,109 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 13:11:21,493 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_moving.npy
+2024-06-17 13:11:22,820 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_acceleration.npy
+2024-06-17 13:11:22,821 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 13:11:24,239 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S1_stimulus.npy
+2024-06-17 13:11:25,581 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\002P-F\tif\suite2p\plane0\DON-004366_20210228_S2_photon.npy
+2024-06-17 13:11:25,599 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 13:11:28,039 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S2_position.npy
+2024-06-17 13:11:28,040 - GlobalLogger - WARNING - Data is probably transposed. Needed Shape [Time, cells] Transposing...
+2024-06-17 13:11:28,911 - GlobalLogger - INFO - Loading D:\Experiments\Steffen\Rigid_Plastic\DON-004366\20210228\TRD-2P\DON-004366_20210228_S2_distance.npy
