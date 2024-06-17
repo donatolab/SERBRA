@@ -174,11 +174,12 @@ class Output:
     def get_data_path(self, task_id: str = None):
         raise NotImplementedError(f"get_data_path not implemented for {self.__class__}")
 
-    def save_data(self, data, overwrite=False):
+    def save_data(self, data, save_dir=None, overwrite=False):
         for data_name, data_type in data.items():
             animal_id, date, task_name = self.identifier.values()
             fname = f"{animal_id}_{date}_{task_name}_{data_name}"
-            fpath = self.raw_data_path.parent.joinpath(fname)
+            save_dir = Path(save_dir) if save_dir else self.data_dir
+            fpath = save_dir.joinpath(fname)
             if fpath.exists() and not overwrite:
                 print(f"File {fpath} already exists. Skipping.")
             else:
@@ -282,6 +283,7 @@ class NeuralSetup(Setup):
             fps = self.extract_fps()
         return fps
 
+
 #######################           Hardware            ##############################################
 class Wheel:
     def __init__(self, radius):
@@ -290,7 +292,6 @@ class Wheel:
     @property
     def circumfrence(self):
         return 2 * np.pi * self.radius
-
 
 
 ## Behavior
@@ -311,10 +312,7 @@ class Treadmill_Setup(BehavioralSetup):
         self.data_naming_scheme = (
             "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
         )
-        self.variable_outputs = {self.root_dir: []}
-        for output in self.own_outputs:
-            self.variable_outputs[self.root_dir].append(output)
-
+        self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
         self.raw_data_path = self.define_raw_data_path()
         self.preprocess = self.get_preprocess()
 
@@ -334,18 +332,32 @@ class Treadmill_Setup(BehavioralSetup):
         rotary_ch_b = data[:, 1]
 
         lap_sync = np.array(data[:, 2]).reshape(-1, 1)
-        galvo_sync = np.array(data[:, 3]).reshape(-1, 1)
-        return rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync
+        # galvo sync signal
+        ttl_voltages = np.array(data[:, 3]).reshape(-1, 1)
 
-    def sync_wheel_to_belt........write this function umklammert mit **************************
-    
+        # get galvo trigger times for 2P frame
+        reference_times = Femtonics.convert_galvo_trigger_signal(ttl_voltages)
+        return rotary_ch_a, rotary_ch_b, lap_sync, reference_times
 
-    def process_data(self, save: bool = True, overwrite: bool = False):
+    def process_data(self, save: bool = True, overwrite: bool = False, smooth=True):
         if self.preprocess_name == "rotary_encoder":
-            rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync = self.fetch_rotary_lapsync_data(self.raw_data_path)
+            rotary_ch_a, rotary_ch_b, lap_sync, reference_times = (
+                self.fetch_rotary_lapsync_data(self.raw_data_path)
+            )
+            data_preprocess = {"channel_a": rotary_ch_a, "channel_b": rotary_ch_b}
         else:
-            raise ValueError(f"data loading not supported for {self.preprocess_name} in {self.__class__}.")
-        data = self.preprocess.process_data(rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync, max_speed=0.3, save=save, overwrite=overwrite)
+            raise ValueError(
+                f"data loading not supported for {self.preprocess_name} in {self.__class__}."
+            )
+        data = self.preprocess.process_data(
+            data=data_preprocess,
+            reference_times=reference_times,
+            lap_sync=lap_sync,
+            max_speed=0.3,
+            smooth=smooth,
+            save=save,
+            overwrite=overwrite,
+        )
 
         return data[self.key]
 
@@ -362,17 +374,10 @@ class Wheel_Setup(BehavioralSetup):
 
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        # self.root_dir_name = f"TRD-{self.method}"
-        # self.root_dir = self.root_dir.joinpath(self.root_dir_name)
-        self.static_outputs = {self.root_dir: ["results.zip"]}
+        self.data_dir = self.root_dir
         self.data_naming_scheme = "results.npy"
-
-        # TODO: this is not a good way to do it, preprocessing should be defined the dataset class to use rotary encoder or other methods
+        self.static_outputs = {self.root_dir: [self.data_naming_scheme]}
         self.variable_outputs = {self.root_dir: []}
-
-        # TODO: this should be in preprocessing class, since it is not saved by setup
-        for output in self.own_outputs:
-            self.variable_outputs[self.root_dir].append(output)
 
         needed_attributes = ["radius", "clicks_per_rotation", "fps"]
         check_needed_keys(metadata, needed_attributes)
@@ -380,13 +385,18 @@ class Wheel_Setup(BehavioralSetup):
         self.wheel = Wheel(
             radius=metadata["radius"],
         )
-
+        self.metadata["environment_dimensions"] = (
+            [self.wheel.circumfrence]
+            if not "environment_dimensions" in metadata.keys()
+            else metadata["environment_dimensions"]
+        )
+        self.raw_data_path = self.define_raw_data_path()
         self.preprocess = self.get_preprocess()
 
-    def fetch_rotary_data(fpath):
+    def fetch_rotary_referece_data(self, fpath):
         """
         columns: roatry encoder state1 | roatry encoder state 2
-        values          0 or   1       |       0 or   1        
+        values          0 or   1       |       0 or   1
 
         lab sync is not alway detected
         """
@@ -396,18 +406,42 @@ class Wheel_Setup(BehavioralSetup):
         rotary_ch_a = data["rotary_encoder1_abstime"]
         rotary_ch_b = data["rotary_encoder2_abstime"]
 
+        sampleRate_2p = data["sampleRate_2P"]
+        sampleRate_NI = data["sampleRate_NI"]
+        n_frames = data["n_frames"]
+
+        n_ttl_to_start_applying_dynamic_f0 = data["n_ttl_to_start_applying_dynamic_f0"]
+        ttl_n_computed = data["ttl_n_computed"]
+        ttl_n_detected = data["ttl_n_detected"]
+        ttl_times = data["ttl_times"]
+
         # get reference times for alignment to imaging frames
-        return rotary_ch_a, rotary_ch_b, None, None
+        ttl_voltages = data["ttl_voltages"]
+        reference_times = Femtonics.convert_galvo_trigger_signal(ttl_voltages)
+        return rotary_ch_a, rotary_ch_b, None, reference_times
 
-    def process_data(self, save: bool = True, overwrite: bool = False):
+    def process_data(self, save: bool = True, overwrite: bool = False, smooth=True):
         if self.preprocess_name == "rotary_encoder":
-            rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync = self.fetch_rotary_lapsync_data(self.raw_data_path)
+            rotary_ch_a, rotary_ch_b, lap_sync, reference_times = (
+                self.fetch_rotary_referece_data(self.raw_data_path)
+            )
+            data_preprocess = {"channel_a": rotary_ch_a, "channel_b": rotary_ch_b}
         else:
-            raise ValueError(f"data loading not supported for {self.preprocess_name} in {self.__class__}.")
+            raise ValueError(
+                f"data loading not supported for {self.preprocess_name} in {self.__class__}."
+            )
 
-        data = self.preprocess.process_data(rotary_ch_a, rotary_ch_b, lap_sync, galvo_sync, max_speed=0.5, save=save, overwrite=overwrite)
+        data = self.preprocess.process_data(
+            data=data_preprocess,
+            reference_times=reference_times,
+            lap_sync=lap_sync,
+            max_speed=0.5,
+            smooth=smooth,
+            save=save,
+            overwrite=overwrite,
+        )
 
-        return data[self.key]
+        return data  # [self.key]
 
 
 class Trackball_Setup(BehavioralSetup):
@@ -504,7 +538,7 @@ class Femtonics(NeuralSetup):
         for idx in indices:
             if galvo_trigger[idx - 1] == 0:
                 triggers.append(idx)
-        return triggers
+        return np.array(triggers)
 
     def define_raw_data_path(self, fname: str = None):
         """
@@ -724,91 +758,94 @@ class RotaryEncoder(Behavior_Preprocessing):
 
         self.process = self.get_process()
 
-    def preprocess_data(self, 
-                        rotary_ch_a: np.ndarray,
-                        rotary_ch_b: np.ndarray,
-                        lap_sync: np.ndarray = None,
-                        galvo_sync: np.ndarray = None,
-                        max_speed: float = 0.6,
-                        save: bool = True,
-                        overwrite: bool = False,
-    )
+    def preprocess_data(
+        self,
+        rotary_ch_a: np.ndarray,
+        rotary_ch_b: np.ndarray,
+        lap_sync: np.ndarray = None,
+        reference_times: np.ndarray = None,
+        max_speed: float = 0.6,
+        save: bool = True,
+        overwrite: bool = False,
+        imaging_fps: float = None,
+    ):
         # convert rotary data
-        rotary_encoder = RotaryEncoder(
-            sample_rate=self.metadata["fps"],
-            clicks_per_rotation=self.metadata["clicks_per_rotation"],
-        )
-        rotary_distances = rotary_encoder.rotary_to_distances(
+        rotary_distances = self.rotary_to_distances(
             wheel_radius=self.wheel.radius,
             ch_a=rotary_ch_a,
             ch_b=rotary_ch_b,
         )
 
-**************************This functions below
-        if lap_sync is None or galvo_sync is None:
-            lap_start_frame = 0
-        else:
-            # get galvo trigger times for 2P frame
-            galvo_triggers_times = Femtonics.convert_galvo_trigger_signal(galvo_sync)
-
-            needed_attributes = ["imaging_fps"]
-            check_needed_keys(self.metadata, needed_attributes)
+        if reference_times is not None:
             if not imaging_fps:
+                check_needed_keys(self.metadata, ["imaging_fps"])
                 imaging_fps = self.metadata["imaging_fps"]
 
             ## get distance of the wheel surface
-            moved_distances_in_frame = rotary_encoder.convert_data_fps_to_imaging_fps(
+            moved_distances_in_frame = self.convert_data_fps_to_imaging_fps(
                 data=rotary_distances,
-                reference_times=galvo_triggers_times,
+                reference_times=reference_times,
                 imaging_fps=imaging_fps,
             )
+        else:
+            moved_distances_in_frame = rotary_distances
 
+        if lap_sync is not None:
             # syncronise moved distances, scale rotary encoder data to lap sync signal because of slipping wheel
-            distances, lap_start_frame = rotary_encoder.sync_to_lap(
+            distances, lap_start_frame = self.sync_to_lap(
                 moved_distances_in_frame,
                 imaging_fps=imaging_fps,
-                reference_times=galvo_triggers_times,
+                reference_times=reference_times,
                 lap_sync=lap_sync,
                 track_dimensions=self.process.dimensions,
                 max_speed=max_speed,  # in m/s,
             )
-**************************This functions above
-            cumulative_distance = np.cumsum(distances)
+        else:
+            distances = moved_distances_in_frame
+            lap_start_frame = 0
+
+        cumulative_distance = np.cumsum(distances)
 
         data = {
             "distance": cumulative_distance,
         }
+
+        if save:
+            self.save_data(data, overwrite)
+
         return data, lap_start_frame
 
     def process_data(
         self,
-        rotary_ch_a: np.ndarray,
-        rotary_ch_b: np.ndarray,
+        data: Dict[str, np.ndarray],
         lap_sync: np.ndarray = None,
-        galvo_sync: np.ndarray = None,
+        reference_times: np.ndarray = None,
         max_speed: float = 0.6,  # in m/s
+        smooth: bool = True,
         save: bool = True,
         overwrite: bool = False,
     ):
+
         data, lap_start_frame = self.preprocess_data(
-            rotary_ch_a=rotary_ch_a,
-            rotary_ch_b=rotary_ch_b,
+            rotary_ch_a=data["channel_a"],
+            rotary_ch_b=data["channel_b"],
             lap_sync=lap_sync,
-            galvo_sync=galvo_sync,
-            max_speed=max_speed
+            reference_times=reference_times,
+            max_speed=max_speed,
             save=save,
             overwrite=overwrite,
-            )
+        )
 
         processed_data = self.process.process_data(
             cumulative_distance=data["distance"],
             lap_start_frame=lap_start_frame,
+            smooth=smooth,
             save=save,
             overwrite=overwrite,
         )
 
         data = {**data, **processed_data}
-        
+
         return data
 
     @staticmethod
@@ -1394,10 +1431,11 @@ class Environment(Behavior_Processing):
 
     def process_data(
         self,
-        imaging_fps: float,
+        imaging_fps: float = None,
         cumulative_distance: np.ndarray = None,
         positions: np.ndarray = None,
         lap_start_frame: float = None,
+        smooth: bool = True,
         save: bool = True,
         overwrite: bool = False,
     ):
@@ -1421,13 +1459,17 @@ class Environment(Behavior_Processing):
         elif cumulative_distance is None:
             cumulative_distance = np.cumsum(positions)
 
+        if not imaging_fps:
+            check_needed_keys(self.metadata, ["imaging_fps"])
+            imaging_fps = self.metadata["imaging_fps"]
+
         # TODO: check for multi dimensions!!!!!
         # TODO: check for multi dimensions!!!!!
         # TODO:.......................... check for multi dimensions!!!!!
         # TODO: check for multi dimensions!!!!!
 
         velocity_smoothed = self.get_velocity_from_cumdist(
-            cumulative_distance, imaging_fps, smooth=True
+            cumulative_distance, imaging_fps, smooth=smooth
         )
 
         acceleration = self.get_acceleration_from_velocity(
