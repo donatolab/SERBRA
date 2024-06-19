@@ -19,13 +19,16 @@ import cebra
 # debugging
 import inspect
 
+# own
+from Datasets import Dataset
+
 
 # Meta Meta Class
 class Output:
     """
     Class to manage the output of the setups and preprocessing steps
     Attribute:
-        - static_outputs: dictionary of static output files structured as {Patch(): [file_name1, file_name2]}
+        - outputs: dictionary of static output files structured as {Patch(): [file_name1, file_name2]}
         - variable_outpus: dictionary of variable output files structured as {Path(): [regex_search1, regex_search2]}
     """
 
@@ -40,71 +43,41 @@ class Output:
             )
         check_needed_keys(metadata, needed_attributes)
         self.method = metadata["method"]
+        self.setup = metadata["setup"]
         self.preprocess_name = metadata["preprocessing"]
         self.process_name = metadata["processing"]
-        self.static_outputs: dict = {}
-        self.variable_outputs: dict = {}
-        self.own_outputs: List[str] = []
+        self.outputs: dict = {}
         self.data_naming_scheme = None
         self.identifier: dict = self.extract_identifier(metadata["task_id"])
-        self.raw_data_path = None
+        self.data_path = None
         self.metadata = metadata
 
     def define_full_root_dir(self, full_root_dir: Path = None):
         return full_root_dir if full_root_dir else self.root_dir
 
-    def define_raw_data_path(self, fname: str = None):
-        if not fname:
-            fname = self.data_naming_scheme.format(**self.identifier)
-        raw_data_path = self.define_file_path(file_name=fname)
-        return raw_data_path
-
-    def get_static_output_paths(self, full_root_dir: Path = None):
+    def get_output_paths(self, full_root_dir: Path = None):
         full_root_dir = self.define_full_root_dir(full_root_dir)
         full_output_paths = {}
-        for relative_output_dir, fnames in self.static_outputs.items():
-            full_folder_path = full_root_dir.joinpath(relative_output_dir)
-            full_output_paths[full_folder_path] = fnames
-        return full_output_paths
-
-    def get_variable_output_paths(self, full_root_dir):
-        full_root_dir = self.define_full_root_dir(full_root_dir)
-        full_output_paths = {}
-        for relative_output_dir, naming_templates in self.variable_outputs.items():
+        for relative_output_dir, naming_templates in self.outputs.items():
             full_folder_path = full_root_dir.joinpath(relative_output_dir)
             files_list = []
             for template in naming_templates:
                 fname = template.format(**self.identifier)
+
+                matching_files = get_files(
+                    full_folder_path,
+                    ending=Path(fname).suffix,
+                    regex_search=Path(fname).stem,
+                )
+                if matching_files:
+                    fname = matching_files[0]
+                    if len(matching_files) > 1:
+                        print(
+                            f"WARNING: multiple matching files found in {full_folder_path} with regex search {fname}. Choosing first one."
+                        )
                 files_list.append(fname)
             full_output_paths[full_folder_path] = files_list
         return full_output_paths
-
-    def get_output_paths(self, full_root_dir: Path = None):
-        full_root_dir = self.define_full_root_dir(full_root_dir)
-        if not full_root_dir and self.variable_outputs:
-            global_logger.error(
-                "No full_root_dir provided. Cannot define output paths for variable outputs."
-            )
-            raise ValueError(
-                "No output file paths can be defined. Because outputs are variable."
-            )
-        elif not full_root_dir:
-            output_paths = self.get_static_output_paths()
-        else:
-            static_output_paths = self.get_static_output_paths(full_root_dir)
-            variable_output_paths = self.get_variable_output_paths(full_root_dir)
-            # Merge dictionaries of static and variable output paths by unpacking
-            # combine values of the same key
-            output_paths = static_output_paths
-            for path, file_names in variable_output_paths.items():
-                if path in output_paths:
-                    if file_names:
-                        for file_name in file_names:
-                            if file_name not in output_paths[path]:
-                                output_paths[path].append(file_name)
-                else:
-                    output_paths[path] = file_names
-        return output_paths
 
     @staticmethod
     def extract_identifier(task_id: str):
@@ -122,16 +95,27 @@ class Output:
 
     def define_file_path(self, file_name=None, full_root_dir: Path = None):
         if not file_name:
-            global_logger.error("No file_name provided.")
-            raise ValueError("file_name must be provided to get file path.")
+            file_name = self.data_naming_scheme
 
         full_root_dir = self.define_full_root_dir(full_root_dir)
         output_paths = self.get_output_paths(full_root_dir)
         transposed_output_paths = self.transpose_output_paths(output_paths)
 
         fpath = None
-        if file_name in transposed_output_paths.keys():
-            fpath = transposed_output_paths[file_name].joinpath(file_name)
+        fit_file_name = file_name.format(**self.identifier)
+        if fit_file_name not in transposed_output_paths.keys():
+            for existing_file_name, path in transposed_output_paths.items():
+                file_name_match = fname_match_search(
+                    existing_file_name,
+                    ending=Path(fit_file_name).suffix,
+                    regex_search=Path(fit_file_name).stem,
+                )
+                if file_name_match:
+                    fpath = transposed_output_paths[existing_file_name].joinpath(
+                        existing_file_name
+                    )
+        else:
+            fpath = transposed_output_paths[fit_file_name].joinpath(fit_file_name)
         return fpath
 
     def load_data(
@@ -152,6 +136,7 @@ class Output:
             - Pickle files: p, pkl;
             - MAT-files: mat.
         """
+        data = None
         if not fpath:
             fpath = self.define_file_path(
                 file_name=file_name,
@@ -162,16 +147,20 @@ class Output:
             data = cebra.load_data(fpath)
         else:
             print(f"File {file_name} not found in {fpath}")
+        Dataset.force_1_dim_larger(data=data)
         return data
 
-    def define_data_path(self, task_id: str = None, fname: str = None):
-        identifier = Output.extract_identifier(task_id)
-        animal_id, date, task_name = identifier.values()
-        fname = f"{animal_id}_{date}_{task_name}_{self.key}.npy" if not fname else fname
-        fpath = self.define_file_path(fname)
+    def define_data_path(self, file_name: str = None):
+        animal_id, date, task_name = self.identifier.values()
+        file_name = (
+            f"{animal_id}_{date}_{task_name}_{self.key}.npy"
+            if not file_name
+            else file_name
+        )
+        fpath = self.define_file_path(file_name)
         return fpath
 
-    def get_data_path(self, task_id: str = None):
+    def get_data_path(self):
         raise NotImplementedError(f"get_data_path not implemented for {self.__class__}")
 
     def save_data(self, data, save_dir=None, overwrite=False):
@@ -185,7 +174,7 @@ class Output:
             else:
                 np.save(fpath, data_type)
 
-    def process_data(self, task_id=None):
+    def process_data(self, raw_data_path=None):
         raise NotImplementedError(
             f"Data processing not implemented for {self.__class__}"
         )
@@ -202,18 +191,18 @@ class Setup(Output):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
 
-    def get_data_path(self, task_id):
-        fpath = self.preprocess.get_data_path(task_id)
+    def get_data_path(self):
+        fpath = self.preprocess.get_data_path()
         if not fpath:
-            fpath = self.define_data_path(task_id)
+            fpath = self.define_data_path()
         return fpath
 
     """def process_data(self, task_id=None):
         animal_id, date, task_name = Output.extract_identifier(task_id)
         # raw_data = self.load_data()
-        raw_data_path = self.define_raw_data_path()
+        data_path = self.define_data_path()
         data = self.preprocess.process_data(
-            raw_data_path=raw_data_path, task_name=task_name
+            data_path=data_path, task_name=task_name
         )
         return data"""
 
@@ -226,18 +215,22 @@ class BehavioralSetup(Setup):
 
     def get_preprocess(self):
         preprocess_name = self.preprocess_name
+        error = False
         if preprocess_name == "rotary_encoder":
-            preprocess = RotaryEncoder(
-                key=self.key, root_dir=self.data_dir, metadata=self.metadata
-            )
+            if self.setup in ["wheel", "treadmill"]:
+                preprocess = RotaryEncoder(
+                    key=self.key, root_dir=self.data_dir, metadata=self.metadata
+                )
+            else:
+                error = True
         elif preprocess_name == "cam":
-            preprocess = Cam(
-                key=self.key, root_dir=self.data_dir, metadata=self.metadata
-            )
-        else:
-            global_logger.error(
-                f"Preprocessing software {preprocess_name} not supported for {self.__class__}."
-            )
+            if self.setup in ["openfield", "active_avoidance"]:
+                preprocess = Cam(
+                    key=self.key, root_dir=self.data_dir, metadata=self.metadata
+                )
+            else:
+                error = True
+        if error:
             raise ValueError(
                 f"Preprocessing software {preprocess_name} not supported for {self.__class__}."
             )
@@ -312,8 +305,9 @@ class Treadmill_Setup(BehavioralSetup):
         self.data_naming_scheme = (
             "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}-ACQ.mat"
         )
-        self.variable_outputs = {self.root_dir: [self.data_naming_scheme]}
-        self.raw_data_path = self.define_raw_data_path()
+        self.outputs = {self.root_dir: [self.data_naming_scheme]}
+        self.raw_data_path = self.define_file_path(file_name=self.data_naming_scheme)
+        self.data_path = self.define_data_path(file_name=self.output_data_naming_scheme)
         self.preprocess = self.get_preprocess()
 
     @staticmethod
@@ -376,8 +370,7 @@ class Wheel_Setup(BehavioralSetup):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
         self.data_naming_scheme = "results.npy"
-        self.static_outputs = {self.root_dir: [self.data_naming_scheme]}
-        self.variable_outputs = {self.root_dir: []}
+        self.outputs = {self.root_dir: [self.data_naming_scheme]}
 
         needed_attributes = ["radius", "clicks_per_rotation", "fps"]
         check_needed_keys(metadata, needed_attributes)
@@ -390,7 +383,8 @@ class Wheel_Setup(BehavioralSetup):
             if not "environment_dimensions" in metadata.keys()
             else metadata["environment_dimensions"]
         )
-        self.raw_data_path = self.define_raw_data_path()
+        self.raw_data_path = self.define_file_path(file_name=self.data_naming_scheme)
+        self.data_path = self.define_data_path(file_name=self.output_data_naming_scheme)
         self.preprocess = self.get_preprocess()
 
     def fetch_rotary_referece_data(self, fpath):
@@ -455,22 +449,9 @@ class Openfield_Setup(BehavioralSetup):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
-        self.data_naming_scheme = (
-            "UNDEFINDE{animal_id}_{date}_"
-            + self.root_dir_name
-            + "_{task_name}-UNDEFINED.bla"
-        )
+        self.data_naming_scheme = "UNDEFINDE.noexisting"
 
-        self.variable_outputs = {
-            self.root_dir: [
-                self.data_naming_scheme,
-                "*_locs.npy",
-            ]
-        }
-        for output in self.own_outputs:
-            self.variable_outputs[self.root_dir].append(output)
-
-        self.raw_data_path = self.define_raw_data_path()
+        self.data_path = self.define_data_path()
         needed_attributes = ["environment_dimensions", "imaging_fps"]
         check_needed_keys(metadata, needed_attributes)
 
@@ -483,8 +464,12 @@ class Openfield_Setup(BehavioralSetup):
 
         self.preprocess = self.get_preprocess()
 
-    def process_data(self, task_id=None):
-        raise NotImplementedError("Openfield data extraction not implemented yet")
+    def process_data(self, save=True, overwrite=False):
+        data = self.preprocess.process_data(
+            self.data_path, save=save, overwrite=overwrite
+        )
+
+        return data[self.key]
 
 
 class Active_Avoidance(BehavioralSetup):
@@ -504,11 +489,10 @@ class Femtonics(NeuralSetup):
         self.data_naming_scheme = (
             "{animal_id}_{date}_" + self.root_dir_name + "_{task_name}.mesc"
         )
-        self.variable_outputs = {self.data_dir: [self.data_naming_scheme]}
+        self.outputs = {self.data_dir: [self.data_naming_scheme]}
 
-        # TODO: this should be in preprocessing class, since it is not saved by setup
         for output in self.own_outputs:
-            self.variable_outputs[self.data_dir].append(output)
+            self.outputs[self.data_dir].append(output)
         self.fps = self.get_fps()
         self.preprocess = self.get_preprocess()
 
@@ -532,51 +516,51 @@ class Femtonics(NeuralSetup):
                 triggers.append(idx)
         return np.array(triggers)
 
-    def define_raw_data_path(self, fname: str = None):
+    def define_data_path(self, fname: str = None):
         """
         Define the path to the raw data file.
         If no unique file is found it is assumed that the data is stored in a multi file dataset.
         Dataset is choosen if all identifiers(animal_id, date and task_name) are found in the file name.
         """
-        if not self.raw_data_path:
+        if not self.data_path:
             if not fname:
                 fname = self.data_naming_scheme.format(**self.identifier)
-            raw_data_path = self.define_file_path(file_name=fname)
+            data_path = self.define_file_path(file_name=fname)
 
             # Search for multi file dataset if no unique file is found
-            if not raw_data_path.exists():
+            if not data_path.exists():
                 allowed_symbols = "\-A-Za-z_0-9"
                 animal_id, date, task_name = self.identifier.values()
                 regex_search = f"{animal_id}_{date}[{allowed_symbols}]*{task_name}[{allowed_symbols}]*"
-                raw_data_paths = get_files(
-                    raw_data_path.parent,
-                    ending=raw_data_path.suffix,
+                data_paths = get_files(
+                    data_path.parent,
+                    ending=data_path.suffix,
                     regex_search=regex_search,
                 )
-                if len(raw_data_paths) == 0:
+                if len(data_paths) == 0:
                     global_logger.error(
-                        f"No MESC files found in {raw_data_path.parent} with {self.identifier} in name. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file."
+                        f"No MESC files found in {data_path.parent} with {self.identifier} in name. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file."
                     )
                     raise FileNotFoundError(
-                        f"No MESC files found in {raw_data_path.parent} with {self.identifier} in name. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file."
+                        f"No MESC files found in {data_path.parent} with {self.identifier} in name. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file."
                     )
                 else:
                     print(
-                        f"WARNING: File {raw_data_path} not found. Choosing first matching multi task dataset found in {raw_data_path.parent}."
+                        f"WARNING: File {data_path} not found. Choosing first matching multi task dataset found in {data_path.parent}."
                     )
                     global_logger.warning(
-                        f"File {raw_data_path} not found. Choosing first matching multi task dataset found in {raw_data_path.parent}. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file."
+                        f"File {data_path} not found. Choosing first matching multi task dataset found in {data_path.parent}. Needed for imaging frame rate determination. Alternative could be to provide the fps rate in the neural metadata section in the yaml file."
                     )
-                    raw_data_path = raw_data_path.parent.joinpath(raw_data_paths[0])
+                    data_path = data_path.parent.joinpath(data_paths[0])
 
-            self.raw_data_path = raw_data_path
-        return self.raw_data_path
+            self.data_path = data_path
+        return self.data_path
 
     def extract_fps(self):
         """
         Extract the frame rate from the MESC file.
         """
-        mesc_fpath = self.define_raw_data_path()
+        mesc_fpath = self.define_data_path()
         fps = None
         with h5py.File(mesc_fpath, "r") as file:
             msessions = [
@@ -609,7 +593,7 @@ class Femtonics(NeuralSetup):
         raise NotImplementedError(
             f"Data processing not implemented for {self.__class__}"
         )
-        tiff_data = self.raw_to_tiff(self.raw_data_path)
+        tiff_data = self.raw_to_tiff(self.data_path)
         suite2p_data = self.rotary_encoder.extract_data(tiff_data)
         cabincorr_data = self.treadmill.extract_data(suite2p_data)
         data = {**suite2p_data, **cabincorr_data}
@@ -624,7 +608,7 @@ class Thorlabs(NeuralSetup):
         self.root_dir_name += "-T"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.data_dir = self.root_dir_name.joinpath("data")
-        self.static_outputs = {self.data_dir: ["Image_001_001.raw"]}
+        self.outputs = {self.data_dir: ["Image_001_001.raw"]}
         # TODO: output files not defined
         raise NotImplementedError("Thorlabs setup not implemented yet")
 
@@ -635,18 +619,12 @@ class Inscopix(NeuralSetup):
         self.root_dir_name += "-I"
         self.root_dir = self.root_dir.joinpath(self.root_dir_name)
         self.data_dir = self.root_dir
-        self.static_outputs = {}
         # TODO: output files not defined
-        self.data_naming_scheme = (
-            "UNDEFINED----{animal_id}_{date}_"
-            + self.root_dir_name
-            + "_{task_name}.UNDEFINED"
-        )
-        self.variable_outputs = {self.data_dir: [self.data_naming_scheme]}
+        self.data_naming_scheme = "UNDEFINDE.noexisting"
+        self.outputs = {self.data_dir: [self.data_naming_scheme]}
 
-        # TODO: this should be in preprocessing class, since it is not saved by setup
         for output in self.own_outputs:
-            self.variable_outputs[self.data_dir].append(output)
+            self.outputs[self.data_dir].append(output)
         self.fps = self.get_fps()
         self.preprocess = self.get_preprocess()
 
@@ -654,10 +632,13 @@ class Inscopix(NeuralSetup):
         raise NotImplementedError("{self.__class__} extract_fps not implemented yet")
 
     def process_data(self, save: bool = True, overwrite: bool = False):
-        raw_data_path = self.define_raw_data_path()
-        binarized_data = self.preprocess.process_data(
-            raw_data_path=raw_data_path, save=save, overwrite=overwrite
-        )
+        binarized_data = self.preprocess.process_data(save=save, overwrite=overwrite)
+
+        if binarized_data is None:
+            raw_data_path = self.define_data_path()
+            binarized_data = self.preprocess.process_data(
+                raw_data_path=raw_data_path, save=save, overwrite=overwrite
+            )
         return binarized_data
 
 
@@ -667,21 +648,11 @@ class Preprocessing(Output):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir = root_dir
 
-    def get_data_path(self, task_id):
-        fpath = self.process.get_data_path(task_id)
+    def get_data_path(self):
+        fpath = self.process.get_data_path()
         if not fpath:
-            fpath = self.define_data_path(task_id)
+            fpath = self.define_data_path()
         return fpath
-
-    def process_data(self, task_id=None):
-        animal_id, date, task_name = Output.extract_identifier(task_id)
-        # raw_data = self.load_data(identifier=task_name)
-        # TODO: implement intern processing data of data bevore sending to process
-        raw_data_path = self.define_raw_data_path()
-        data = self.process.process_data(
-            raw_data_path=raw_data_path, task_name=task_name
-        )
-        return data
 
 
 class Behavior_Preprocessing(Preprocessing):
@@ -734,9 +705,9 @@ class RotaryEncoder(Behavior_Preprocessing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
-        self.variable_outputs = {self.root_dir: []}
+        self.outputs = {self.root_dir: []}
         for output in self.own_outputs:
-            self.variable_outputs[self.root_dir].append(output)
+            self.outputs[self.root_dir].append(output)
 
         needed_attributes = ["radius", "fps", "clicks_per_rotation"]
         check_needed_keys(metadata, needed_attributes)
@@ -1110,17 +1081,37 @@ class Cam(Behavior_Preprocessing):
 
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
-        self.data_dir = self.root_dir.joinpath("000BSM")
-        self.data_naming_scheme = "camdata.npy"
-        self.static_outputs = {self.data_dir: [self.data_naming_scheme]}
+        self.root_dir_name = "TR-BSL"
+        self.root_dir = self.root_dir.parent.joinpath(self.root_dir_name)
+        self.data_dir = self.root_dir.parent.joinpath(
+            f"TRD-{self.method}"
+        )  # TODO: probaly not TRD- folder
 
-        self.output_path = self.data_dir.parent.joinpath(f"TRD-{self.method}")
-        self.variable_outputs = {self.output_path: []}
+        self.raw_data_naming_scheme = "camdata.npy"
+        # "{animal_id}_{date}_{task_name}[-A-Za-z_0-9]*_locs.npy"
+        self.data_naming_scheme = (
+            "{animal_id}_{date}_"
+            + f"{self.root_dir_name}"
+            + "_{task_name}[-A-Za-z_0-9]*_locs.npy"
+        )
+
+        self.outputs = {
+            self.root_dir: [self.raw_data_naming_scheme],
+            self.data_dir: [self.data_naming_scheme],
+        }
 
         for output in self.own_outputs:
-            self.variable_outputs[self.output_path].append(output)
+            self.outputs[self.data_dir].append(output)
+
+        self.raw_data_path = self.define_file_path(
+            file_name=self.raw_data_naming_scheme
+        )
+        self.data_path = self.define_data_path(file_name=self.data_naming_scheme)
 
         self.process = self.get_process()
+
+    def pixel_to_meter(self, pixel_data, pixel_per_meter):
+        return pixel_data / pixel_per_meter
 
     def run_cam_processing(self, cam_data, save=True, overwrite=False):
         raise NotImplementedError(
@@ -1128,7 +1119,17 @@ class Cam(Behavior_Preprocessing):
         )
 
     def preprocess_data(self, cam_data, save=True, overwrite=False):
-        position = self.run_cam_processing(cam_data, save=save, overwrite=overwrite)
+        check_needed_keys(self.metadata, ["pixel_per_meter"])
+
+        position_in_pixel = self.load_data(file_name=self.data_naming_scheme)
+        if position_in_pixel is None:
+            position_in_pixel = self.run_cam_processing(
+                cam_data, save=save, overwrite=overwrite
+            )
+
+        position = self.pixel_to_meter(
+            position_in_pixel, self.metadata["pixel_per_meter"]
+        )
 
         data = {"position": position}
 
@@ -1141,21 +1142,25 @@ class Cam(Behavior_Preprocessing):
         self, raw_data, task_name=None, save=True, smooth=True, overwrite=False
     ):
 
-        data = self.preprocess.process_data(
+        data = self.preprocess_data(
             cam_data=raw_data,
             save=save,
             overwrite=overwrite,
         )
 
-        processed_data = self.process.process_data(
-            cumulative_distance=data["position"],
-            lap_start_frame=0,
-            smooth=smooth,
-            save=save,
-            overwrite=overwrite,
-        )
+        if self.key != "position":
+            processed_data = self.process.process_data(
+                cumulative_distance=data["position"],
+                lap_start_frame=0,
+                smooth=smooth,
+                save=save,
+                overwrite=overwrite,
+            )
+        else:
+            processed_data = {}
 
         data = {**data, **processed_data}
+        return data
 
 
 class Suite2p(Neural_Preprocessing):
@@ -1163,7 +1168,7 @@ class Suite2p(Neural_Preprocessing):
         # TODO: implement suite2p manager
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir.joinpath("tif", "suite2p", "plane0")
-        self.static_outputs = {
+        self.outputs = {
             self.data_dir: [
                 "F.npy",
                 "F_neu.npy",
@@ -1175,7 +1180,6 @@ class Suite2p(Neural_Preprocessing):
                 "data.bin",
             ]
         }
-        self.variable_outputs = {self.data_dir: []}
 
         self.ops_settings = {
             "tau": 1,  # 0.7 for GCaMP6f,   1.0 for GCaMP6m,    1.25-1.5 for GCaMP6s
@@ -1183,7 +1187,7 @@ class Suite2p(Neural_Preprocessing):
         }
         self.process = self.get_process()
 
-    def process_data(self, raw_data, task_name=None, save=True):
+    def process_data(self, raw_data_path, save=True, overwrite=False):
         raise NotImplementedError(
             f"Suite2p data processing not implemented for {self.__class__}"
         )
@@ -1199,8 +1203,7 @@ class Opexebo(Neural_Preprocessing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
-        self.static_outputs = {}
-        self.variable_outputs = {self.data_dir: []}
+        self.outputs = {}
         self.process = self.get_process()
 
     def load_settings(self, settings_file):
@@ -1209,10 +1212,14 @@ class Opexebo(Neural_Preprocessing):
             f"Inscopix settings not implemented for {self.__class__}"
         )
 
-    def preprocess_data(self, raw_data_path, save=True, overwrite=False):
+    def run_opexebo_processing(self, settings, save=True, overwrite=False):
         raise NotImplementedError(
-            f"Opexebo data preprocessing not implemented for {self.__class__}"
+            f"Opexebo data processing not implemented for {self.__class__}"
         )
+
+    def preprocess_data(self, data_path, save=True, overwrite=False):
+        settings = self.load_settings(data_path)
+        data = self.run_opexebo_processing(settings, save=save, overwrite=overwrite)
 
         if save:
             self.save_data(data, overwrite)
@@ -1237,8 +1244,8 @@ class Processing(Output):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key, root_dir, metadata)
 
-    def get_data_path(self, task_id: str = None):
-        return self.define_data_path(task_id)
+    def get_data_path(self):
+        return self.define_data_path()
 
 
 class Behavior_Processing(Processing):
@@ -1266,10 +1273,9 @@ class Environment(Behavior_Processing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
-
-        self.variable_outputs = {self.data_dir: []}
+        self.outputs = {self.data_dir: []}
         for output in self.own_outputs:
-            self.variable_outputs[self.data_dir].append(output)
+            self.outputs[self.data_dir].append(output)
 
         needed_attributes = ["environment_dimensions", "imaging_fps"]
         check_needed_keys(metadata, needed_attributes)
@@ -1546,66 +1552,40 @@ class CaBinCorr(Neural_Processing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
-        self.data_naming_scheme = "binarized_traces.npz"
-        self.static_outputs = {self.data_dir: [self.data_naming_scheme]}
-        self.variable_outputs = {self.data_dir: []}
-        for output in self.own_outputs:
-            self.variable_outputs[self.data_dir].append(output)
 
+        self.raw_data_naming_scheme = "F.npy"
+        self.data_naming_scheme = "[A-Za-z0-9_-]*binarized_traces[A-Za-z0-9_-]*.npz"
+        self.outputs = {
+            self.data_dir: [self.data_naming_scheme, self.data_naming_scheme]
+        }
+        for output in self.own_outputs:
+            self.outputs[self.data_dir].append(output)
+
+        self.raw_data_path = self.define_file_path(
+            file_name=self.raw_data_naming_scheme
+        )
+        self.data_path = self.define_data_path(file_name=self.data_naming_scheme)
         self.output_fnames = {
             "F_filtered": "F_filtered.npy",
             "F_onphase": "F_onphase.npy",
             "F_upphase": "F_upphase.npy",
         }
 
-        for output in self.own_outputs:
-            self.variable_outputs[self.data_dir].append(output)
-
-    def define_raw_data_path(self):
-        ............... this is not raw_data, change it!
-        if not self.raw_data_path:
-            if not fname:
-                fname = self.data_naming_scheme.format(**self.identifier)
-            raw_data_path = self.define_file_path(file_name=fname)
-
-            if not raw_data_path.exists():
-                allowed_symbols = "A-Za-z0-9_-"
-                #animal_id, date, task_name = self.identifier.values()
-                regex_search = f"[{allowed_symbols}]*{self.data_naming_scheme[:-4]}[{allowed_symbols}]*"
-                raw_data_paths = get_files(
-                    raw_data_path.parent,
-                    ending=raw_data_path.suffix,
-                    regex_search=regex_search,
-                )
-                if len(raw_data_paths) != 0:
-                    print(
-                        f"WARNING: File {raw_data_path} not found. Choosing first .npz file inheritin binarized_traces dataset found in {raw_data_path.parent}."
-                    )
-                    global_logger.warning(
-                        f"File {raw_data_path} not found. Choosing first .npz file with binarized_traces in namedataset found in {raw_data_path.parent}."
-                    )
-                    raw_data_path = raw_data_path.parent.joinpath(raw_data_paths[0])
-
-                self.raw_data_path = raw_data_path
-            return self.raw_data_path
-                
-
-    def run_cabincorr(self, raw_data_path):
+    def run_cabincorr(self, data_path):
         raise NotImplementedError(
             f"CaBinCorr processing not implemented for {self.__class__}"
         )
 
     def process_data(self, raw_data_path=None, save=True, overwrite=False):
-        self.output_fname = "binarized_traces.npz"......... this needs to be refined
-        output_path = self.define_data_path(self.output_fname)
-        if output_path.exists():
-            data = self.load_data(output_path)
-            binarized_data = data["F_upphase"]
-        else:
-            raw_data_path = raw_data_path or self.define_raw_data_path()
+        binarized_data = npz_loader(self.data_path, "F_upphase")
+
+        if binarized_data is None:
             binarized_data = self.run_cabincorr(raw_data_path)
 
+        binarized_data = Dataset.force_1_dim_larger(data=binarized_data)
+        data = {"photon": binarized_data}
+
         if save:
-            self.save_data(binarized_data, overwrite)
+            self.save_data(data, overwrite)
 
         return binarized_data

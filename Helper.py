@@ -76,6 +76,20 @@ global_logger = global_logger_object.logger
 # global_logger_object.logger.handlers[0].baseFilename
 
 
+def npz_loader(file_path, fname=None):
+    data = None
+    if os.path.exists(file_path):
+        with np.load(file_path) as data:
+            if fname:
+                if fname in data.files:
+                    data = data[fname]
+                else:
+                    print(f"File {fname} not found in {file_path}, returning all data")
+    else:
+        print(f"File {file_path} not found, returning None")
+    return data
+
+
 def yield_animal(animals_dict):
     for animal_id, animal in animals_dict.items():
         yield animal
@@ -146,12 +160,16 @@ def get_directories(directory, regex_search=""):
             name
             for name in os.listdir(directory)
             if directory.joinpath(name).is_dir()
-            and len(re.findall(regex_search, name)) > 0
+            and fname_match_search(name, regex_search)
         ]
     else:
         global_logger.warning(f"Directory does not exist: {directory}")
         print(f"Directory does not exist: {directory}")
     return directories
+
+
+def fname_match_search(name, ending="", regex_search=""):
+    return len(re.findall(regex_search, name)) > 0 and name.endswith(ending)
 
 
 def get_files(directory, ending="", regex_search=""):
@@ -172,11 +190,11 @@ def get_files(directory, ending="", regex_search=""):
         files_list = []
         for name in os.listdir(directory):
             if directory.joinpath(name).is_file():
-                if len(re.findall(regex_search, name)) > 0 and name.endswith(ending):
+                if fname_match_search(name, ending, regex_search):
                     files_list.append(name)
-    else:
-        global_logger.warning(f"Directory does not exist: {directory}")
-        print(f"Directory does not exist: {directory}")
+    # else:
+    #    global_logger.warning(f"Directory does not exist: {directory}")
+    #    print(f"Directory does not exist: {directory}")
     return files_list
 
 
@@ -261,6 +279,7 @@ def calculate_derivative(data):
     Returns:
     - derivative (numpy.ndarray): The calculated derivative, representing either velocity based on position or acceleration based on velocity.
     """
+    .............. calculating velocity should be moved to environment class.....
     timestamps = np.array(range(len(data)))
     # Calculate differences in data
     diff = np.diff(data)
@@ -294,6 +313,7 @@ def smooth_array(data, window_size=5, axis=0):
         lambda x: np.convolve(x, weights, "same"), axis, data
     )
     return smoothed_data
+
 
 def butter_lowpass(cutoff, fs, order=5):
     """
@@ -476,6 +496,7 @@ def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
         array2 = array2[:shape_0_diff]
     return array1, array2
 
+
 def sort_arr_by(arr, axis=1, sorting_indices=None):
     """
     if no sorting indices are given array is sorted by maximum value of 2d array
@@ -495,27 +516,80 @@ def split_array_by_zscore(array, zscore, threshold=2.5):
     return array[above_threshold], array[below_threshold]
 
 
-def bin_array(arr, bin_size, min_bin=None, max_bin=None):
+def bin_array_1d(
+    arr: List[float], bin_size: float, min_bin: float = None, max_bin: float = None
+):
     """
-    Bin an array of floats based on a given bin size.
+    Bin a 1D array of floats based on a given bin size.
 
     Parameters:
     arr (numpy.ndarray): Input array of floats.
     bin_size (float): Size of each bin.
+    min_bin (float, optional): Minimum bin value. If None, use min value of the array.
+    max_bin (float, optional): Maximum bin value. If None, use max value of the array.
 
     Returns:
-    numpy.ndarray: Binned array. starting at bin 0 to n-1
+    numpy.ndarray: Binned array, starting at bin 0 to n-1.
     """
-    min_bin = min_bin or arr.min()
-    max_bin = max_bin or arr.max()
+    min_bin = min_bin or np.min(arr)
+    max_bin = max_bin or np.max(arr)
+
     # Calculate the number of bins
     num_bins = int(np.ceil((max_bin - min_bin) / bin_size))
 
     # Calculate the edges of the bins
-    bins_edges = np.linspace(min_bin, min_bin + num_bins * bin_size, num_bins + 1)
+    bin_edges = np.linspace(min_bin, min_bin + num_bins * bin_size, num_bins + 1)
 
     # Bin the array
-    binned_array = np.digitize(arr, bins_edges) - 1
+    binned_array = np.digitize(arr, bin_edges) - 1
+
+    return binned_array
+
+
+def bin_array(
+    arr: List[float],
+    bin_size: List[float],
+    min_bin: List[float] = None,
+    max_bin: List[float] = None,
+):
+    """
+    Bin an array of floats based on a given bin size.
+
+    Parameters:
+    arr (numpy.ndarray): Input array of floats. Can be 1D or 2D.
+    bin_size (float): Size of each bin.
+    min_bin (float, optional): Minimum bin value. If None, use min value of the array.
+    max_bin (float, optional): Maximum bin value. If None, use max value of the array.
+
+    Returns:
+    numpy.ndarray: Binned array, starting at bin 0 to n-1.
+    """
+    min_bin = make_list_ifnot(min_bin)
+    max_bin = make_list_ifnot(max_bin)
+    bin_size = make_list_ifnot(bin_size)
+    np_arr = np.array(arr)
+    if np_arr.ndim == 1:
+        np_arr = np_arr.reshape(-1, 1)
+    else:
+        num_dims = min(arr.shape)
+        if len(min_bin) == 1:
+            min_bin = [min_bin[0]] * num_dims
+        if len(max_bin) == 1:
+            max_bin = [max_bin[0]] * num_dims
+        if len(bin_size) == 1:
+            bin_size = [bin_size[0]] * num_dims
+
+    # Transform the array if 1st dimension is smaller than 2nd dimension
+    if np_arr.shape[0] < np_arr.shape[1]:
+        np_arr = np_arr.T
+
+    # Bin each dimension of the array
+    binned_array = np.zeros_like(np_arr)
+    for i in range(np_arr.shape[1]):
+        binned_array[:, i] = bin_array_1d(
+            np_arr[:, i], bin_size[i], min_bin[i], max_bin[i]
+        )
+
     return binned_array
 
 
@@ -639,6 +713,7 @@ def check_needed_keys(metadata, needed_attributes):
     missing = keys_missing(metadata, needed_attributes)
     if missing:
         raise NameError(f"Missing metadata for: {missing} not defined")
+
 
 def add_missing_keys(metadata, needed_attributes, fill_value=None):
     missing = keys_missing(metadata, needed_attributes)

@@ -581,7 +581,7 @@ class Task:
         # loads neural or behaviour data
         datasets_object = getattr(self, data_type)
         data = datasets_object.load(
-            self.id, data_source=data_source, regenerate_plot=regenerate_plot
+            data_source=data_source, regenerate_plot=regenerate_plot
         )
         return data
 
@@ -722,9 +722,7 @@ class Task:
         )
 
         # get neural data
-        neural_data_types = (
-            neural_data_types or self.neural_metadata["preprocessing"]
-        )
+        neural_data_types = neural_data_types or self.neural_metadata["preprocessing"]
         neural_data_train, neural_data_test = self.get_multi_data(
             datasets_object=self.neural,
             data_types=self.neural.imaging_type,

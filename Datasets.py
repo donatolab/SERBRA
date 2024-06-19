@@ -222,7 +222,7 @@ class Dataset:
                 ylimits=ylimits,
                 yticks=yticks,
                 seconds_interval=seconds_interval,
-                fps=fps,
+                fps=self.fps,
                 num_ticks=num_ticks,
             )
             self.plot_data()
@@ -307,7 +307,7 @@ class BehaviorDataset(Dataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        needed_attributes = ["setup", "fps"]
+        needed_attributes = ["setup"]
         check_needed_keys(metadata, needed_attributes)
         self.plot_attributes["fps"] = (
             self.metadata["imaging_fps"]
@@ -404,13 +404,18 @@ class Data_Position(BehaviorDataset):
             task_id=task_id,
         )
         self.plot_attributes["ylable"] = "position cm"
-        self.binning_size = (
-            0.01
-            if not "binning_size" in self.metadata.keys()
-            else self.metadata["binning_size"]
+        self.environment_dimensions = make_list_ifnot(
+            self.metadata["environment_dimensions"]
         )
+        if not "binning_size" in self.metadata.keys():
+            self.binning_size = (
+                0.01  # meters in 1D
+                if len(self.environment_dimensions) == 1
+                else 0.05  # meters in 2D
+            )
+        else:
+            self.binning_size = self.metadata["binning_size"]
         self.max_bin = None
-        self.environment_dimensions = self.metadata["environment_dimensions"]
         self.raw_positions = None
         self.lap_starts = None
 
@@ -420,7 +425,7 @@ class Data_Position(BehaviorDataset):
 
     def bin_data(self, data=None, bin_size=None):
         """
-        Bin the position data into 1cm bins.
+        Bin the position data into 1cm bins in 1D and 5cm^2 bins for 2D environments.
         Args:
             - data (np.ndarray): The position data.
             - bin_size (float): The size of the bins in meters.
@@ -428,15 +433,15 @@ class Data_Position(BehaviorDataset):
         """
         if data is None:
             data = self.data
-        bin_size = bin_size or self.binning_size
+        if bin_size is None:
+            bin_size = self.binning_size
         if self.binned_data is not None and bin_size == self.binning_size:
             return self.binned_data
-        dimensions = make_list_ifnot(self.environment_dimensions)
-        max_bin = max(dimensions)
+        dimensions = self.environment_dimensions
         self.binned_data = bin_array(
-            data, bin_size=bin_size, min_bin=0, max_bin=max_bin
+            data, bin_size=bin_size, min_bin=0, max_bin=dimensions
         )
-        self.max_bin = int(max_bin / bin_size)
+        self.max_bin = np.array(dimensions) / np.array(bin_size)
         return self.binned_data
 
     def create_dataset(self, raw_data_object=None, save=True):
@@ -823,14 +828,14 @@ class Datasets:
             f"ERROR: Function get_object is not defined for {self.__class__}."
         )
 
-    def load(self, task_id, data_source, regenerate_plot=False):
+    def load(self, data_source, regenerate_plot=False):
         """
         Load data from a specific data source.
             data_object is a object inhereting the Dataset attributes and functions.
         """
         # build path to data
         data_object = self.get_object(data_source)
-        fpath = data_object.setup.get_data_path(task_id)
+        fpath = data_object.setup.get_data_path()
         data = data_object.load(fpath, regenerate_plot=regenerate_plot)
         return data
 

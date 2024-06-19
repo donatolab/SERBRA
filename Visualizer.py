@@ -71,7 +71,7 @@ class Vizualizer:
         plot_attributes["ylable"] = plot_attributes["ylable"] or ylable
         plot_attributes["ylimits"] = plot_attributes["ylimits"] or ylimits or None
         plot_attributes["yticks"] = plot_attributes["yticks"] or yticks or None
-        plot_attributes["xlable"] = plot_attributes["xlable"] or xlable or "seconds"
+        plot_attributes["xlable"] = plot_attributes["xlable"] or xlable or "time"
         plot_attributes["xlimits"] = plot_attributes["xlimits"] or xlimits
         plot_attributes["xticks"] = plot_attributes["xticks"] or xticks or None
         plot_attributes["num_ticks"] = plot_attributes["num_ticks"] or num_ticks or 100
