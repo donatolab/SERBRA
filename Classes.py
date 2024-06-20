@@ -52,7 +52,7 @@ def load_all_animals(
     - animals_dict (dict): A dictionary containing animal IDs as keys and corresponding Animal objects as values.
     """
     root_dir = Path(root_dir)
-    present_animal_ids = get_directories(root_dir, regex_search="DON-")
+    present_animal_ids = get_directories(root_dir, regex_search="DON-[A-Za-z0-9-_]*")
     animals_dict = {}
     if not model_settings:
         model_settings = kwargs

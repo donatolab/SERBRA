@@ -19,9 +19,6 @@ import cebra
 # debugging
 import inspect
 
-# own
-from Datasets import Dataset
-
 
 # Meta Meta Class
 class Output:
@@ -147,7 +144,7 @@ class Output:
             data = cebra.load_data(fpath)
         else:
             print(f"File {file_name} not found in {fpath}")
-        Dataset.force_1_dim_larger(data=data)
+        data = force_1_dim_larger(data=data)
         return data
 
     def define_data_path(self, file_name: str = None):
@@ -529,7 +526,7 @@ class Femtonics(NeuralSetup):
 
             # Search for multi file dataset if no unique file is found
             if not data_path.exists():
-                allowed_symbols = "\-A-Za-z_0-9"
+                allowed_symbols = "\-A-Za-z_0-9()"
                 animal_id, date, task_name = self.identifier.values()
                 regex_search = f"{animal_id}_{date}[{allowed_symbols}]*{task_name}[{allowed_symbols}]*"
                 data_paths = get_files(
@@ -1088,11 +1085,11 @@ class Cam(Behavior_Preprocessing):
         )  # TODO: probaly not TRD- folder
 
         self.raw_data_naming_scheme = "camdata.npy"
-        # "{animal_id}_{date}_{task_name}[-A-Za-z_0-9]*_locs.npy"
+        # "{animal_id}_{date}_{task_name}[-A-Za-z_0-9()]*_locs.npy"
         self.data_naming_scheme = (
             "{animal_id}_{date}_"
             + f"{self.root_dir_name}"
-            + "_{task_name}[-A-Za-z_0-9]*_locs.npy"
+            + "_{task_name}[-A-Za-z_0-9()]*_locs.npy"
         )
 
         self.outputs = {
@@ -1345,24 +1342,36 @@ class Environment(Behavior_Processing):
         return positions
 
     @staticmethod
+    def get_cumdist_from_position(position: np.ndarray):
+        """
+        Get cumulative distance from position on the 1D or 2D track.
+        output:
+            cumulative_distance: cumulative distance from position
+        """
+        if position.ndim == 1:
+            position = position.reshape(1, -1)
+
+        distance = np.diff(position, axis=0)
+        cumulative_distance = np.cumsum(np.abs(distance), axis=0)
+        return cumulative_distance
+
+    @staticmethod
     def get_velocity_from_cumdist(
-        cumulative_distance: np.ndarray, imaging_fps: float, smooth=True
+        cumulative_distance: np.ndarray, imaging_fps: float = None, smooth=True
     ):
         if cumulative_distance.ndim == 1:
             cumulative_distance = cumulative_distance.reshape(1, -1)
-        velocity = np.diff(cumulative_distance, axis=1) * imaging_fps
 
-        if smooth:
-            velocity_smoothed = butter_lowpass_filter(
-                velocity, cutoff=2, fs=imaging_fps, order=2
-            )
-        else:
-            velocity_smoothed = velocity
+        velocity = np.diff(cumulative_distance, axis=0)
+        velocity = per_frame_to_per_second(velocity, imaging_fps)
+        velocity_smoothed = may_butter_lowpass_filter(
+            velocity, smooth, cutoff=2, fps=imaging_fps, order=2
+        )
         return velocity_smoothed
 
     @staticmethod
     def get_acceleration_from_velocity(
-        velocity: np.ndarray, imaging_fps: float, smooth=False
+        velocity: np.ndarray, imaging_fps: float = None, smooth=False
     ):
         """
         Get acceleration from velocity. Be cautious with the smoothing, it can lead to wrong results. Smoothing parameters are not well defined
@@ -1371,18 +1380,12 @@ class Environment(Behavior_Processing):
         if velocity.ndim == 1:
             velocity = velocity.reshape(1, -1)
 
-        acceleration = np.diff(velocity, axis=1) * imaging_fps
-        if smooth:
-            print(
-                f"WARNING: Smoothing acceleration can lead to wrong results. Be cautious. Smoothing parameters are not well defined."
-            )
-            velocity_smoothed = butter_lowpass_filter(
-                acceleration, cutoff=0.2, fs=imaging_fps, order=2
-            )
-        else:
-            velocity_smoothed = acceleration
-
-        return velocity_smoothed
+        acceleration = np.diff(velocity, axis=0)
+        acceleration = per_frame_to_per_second(acceleration, fps=None)
+        acceleration_smoothed = may_butter_lowpass_filter(
+            acceleration, smooth, cutoff=2, fps=imaging_fps, order=2
+        )
+        return acceleration_smoothed
 
     @staticmethod
     def create_stimulus_map(
@@ -1503,7 +1506,7 @@ class Environment(Behavior_Processing):
                 lap_start_frame=lap_start_frame,
             )
         elif cumulative_distance is None:
-            cumulative_distance = np.cumsum(positions)
+            cumulative_distance = self.get_cumdist_from_position(positions)
 
         if not imaging_fps:
             check_needed_keys(self.metadata, ["imaging_fps"])
@@ -1554,7 +1557,7 @@ class CaBinCorr(Neural_Processing):
         self.data_dir = self.root_dir
 
         self.raw_data_naming_scheme = "F.npy"
-        self.data_naming_scheme = "[A-Za-z0-9_-]*binarized_traces[A-Za-z0-9_-]*.npz"
+        self.data_naming_scheme = "[A-Za-z0-9()_-]*binarized_traces[A-Za-z0-9()_-]*.npz"
         self.outputs = {
             self.data_dir: [self.data_naming_scheme, self.data_naming_scheme]
         }
@@ -1582,7 +1585,7 @@ class CaBinCorr(Neural_Processing):
         if binarized_data is None:
             binarized_data = self.run_cabincorr(raw_data_path)
 
-        binarized_data = Dataset.force_1_dim_larger(data=binarized_data)
+        binarized_data = force_1_dim_larger(data=binarized_data)
         data = {"photon": binarized_data}
 
         if save:

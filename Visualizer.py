@@ -60,23 +60,23 @@ class Vizualizer:
     ):
         if plot_attributes is None:
             plot_attributes = Vizualizer.default_plot_attributes()
-        plot_attributes["fps"] = plot_attributes["fps"] or fps
-        plot_attributes["title"] = plot_attributes["title"] or title
+        plot_attributes["fps"] = fps or plot_attributes["fps"]
+        plot_attributes["title"] = title or plot_attributes["title"]
         plot_attributes["title"] = (
             plot_attributes["title"]
             if plot_attributes["title"][-4:] == "data"
             else plot_attributes["title"] + " data"
         )
 
-        plot_attributes["ylable"] = plot_attributes["ylable"] or ylable
-        plot_attributes["ylimits"] = plot_attributes["ylimits"] or ylimits or None
-        plot_attributes["yticks"] = plot_attributes["yticks"] or yticks or None
-        plot_attributes["xlable"] = plot_attributes["xlable"] or xlable or "time"
-        plot_attributes["xlimits"] = plot_attributes["xlimits"] or xlimits
-        plot_attributes["xticks"] = plot_attributes["xticks"] or xticks or None
-        plot_attributes["num_ticks"] = plot_attributes["num_ticks"] or num_ticks or 100
-        plot_attributes["figsize"] = plot_attributes["figsize"] or figsize or (20, 3)
-        plot_attributes["save_path"] = plot_attributes["save_path"] or save_path
+        plot_attributes["ylable"] = ylable or plot_attributes["ylable"] or None
+        plot_attributes["ylimits"] = ylimits or plot_attributes["ylimits"] or None
+        plot_attributes["yticks"] = yticks or plot_attributes["yticks"] or None
+        plot_attributes["xlable"] = xlable or plot_attributes["xlable"] or "time"
+        plot_attributes["xlimits"] = xlimits or plot_attributes["xlimits"] or None
+        plot_attributes["xticks"] = xticks or plot_attributes["xticks"] or None
+        plot_attributes["num_ticks"] = num_ticks or plot_attributes["num_ticks"] or 100
+        plot_attributes["figsize"] = figsize or plot_attributes["figsize"] or (20, 3)
+        plot_attributes["save_path"] = save_path or plot_attributes["save_path"]
 
         # create plot dir if missing
         plot_attributes["save_path"] = Path(plot_attributes["save_path"])
@@ -88,7 +88,6 @@ class Vizualizer:
     @staticmethod
     def default_plot_start(
         plot_attributes: dict = None,
-        num_frames=None,
         figsize=None,
         title=None,
         xlable=None,
@@ -97,7 +96,6 @@ class Vizualizer:
         ylable=None,
         ylimits=None,
         yticks=None,
-        seconds_interval=5,
         fps=None,
         num_ticks=50,
         save_path=None,
@@ -126,23 +124,14 @@ class Vizualizer:
         plt.xlabel(plot_attributes["xlable"])
         plt.tight_layout()
         plt.xlim(plot_attributes["xlimits"])
-
-        if plot_attributes["xticks"]:
-            plt.xticks(plot_attributes["xticks"])
-        else:
-            Vizualizer.set_xticks_plot(
-                plot_attributes=plot_attributes,
-                num_frames=num_frames,
-                fps=fps,
-                num_ticks=num_ticks,
-                seconds_interval=seconds_interval,
-            )
+        return plot_attributes
 
     @staticmethod
     def plot_image(
         plot_attributes=None,
         figsize=(10, 10),
         save_path=None,
+        show=False,
     ):
         if plot_attributes is None:
             plot_attributes = Vizualizer.default_plot_attributes()
@@ -155,6 +144,9 @@ class Vizualizer:
         image = plt.imread(plot_attributes["save_path"])
         plt.imshow(image)
         plt.axis("off")
+
+        if show:
+            plt.show()
 
     @staticmethod
     def default_plot_ending(
@@ -171,10 +163,18 @@ class Vizualizer:
             plt.show()
             plt.close()
 
-    @staticmethod
-    def data_plot(data, marker_pos=None, marker=None):
-        plt.plot(data, zorder=1)
-
+    def data_plot_1D(
+        data,
+        plot_attributes: dict = None,
+        marker_pos=None,
+        marker=None,
+        seconds_interval=5,
+    ):
+        named_dimensions = {0: "x", 1: "y", 2: "z"}
+        if data.ndim == 1:
+            data = data.reshape(-1, 1)
+        for dim in range(data.shape[1]):
+            plt.plot(data[:, dim], zorder=1, label=f"{named_dimensions[dim]}")
         if marker_pos is not None:
             marker = "." if marker is None else marker
         else:
@@ -183,39 +183,149 @@ class Vizualizer:
         if marker:
             plt.scatter(marker_pos, data[marker_pos], marker=marker, s=10, color="red")
 
+        num_frames = data.shape[0]
+
+        if plot_attributes["xticks"]:
+            if plot_attributes["xticks"] == "auto":
+                plt.xticks()
+            else:
+                plt.xticks(plot_attributes["xticks"])
+        else:
+            xticks, xpos = Vizualizer.define_xticks(
+                plot_attributes=plot_attributes,
+                num_frames=num_frames,
+                fps=plot_attributes["fps"],
+                num_ticks=plot_attributes["num_ticks"],
+                seconds_interval=seconds_interval,
+            )
+            plt.xticks(xpos, xticks, rotation=45)
+
+        plt.legend()
+
     @staticmethod
-    def set_xticks_plot(
+    def data_plot_2D(
+        data,
+        plot_attributes,
+        position_data,
+        border_limits=None,
+        marker_pos=None,
+        marker=None,
+        fps=None,
+        seconds_interval=5,
+        color_by="value",
+        cmap="plasma",  # "viridis", "winter", "plasma"
+    ):
+        #data = data[:15000, :]
+        #data = may_butter_lowpass_filter(
+        #    data,
+        #    smooth=True,
+        #    cutoff=1,
+        #    fps=20,
+        #    order=2,
+        #)
+        data, position_data = force_equal_dimensions(data, position_data)
+
+        # Convert coordinates to a numpy array if it's not already
+        coordinates = np.array(position_data) * 100  # Convert to cm
+
+        # Extract x and y coordinates
+        x_coords = coordinates[:, 0]
+        y_coords = coordinates[:, 1]
+
+        # Generate a time array based on the number of coordinates
+        if color_by == "time":
+            num_frames = data.shape[0]
+            color_map_label = f"Time"
+            color_value_reference = range(num_frames)
+            tick_label, tick_pos = Vizualizer.define_xticks(
+                plot_attributes=plot_attributes,
+                num_frames=num_frames,
+                fps=plot_attributes["fps"],
+                num_ticks=int(plot_attributes["num_ticks"] / 2),
+                seconds_interval=seconds_interval,
+            )
+            scatter_alpha = 0.8
+            dot_size = 1
+        elif color_by == "value":
+            data_summed = np.sum(np.abs(data), axis=1)
+            color_value_reference = np.array(data_summed)
+            color_map_label = plot_attributes["ylable"]
+            tick_label, tick_pos = None, None
+            scatter_alpha = 0.8
+            dot_size = 3
+        # Create the plot
+        scatter = plt.scatter(
+            x_coords,
+            y_coords,
+            c=color_value_reference,
+            cmap=cmap,
+            s=dot_size,
+            alpha=scatter_alpha,
+        )
+
+        if border_limits is not None:
+            # Add border lines
+            plt.axvline(x=0, color="r", linestyle="--", alpha=0.5)
+            plt.axvline(x=border_limits[0], color="r", linestyle="--", alpha=0.5)
+            plt.axhline(y=0, color="r", linestyle="--", alpha=0.5)
+            plt.axhline(y=border_limits[1], color="r", linestyle="--", alpha=0.5)
+
+        x_data_range = max(coordinates[:, 0]) - min(coordinates[:, 0])
+        y_data_range = max(coordinates[:, 1]) - min(coordinates[:, 1])
+        xlimits = (
+            min(coordinates[:, 0] - x_data_range * 0.03),
+            max(coordinates[:, 0] + x_data_range * 0.03),
+        )
+        ylimits = (
+            min(coordinates[:, 1] - y_data_range * 0.03),
+            max(coordinates[:, 1] + y_data_range * 0.03),
+        )
+
+        plt.xlabel("X position (cm)")
+        plt.ylabel("Y position (cm)")
+        plt.xlim(xlimits)
+        plt.ylim(ylimits)
+
+        # Add a colorbar to show the time mapping
+        cbar = plt.colorbar(scatter, label=color_map_label)
+        if tick_label is not None and tick_pos is not None:
+            cbar.set_ticks(tick_pos)
+            cbar.set_ticklabels(tick_label)
+
+        plt.grid(True, alpha=0.5)
+
+    @staticmethod
+    def define_xticks(
         plot_attributes=None,
         num_frames=None,
         fps=None,
         num_ticks=None,
         seconds_interval=5,
     ):
-        if plot_attributes is None:
-            plot_attributes = Vizualizer.default_plot_attributes()
-
-        plot_attributes["fps"] = plot_attributes["fps"] or fps
-        plot_attributes["num_ticks"] = plot_attributes["num_ticks"] or num_ticks or 50
-
         if num_frames is not None:
             xticks, xpos = range_to_times_xlables_xpos(
                 end=num_frames,
-                fps=plot_attributes["fps"],
+                fps=fps,
                 seconds_per_label=seconds_interval,
             )
 
             # reduce number of xticks
-            if len(xpos) > plot_attributes["num_ticks"]:
-                steps = round(len(xpos) / plot_attributes["num_ticks"])
+            if len(xpos) > num_ticks:
+                steps = round(len(xpos) / num_ticks)
                 xticks = xticks[::steps]
                 xpos = xpos[::steps]
         else:
             xticks, xpos = None, None
-
-        plt.xticks(xpos, xticks, rotation=40)
+        return xticks, xpos
 
     @staticmethod
-    def plot_neural_activity_raster(data):
+    def plot_neural_activity_raster(
+        data,
+        fps,
+        num_ticks=None,
+        seconds_interval=5,
+    ):
+
         binarized_data = data
         num_time_steps, num_neurons = binarized_data.shape
         # Find spike indices for each neuron
@@ -227,6 +337,14 @@ class Vizualizer:
         # Plotting the raster plot using pixels
         plt.imshow(image, cmap="gray", aspect="auto", interpolation="none")
         plt.gca().invert_yaxis()  # Invert y-axis for better visualization of trials/neurons
+
+        xticks, xpos = Vizualizer.define_xticks(
+            num_frames=num_time_steps,
+            fps=fps,
+            num_ticks=num_ticks,
+            seconds_interval=seconds_interval,
+        )
+        plt.xticks(xpos, xticks, rotation=45)
 
     ########################################################################################################################
     def plot_embedding(

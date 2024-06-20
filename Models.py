@@ -747,7 +747,7 @@ def decode(
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
     decoder = cebra.KNNDecoder(n_neighbors=n_neighbors, metric=metric)
     label_train = Dataset.force_2d(label_train)
-    # label_train = Dataset.force_1_dim_larger(label_train)
+    # label_train = force_1_dim_larger(label_train)
 
     label_test = Dataset.force_2d(label_test)
     # label_test = force_1_dim_larger(label_test)

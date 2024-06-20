@@ -156,12 +156,11 @@ def get_directories(directory, regex_search=""):
     directory = Path(directory)
     directories = None
     if directory.exists():
-        directories = [
-            name
-            for name in os.listdir(directory)
-            if directory.joinpath(name).is_dir()
-            and fname_match_search(name, regex_search)
-        ]
+        directories = []
+        for name in os.listdir(directory):
+            if directory.joinpath(name).is_dir():
+                if fname_match_search(name, regex_search=regex_search):
+                    directories.append(name)
     else:
         global_logger.warning(f"Directory does not exist: {directory}")
         print(f"Directory does not exist: {directory}")
@@ -221,18 +220,18 @@ def make_list_ifnot(string_or_list):
     return [string_or_list] if type(string_or_list) != list else string_or_list
 
 
-def save_file_present(file_path, show_print=False):
-    file_path = Path(file_path)
+def save_file_present(fpath, show_print=False):
+    fpath = Path(fpath)
     file_present = False
-    if file_path.exists():
+    if fpath.exists():
         if show_print:
-            global_logger.warning(f"File already present {file_path}")
-            print(f"File already present {file_path}")
+            global_logger.warning(f"File already present {fpath}")
+            print(f"File already present {fpath}")
         file_present = True
     else:
         if show_print:
-            global_logger.info(f"Saving {file_path.name} to {file_path}")
-            print(f"Saving {file_path.name} to {file_path}")
+            global_logger.info(f"Saving {fpath.name} to {fpath}")
+            print(f"Saving {fpath.name} to {fpath}")
     return file_present
 
 
@@ -267,28 +266,6 @@ def calc_cumsum_distances(positions, length, distance_threshold=0.30):
         cumsum_distances.append(cumsum_distance)
         old_position = position
     return np.array(cumsum_distances)
-
-
-def calculate_derivative(data):
-    """
-    Calculates the derivative of the given data.
-
-    Parameters:
-    - data (array-like): The input data (position or velocity) for which the derivative needs to be computed.
-
-    Returns:
-    - derivative (numpy.ndarray): The calculated derivative, representing either velocity based on position or acceleration based on velocity.
-    """
-    .............. calculating velocity should be moved to environment class.....
-    timestamps = np.array(range(len(data)))
-    # Calculate differences in data
-    diff = np.diff(data)
-    # Calculate differences in time
-    time_diff = np.diff(timestamps)
-
-    derivative = diff / time_diff
-
-    return derivative
 
 
 def moving_average(data, window_size=30):
@@ -351,6 +328,19 @@ def butter_lowpass_filter(data, cutoff, fs, order=5):
     b, a = butter_lowpass(cutoff, fs, order=order)
     y = filtfilt(b, a, data)
     return y
+
+
+def may_butter_lowpass_filter(data, smooth=True, cutoff=2, fps=None, order=2):
+    data_smoothed = data
+    if smooth:
+        if not fps or fps == 0:
+            print(f"WARNING: No fps provided smoothing not possible")
+        else:
+            for i in range(data.shape[1]):
+                data_smoothed[:, i] = butter_lowpass_filter(
+                    data[:, i], cutoff=cutoff, fs=fps, order=order
+                )
+    return data_smoothed
 
 
 def cosine_similarity(v1, v2):
@@ -484,6 +474,17 @@ def check_correct_metadata(string_or_list, name_parts):
 
 
 # array
+def force_1_dim_larger(data: np.ndarray):
+    if len(data.shape) == 1 or data.shape[0] < data.shape[1]:
+        global_logger.warning(
+            f"Data is probably transposed. Needed Shape [Time, cells] Transposing..."
+        )
+        print("Data is probably transposed. Needed Shape [Time, cells] Transposing...")
+        return data.T  # Transpose the array if the condition is met
+    else:
+        return data  # Return the original array if the condition is not met
+
+
 def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
     """
     Force two arrays to have the same dimensions.
@@ -617,6 +618,15 @@ def convert_values_to_binary(vec: np.ndarray, threshold=2.5):
     vec[bigger_idx] = 1
     vec = vec.astype(int)
     return vec
+
+
+def per_frame_to_per_second(data, fps=None):
+    if not fps:
+        data = data
+        print(f"WARNING: No fps provided. Output is value per frame")
+    else:
+        data *= fps
+    return data
 
 
 def fill_vector(vector, indices, fill_value=np.nan):

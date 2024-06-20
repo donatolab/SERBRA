@@ -93,7 +93,7 @@ class Dataset:
                 self.data = cebra.load_data(file=self.path)
                 if self.data.ndim == 2:
                     # format of data should be [num_time_points, num_cells]
-                    self.data = self.force_1_dim_larger(data=self.data)
+                    self.data = force_1_dim_larger(data=self.data)
             else:
                 global_logger.warning(f"No {self.key} data found at {self.path}.")
                 print(f"No {self.key} data found at {self.path}.")
@@ -205,25 +205,21 @@ class Dataset:
         dpi=300,
     ):
         if regenerate_plot or not save_file_present(
-            self.plot_attributes["save_path"],
-            ylable=None,
-            xlimits=None,
-            save_path=save_path,
+            fpath=self.plot_attributes["save_path"],
         ):
             self.refine_plot_attributes(
                 title=title, ylable=ylable, xlimits=xlimits, save_path=save_path
             )
-            Vizualizer.default_plot_start(
+            self.plot_attributes = Vizualizer.default_plot_start(
                 plot_attributes=self.plot_attributes,
-                num_frames=self.data.shape[0],
                 figsize=figsize,
                 xlable=xlable,
+                xlimits=xlimits,
                 xticks=xticks,
                 ylimits=ylimits,
                 yticks=yticks,
-                seconds_interval=seconds_interval,
-                fps=self.fps,
                 num_ticks=num_ticks,
+                fps=fps,
             )
             self.plot_data()
             Vizualizer.default_plot_ending(
@@ -233,10 +229,40 @@ class Dataset:
                 dpi=dpi,
             )
         else:
-            Vizualizer.plot_image(plot_attributes=self.plot_attributes, show=show)
+            Vizualizer.plot_image(
+                plot_attributes=self.plot_attributes,
+                num_frames=self.data.shape[0],
+                fps=self.fps,
+                show=show,
+            )
 
     def plot_data(self):
-        Vizualizer.data_plot(self.data)
+        if self.data.ndim == 1:
+            Vizualizer.data_plot_1D(
+                data=self.data,
+                plot_attributes=self.plot_attributes,
+            )
+        elif self.data.ndim == 2:
+            if self.key != "position":
+                raw_data_object = self.raw_data_object
+                while raw_data_object is not None:
+                    if raw_data_object.key == "position":
+                        position_data = raw_data_object.data
+                        break
+                    else:
+                        raw_data_object = raw_data_object.raw_data_object
+            else:
+                position_data = self.data
+            Vizualizer.data_plot_2D(
+                data=self.data,
+                position_data=position_data,
+                border_limits=self.metadata["environment_dimensions"],
+                plot_attributes=self.plot_attributes,
+            )
+        # if self.data.ndim == 1:
+        #    Vizualizer.data_plot(self.data)
+        # else:
+        #    Vizualizer.data_plot_2D(self.data)................. this should be better implemented
 
     @staticmethod
     def split(data, split_ratio=0.8):
@@ -261,19 +287,6 @@ class Dataset:
             global_logger
             print(f"No idx_to_keep given. Returning unfiltered data.")
             return data
-
-    @staticmethod
-    def force_1_dim_larger(data: np.ndarray):
-        if len(data.shape) == 1 or data.shape[0] < data.shape[1]:
-            global_logger.warning(
-                f"Data is probably transposed. Needed Shape [Time, cells] Transposing..."
-            )
-            print(
-                "Data is probably transposed. Needed Shape [Time, cells] Transposing..."
-            )
-            return data.T  # Transpose the array if the condition is met
-        else:
-            return data  # Return the original array if the condition is not met
 
     @staticmethod
     def force_2d(data: np.ndarray, transepose=True):
@@ -388,7 +401,7 @@ class Data_Position(BehaviorDataset):
     Attributes:
         - data (np.ndarray): The position data.
         - binned_data (np.ndarray): The binned position data into default: 1cm bins.
-        - raw_positions (np.ndarray): The raw position data.
+        - raw_position (np.ndarray): The raw position data.
         - lap_starts (np.ndarray): The indices of the lap starts.
         - environment_dimensions (List): The dimensions of the environment.
     """
@@ -403,25 +416,45 @@ class Data_Position(BehaviorDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        self.plot_attributes["ylable"] = "position cm"
-        self.environment_dimensions = make_list_ifnot(
+        self.metadata["environment_dimensions"] = make_list_ifnot(
             self.metadata["environment_dimensions"]
         )
         if not "binning_size" in self.metadata.keys():
             self.binning_size = (
                 0.01  # meters in 1D
-                if len(self.environment_dimensions) == 1
+                if len(self.metadata["environment_dimensions"]) == 1
                 else 0.05  # meters in 2D
             )
         else:
             self.binning_size = self.metadata["binning_size"]
         self.max_bin = None
-        self.raw_positions = None
+        self.raw_position = None
         self.lap_starts = None
+        self.define_plot_attributes()
+
+    def define_plot_attributes(self):
+        if len(self.metadata["environment_dimensions"]) == 1:
+            self.plot_attributes["ylable"] = "position cm"
+        elif len(self.metadata["environment_dimensions"]) == 2:
+            self.plot_attributes["figsize"] = (10, 10)
 
     def plot_data(self):
-        marker = "^" if self.lap_starts is not None else None
-        Vizualizer.data_plot(self.data, marker_pos=self.lap_starts, marker=marker)
+        if self.data.ndim == 1:
+            marker = "^" if self.lap_starts is not None else None
+            Vizualizer.data_plot_1D(
+                data=self.data,
+                plot_attributes=self.plot_attributes,
+                marker_pos=self.lap_starts,
+                marker=marker,
+            )
+        elif self.data.ndim == 2:
+            Vizualizer.data_plot_2D(
+                data=self.data,
+                position_data=self.data,
+                # border_limits=self.metadata["environment_dimensions"],
+                plot_attributes=self.plot_attributes,
+                color_by="time",
+            )
 
     def bin_data(self, data=None, bin_size=None):
         """
@@ -437,7 +470,7 @@ class Data_Position(BehaviorDataset):
             bin_size = self.binning_size
         if self.binned_data is not None and bin_size == self.binning_size:
             return self.binned_data
-        dimensions = self.environment_dimensions
+        dimensions = self.metadata["environment_dimensions"]
         self.binned_data = bin_array(
             data, bin_size=bin_size, min_bin=0, max_bin=dimensions
         )
@@ -547,13 +580,23 @@ class Data_Distance(BehaviorDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        self.environment_dimensions = make_list_ifnot(
+        self.metadata["environment_dimensions"] = make_list_ifnot(
             self.metadata["environment_dimensions"]
         )
         self.binning_size = (
             0.01
             if not "binning_size" in self.metadata.keys()
             else self.metadata["binning_size"]
+        )
+        self.define_plot_attributes()
+
+    def define_plot_attributes(self):
+        self.plot_attributes["ylable"] = "distance in m"
+
+    def plot_data(self):
+        Vizualizer.data_plot_1D(
+            data=self.data,
+            plot_attributes=self.plot_attributes,
         )
 
     def bin_data(self, data, bin_size=None):
@@ -563,35 +606,8 @@ class Data_Distance(BehaviorDataset):
 
     def process_raw_data(self, save=True):
         track_positions = self.raw_data_object.data
-        if len(self.environment_dimensions) == 1:
-            self.data = self.process_1D_data(track_positions)
-        elif len(self.environment_dimensions) == 2:
-            self.data = self.process_2D_data(track_positions)
-        elif len(self.environment_dimensions) == 3:
-            self.data = self.process_3D_data(track_positions)
+        self.data = Environment.get_cumdist_from_position(track_positions)
         return self.data
-
-    def process_1D_data(self, track_positions):
-        """
-        calculating velocity based on velocity data in raw_data_object
-        """
-        return calc_cumsum_distances(track_positions, self.environment_dimensions)
-
-    def process_2D_data(self, track_positions):
-        """
-        calculating velocity based on velocity data in raw_data_object
-        """
-        # TODO: implement 2D distance calculation
-        raise NotImplementedError("2D distance calculation not implemented.")
-        return calc_cumsum_distances(track_positions, self.environment_dimensions)
-
-    def process_3D_data(self, track_positions):
-        """
-        calculating velocity based on velocity data in raw_data_object
-        """
-        # TODO: implement 3D distance calculation
-        raise NotImplementedError("3D distance calculation not implemented.")
-        return calc_cumsum_distances(track_positions, self.environment_dimensions)
 
 
 class Data_Velocity(BehaviorDataset):
@@ -605,9 +621,14 @@ class Data_Velocity(BehaviorDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        self.raw_velocitys = None
-        self.plot_attributes["ylable"] = "velocity m/s"
+        self.raw_velocity = None
         self.binning_size = 0.005  # 0.005m/s
+        self.define_plot_attributes()
+
+    def define_plot_attributes(self):
+        self.plot_attributes["ylable"] = "velocity m/s"
+        if len(self.metadata["environment_dimensions"]) == 2:
+            self.plot_attributes["figsize"] = (10, 10)
 
     def bin_data(self, data, bin_size=None):
         bin_size = bin_size or self.binning_size
@@ -619,21 +640,34 @@ class Data_Velocity(BehaviorDataset):
         calculating velocity based on velocity data in raw_data_object
         """
         raw_data_type = self.raw_data_object.key
+        data = self.raw_data_object.data
         if raw_data_type == "distance":
-            walked_distances = self.raw_data_object.data
+            walked_distances = (
+                self.raw_data_object.process_raw_data(save=save)
+                if data is None
+                else data
+            )
+        elif raw_data_type == "position":
+            walked_distances = Environment.get_distance_from_position(data)
         else:
             raise ValueError(f"Raw data type {raw_data_type} not supported.")
-        self.raw_velocitys = calculate_derivative(walked_distances)
-        smoothed_velocity = butter_lowpass_filter(
-            self.raw_velocitys, cutoff=2, fs=self.self.metadata["imaging_fps"], order=2
+        self.raw_velocity = Environment.get_velocity_from_cumdist(
+            walked_distances, imaging_fps=self.metadata["imaging_fps"], smooth=False
         )
-        # smoothed_velocity = moving_average(self.raw_velocitys)
+        velocity_smoothed = may_butter_lowpass_filter(
+            self.raw_velocity,
+            smooth=True,
+            cutoff=2,
+            fps=self.metadata["imaging_fps"],
+            order=2,
+        )
+        # velocity_smoothed = moving_average(self.raw_velocity)
         global_logger
         print(
-            f"Calculating smooth velocity based on butter_lowpass_filter 2Hz, {self.self.metadata['imaging_fps']}fps, 2nd order."
+            f"Calculating smooth velocity based on butter_lowpass_filter 2Hz, {self.metadata['imaging_fps']}fps, 2nd order."
         )
         # change value/frame to value/second
-        self.data = smoothed_velocity
+        self.data = velocity_smoothed
         return self.data
 
 
@@ -649,8 +683,13 @@ class Data_Acceleration(BehaviorDataset):
             task_id=task_id,
         )
         self.raw_acceleration = None
-        self.plot_attributes["ylable"] = "acceleration m/s^2"
         self.binning_size = 0.0005  # 0.0005m/s^2
+        self.define_plot_attributes()
+
+    def define_plot_attributes(self):
+        self.plot_attributes["ylable"] = "acceleration m/s^2"
+        if len(self.metadata["environment_dimensions"]) == 2:
+            self.plot_attributes["figsize"] = (10, 10)
 
     def bin_data(self, data, bin_size=None):
         bin_size = bin_size or self.binning_size
@@ -662,16 +701,18 @@ class Data_Acceleration(BehaviorDataset):
         calculating acceleration based on velocity data in raw_data_object
         """
         velocity = self.raw_data_object.data
-        self.raw_acceleration = calculate_derivative(velocity)
-        smoothed_acceleration = butter_lowpass_filter(
+        self.raw_acceleration = Environment.get_acceleration_from_velocity(
+            velocity, smooth=False
+        )
+        smoothed_acceleration = may_butter_lowpass_filter(
             self.raw_acceleration,
             cutoff=2,
-            fs=self.self.metadata["imaging_fps"],
+            fps=self.metadata["imaging_fps"],
             order=2,
         )
         global_logger
         print(
-            f"Calculating smooth acceleration based on butter_lowpass_filter 2Hz, {self.self.metadata['imaging_fps']}fps, 2nd order."
+            f"Calculating smooth acceleration based on butter_lowpass_filter 2Hz, {self.metadata['imaging_fps']}fps, 2nd order."
         )
         self.data = smoothed_acceleration
         return self.data
@@ -688,9 +729,6 @@ class Data_Moving(BehaviorDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        self.plot_attributes["ylable"] = "Movement State"
-        self.plot_attributes["ylimits"] = (-0.1, 1.1)
-        self.plot_attributes["yticks"] = [[0, 1], ["Stationary", "Moving"]]
         self.velocity_threshold = 0.02  # m/s
         self.brain_processing_delay = {
             "CA1": 2,  # seconds
@@ -701,6 +739,12 @@ class Data_Moving(BehaviorDataset):
         }
         needed_attributes = ["setup"]
         check_needed_keys(metadata, needed_attributes)
+        self.define_plot_attributes()
+
+    def define_plot_attributes(self):
+        self.plot_attributes["ylable"] = "Movement State"
+        self.plot_attributes["ylimits"] = (-0.1, 1.1)
+        self.plot_attributes["yticks"] = [[0, 1], ["Stationary", "Moving"]]
 
     def process_raw_data(self, save=True):
         velocities = self.raw_data_object.data
@@ -775,7 +819,11 @@ class Data_Photon(NeuralDataset):
         return self.data
 
     def plot_data(self):
-        Vizualizer.plot_neural_activity_raster(self.data)
+        Vizualizer.plot_neural_activity_raster(
+            self.data,
+            fps=self.fps,
+            num_ticks=self.plot_attributes["num_ticks"],
+        )
 
     def get_setup(self, setup_name):
         if setup_name == "femtonics":
