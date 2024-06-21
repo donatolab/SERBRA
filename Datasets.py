@@ -67,8 +67,8 @@ class Dataset:
         self,
         path=None,
         save=True,
-        regenerate=False,
         plot=True,
+        regenerate=False,
         regenerate_plot=False,
     ):
         if not type(self.data) == np.ndarray:
@@ -95,8 +95,12 @@ class Dataset:
                     # format of data should be [num_time_points, num_cells]
                     self.data = force_1_dim_larger(data=self.data)
             else:
-                global_logger.warning(f"No {self.key} data found at {self.path}.")
-                print(f"No {self.key} data found at {self.path}.")
+                global_logger.warning(
+                    f"Generating data based on raw_data_object for {self.key} in {self.path}."
+                )
+                print(
+                    f"Generating data based on raw_data_object for {self.key} in {self.path}."
+                )
                 self.create_dataset(self.raw_data_object, save=save)
                 if save and not self.path.exists():
                     np.save(self.path, self.data)
@@ -231,8 +235,6 @@ class Dataset:
         else:
             Vizualizer.plot_image(
                 plot_attributes=self.plot_attributes,
-                num_frames=self.data.shape[0],
-                fps=self.fps,
                 show=show,
             )
 
@@ -259,10 +261,6 @@ class Dataset:
                 border_limits=self.metadata["environment_dimensions"],
                 plot_attributes=self.plot_attributes,
             )
-        # if self.data.ndim == 1:
-        #    Vizualizer.data_plot(self.data)
-        # else:
-        #    Vizualizer.data_plot_2D(self.data)................. this should be better implemented
 
     @staticmethod
     def split(data, split_ratio=0.8):
@@ -278,9 +276,7 @@ class Dataset:
     @staticmethod
     def filter_by_idx(data, idx_to_keep=None):
         if isinstance(idx_to_keep, np.ndarray) or isinstance(idx_to_keep, list):
-            data_unfiltered, idx_to_keep = Datasets.force_equal_dimensions(
-                data, idx_to_keep
-            )
+            data_unfiltered, idx_to_keep = force_equal_dimensions(data, idx_to_keep)
             data_filtered = data_unfiltered[idx_to_keep]
             return data_filtered
         else:
@@ -456,6 +452,16 @@ class Data_Position(BehaviorDataset):
                 color_by="time",
             )
 
+    def plot_local_env_shape_types(self):
+        #TODO: move to Stimulus class
+        stimulus = Environment.get_env_shapes_from_pos(self.data)
+        Vizualizer.data_plot_2D(
+                data=stimulus,
+                position_data=self.data,
+                # border_limits=self.metadata["environment_dimensions"],
+                plot_attributes=self.plot_attributes,
+            )
+
     def bin_data(self, data=None, bin_size=None):
         """
         Bin the position data into 1cm bins in 1D and 5cm^2 bins for 2D environments.
@@ -471,11 +477,9 @@ class Data_Position(BehaviorDataset):
         if self.binned_data is not None and bin_size == self.binning_size:
             return self.binned_data
         dimensions = self.metadata["environment_dimensions"]
-        self.binned_data = bin_array(
-            data, bin_size=bin_size, min_bin=0, max_bin=dimensions
-        )
+        binned_data = bin_array(data, bin_size=bin_size, min_bin=0, max_bin=dimensions)
         self.max_bin = np.array(dimensions) / np.array(bin_size)
-        return self.binned_data
+        return binned_data
 
     def create_dataset(self, raw_data_object=None, save=True):
         data = self.process_raw_data(save=save)
@@ -594,8 +598,9 @@ class Data_Distance(BehaviorDataset):
         self.plot_attributes["ylable"] = "distance in m"
 
     def plot_data(self):
+        absolute_distance = np.linalg.norm(self.data, axis=1)
         Vizualizer.data_plot_1D(
-            data=self.data,
+            data=absolute_distance,
             plot_attributes=self.plot_attributes,
         )
 
@@ -748,7 +753,8 @@ class Data_Moving(BehaviorDataset):
 
     def process_raw_data(self, save=True):
         velocities = self.raw_data_object.data
-        moving_frames = velocities > self.velocity_threshold
+        velocities_abs = np.linalg.norm(np.abs(velocities), axis=1)
+        moving_frames = velocities_abs > self.velocity_threshold
         self.data = self.fit_moving_to_brainarea(moving_frames, self.metadata["area"])
         return self.data
 
@@ -876,7 +882,7 @@ class Datasets:
             f"ERROR: Function get_object is not defined for {self.__class__}."
         )
 
-    def load(self, data_source, regenerate_plot=False):
+    def load(self, data_source, regenerate=False, regenerate_plot=False):
         """
         Load data from a specific data source.
             data_object is a object inhereting the Dataset attributes and functions.
@@ -884,7 +890,9 @@ class Datasets:
         # build path to data
         data_object = self.get_object(data_source)
         fpath = data_object.setup.get_data_path()
-        data = data_object.load(fpath, regenerate_plot=regenerate_plot)
+        data = data_object.load(
+            fpath, regenerate=regenerate, regenerate_plot=regenerate_plot
+        )
         return data
 
     def get_multi_data(
@@ -900,7 +908,7 @@ class Datasets:
             if type(concatenated_data) != np.ndarray:
                 concatenated_data = data
             else:
-                concatenated_data, data = self.force_equal_dimensions(
+                concatenated_data, data = force_equal_dimensions(
                     concatenated_data, data
                 )
                 concatenated_data = np.concatenate([concatenated_data, data], axis=1)

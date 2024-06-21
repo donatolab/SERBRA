@@ -28,10 +28,12 @@ class Models:
         if not model_settings:
             model_settings = kwargs
         # TODO: catch possible error if model_settings is not a dict
+        place_cell_settings = model_settings["place_cell"] if "place_cell" in model_settings else None
+        cebra_cell_settings = model_settings["cebra"] if "cebra" in model_settings else None
         self.place_cell = PlaceCellDetectors(
-            model_dir, model_id, model_settings["place_cell"]
+            model_dir, model_id, place_cell_settings
         )
-        self.cebras = Cebras(model_dir, model_id, model_settings["cebra"])
+        self.cebras = Cebras(model_dir, model_id, cebra_cell_settings)
 
     def train(self):
         # TODO: move train_model function from task class, leverage ability to train all models at once

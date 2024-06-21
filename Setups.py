@@ -1478,6 +1478,19 @@ class Environment(Behavior_Processing):
         stimulus_type_at_frame = stimulus_type_at_frame.reshape(1, -1)[0]
         return stimulus_type_at_frame
 
+    @staticmethod
+    def get_env_shapes_from_pos(positions: np.ndarray):
+        in_shape_at_frame = np.zeros(positions.shape[0])
+        if positions.ndim == 2:
+            # detect borders
+            min_dims = np.min(positions, axis=0)
+            max_dims = np.max(positions, axis=0)
+            # detect corners
+            # detect circular spaces (open)
+        else:
+            print("Not able to generate environmental shapes. Data should be 2D for this function.")
+        return in_shape_at_frame
+
     def process_data(
         self,
         imaging_fps: float = None,
@@ -1511,11 +1524,6 @@ class Environment(Behavior_Processing):
         if not imaging_fps:
             check_needed_keys(self.metadata, ["imaging_fps"])
             imaging_fps = self.metadata["imaging_fps"]
-
-        # TODO: check for multi dimensions!!!!!
-        # TODO: check for multi dimensions!!!!!
-        # TODO:.......................... check for multi dimensions!!!!!
-        # TODO: check for multi dimensions!!!!!
 
         velocity_smoothed = self.get_velocity_from_cumdist(
             cumulative_distance, imaging_fps, smooth=smooth

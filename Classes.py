@@ -34,6 +34,7 @@ def load_all_animals(
     wanted_dates=["all"],
     model_settings=None,
     behavior_datas=None,
+    regenerate=False,
     regenerate_plots=False,
     **kwargs,
 ):
@@ -66,6 +67,7 @@ def load_all_animals(
             animal.add_all_sessions(
                 wanted_dates=wanted_dates,
                 behavior_datas=behavior_datas,
+                regenerate=regenerate,
                 regenerate_plots=regenerate_plots,
             )
         animals_dict[animal_id] = animal
@@ -114,6 +116,7 @@ class Animal:
         date,
         model_settings=None,
         behavior_datas=None,
+        regenerate=False,
         regenerate_plots=False,
         **kwargs,
     ):
@@ -126,6 +129,7 @@ class Animal:
             animal_dir=self.dir,
             behavior_datas=behavior_datas,
             model_settings=model_settings,
+            regenerate=regenerate,
             regenerate_plots=regenerate_plots,
         )
 
@@ -144,6 +148,7 @@ class Animal:
         wanted_dates=["all"],
         behavior_datas=None,
         model_settings=None,
+        regenerate=False,
         regenerate_plots=False,
         **kwargs,
     ):
@@ -151,13 +156,16 @@ class Animal:
             model_settings = kwargs if len(kwargs) > 0 else self.model_settings
         # Search for Sessions
         sessions_root_path = self.root_dir.joinpath(self.animal_id)
-        present_session_dates = get_directories(sessions_root_path)
+        present_session_dates = get_directories(
+            sessions_root_path, regex_search="202[A-Za-z0-9-_]*"
+        )
         for date in present_session_dates:
             if date in wanted_dates or "all" in wanted_dates:
                 self.add_session(
                     date,
                     model_settings=model_settings,
                     behavior_datas=behavior_datas,
+                    regenerate=regenerate,
                     regenerate_plots=regenerate_plots,
                 )
 
@@ -191,10 +199,8 @@ class Animal:
                             ) in wanted_embeddings_dict.items():
                                 labels_id = f"{session_date[-3:]}_{task.task} {wanted_stimulus_type}"
                                 position_lables = task.behavior.position.data
-                                position_lables, embedding = (
-                                    Datasets.force_equal_dimensions(
-                                        position_lables, embedding
-                                    )
+                                position_lables, embedding = force_equal_dimensions(
+                                    position_lables, embedding
                                 )
                                 labels[wanted_embedding]["embeddings"][
                                     labels_id
@@ -228,6 +234,7 @@ class Session:
         data_dir=None,
         model_dir=None,
         behavior_datas=None,
+        regenerate=False,
         regenerate_plots=False,
         model_settings={},
         **kwargs,
@@ -253,7 +260,9 @@ class Session:
         if behavior_datas:
             self.add_all_tasks(model_settings=self.model_settings, **kwargs)
             self.load_all_data(
-                behavior_datas=behavior_datas, regenerate_plots=regenerate_plots
+                behavior_datas=behavior_datas, 
+                regenerate=regenerate,
+                regenerate_plots=regenerate_plots
             )
 
     def load_metadata(self, yaml_path=None, name_parts=None):
@@ -302,11 +311,13 @@ class Session:
             self.add_task(task, metadata=metadata, model_settings=model_settings)
         return self.tasks[task]
 
-    def load_all_data(self, behavior_datas=["position"], regenerate_plots=False):
+    def load_all_data(self, behavior_datas=["position"], regenerate=False, regenerate_plots=False):
         data = {}
         for task_name, task in self.tasks.items():
             data[task_name] = task.load_all_data(
-                behavior_datas=behavior_datas, regenerate_plots=regenerate_plots
+                behavior_datas=behavior_datas, 
+                regenerate=regenerate,
+                regenerate_plots=regenerate_plots
             )
         return data
 
@@ -577,20 +588,28 @@ class Task:
             self.behavior_metadata["area"] = neural.metadata["area"]
         return self.behavior_metadata
 
-    def load_data(self, data_source, data_type="neural", regenerate_plot=False):
+    def load_data(self, data_source, data_type="neural", 
+                  regenerate=False,
+                  regenerate_plot=False):
         # loads neural or behaviour data
         datasets_object = getattr(self, data_type)
         data = datasets_object.load(
-            data_source=data_source, regenerate_plot=regenerate_plot
+            data_source=data_source, 
+            regenerate=regenerate,
+            regenerate_plot=regenerate_plot
         )
         return data
 
-    def load_all_data(self, behavior_datas=["position"], regenerate_plots=False):
+    def load_all_data(self, behavior_datas=["position"], 
+                      regenerate=False,
+                      regenerate_plots=False):
         """
-        neural_Data = ["femtonics", "inscopix"]
-        behavior_datas = ["position", "cam"]
+        neural_Data = ["photon"]
+        behavior_datas = ["position", "velocity", "stimulus"]
         """
         data = {"neural": {}, "behavior": {}}
+        if "velocity" in behavior_datas and "moving" not in behavior_datas:
+            behavior_datas.append("moving")
         for mouse_data in ["neural", "behavior"]:
             if mouse_data == "neural":
                 data_to_load = self.neural_metadata["setup"]
@@ -601,6 +620,7 @@ class Task:
                 data[mouse_data][data_source] = self.load_data(
                     data_source=data_source,
                     data_type=mouse_data,
+                    regenerate=regenerate,
                     regenerate_plot=regenerate_plots,
                 )
         return data
@@ -745,9 +765,13 @@ class Task:
 
         if not model.fitted or regenerate:
             # skip if no neural data available
-            if neural_data_train.shape[0] == 0:
-                global_logger.error(f"No neural data to use. Skipping {self.id}")
-                print(f"Skipping {self.id}: No neural data given.")
+            if neural_data_train.shape[0] < 10:
+                global_logger.error(
+                    f"Not enough frames to use for {movement_state}. At least 10 are needed. Skipping {self.id}"
+                )
+                print(
+                    f"Skipping {self.id}: Not enough frames to use for {movement_state}. At least 10 are needed."
+                )
             else:
                 # train model
                 global_logger.info(f"{self.id}: Training  {model.name} model.")
@@ -759,10 +783,8 @@ class Task:
                         raise ValueError(
                             f"No behavior data types given for {model_type} model."
                         )
-                    neural_data_train, behavior_data_train = (
-                        Datasets.force_equal_dimensions(
-                            neural_data_train, behavior_data_train
-                        )
+                    neural_data_train, behavior_data_train = force_equal_dimensions(
+                        neural_data_train, behavior_data_train
                     )
                     model.fit(neural_data_train, behavior_data_train)
                 model.fitted = models_class.is_fitted(model)
@@ -822,7 +844,7 @@ class Task:
                 )
         return embeddings
 
-    def plot_model_embeddings(
+    def plot_embeddings(
         self,
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
@@ -985,11 +1007,11 @@ class Task:
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
         )
-        stimulus_type = self.behavior_metadata["stimulus_type"]
+        stimulus_type = self.behavior_metadata["stimulus_type"] if "stimulus_type" in self.behavior_metadata.keys() else ""
         num_iterations = (
             models_original[0].max_iterations if not num_iterations else num_iterations
         )
-        title = title or f"Losses {self.session_id} {stimulus_type}"
+        title = title or f"Losses {self.task_id} {stimulus_type}"
         title += f" - {num_iterations} Iterartions" if not plot_model_iterations else ""
 
         viz = Vizualizer(self.data_dir.parent.parent)

@@ -170,11 +170,14 @@ class Vizualizer:
         marker=None,
         seconds_interval=5,
     ):
-        named_dimensions = {0: "x", 1: "y", 2: "z"}
         if data.ndim == 1:
-            data = data.reshape(-1, 1)
-        for dim in range(data.shape[1]):
-            plt.plot(data[:, dim], zorder=1, label=f"{named_dimensions[dim]}")
+            plt.plot(data, zorder=1)
+        else:
+            named_dimensions = {0: "x", 1: "y", 2: "z"}
+            for dim in range(data.shape[1]):
+                plt.plot(data[:, dim], zorder=1, label=f"{named_dimensions[dim]}")
+            plt.legend()
+
         if marker_pos is not None:
             marker = "." if marker is None else marker
         else:
@@ -200,8 +203,6 @@ class Vizualizer:
             )
             plt.xticks(xpos, xticks, rotation=45)
 
-        plt.legend()
-
     @staticmethod
     def data_plot_2D(
         data,
@@ -215,14 +216,14 @@ class Vizualizer:
         color_by="value",
         cmap="plasma",  # "viridis", "winter", "plasma"
     ):
-        #data = data[:15000, :]
-        #data = may_butter_lowpass_filter(
+        # data = data[:15000, :]
+        # data = may_butter_lowpass_filter(
         #    data,
         #    smooth=True,
         #    cutoff=1,
         #    fps=20,
         #    order=2,
-        #)
+        # )
         data, position_data = force_equal_dimensions(data, position_data)
 
         # Convert coordinates to a numpy array if it's not already
@@ -247,8 +248,8 @@ class Vizualizer:
             scatter_alpha = 0.8
             dot_size = 1
         elif color_by == "value":
-            data_summed = np.sum(np.abs(data), axis=1)
-            color_value_reference = np.array(data_summed)
+            absolute_data = np.linalg.norm(np.abs(data), axis=1)
+            color_value_reference = np.array(absolute_data)
             color_map_label = plot_attributes["ylable"]
             tick_label, tick_pos = None, None
             scatter_alpha = 0.8
@@ -360,6 +361,7 @@ class Vizualizer:
         alpha=0.4,
         figsize=(10, 10),
         dpi=300,
+        c=None,
     ):
         embedding, labels = force_equal_dimensions(
             embedding, embedding_labels["labels"]
@@ -377,22 +379,27 @@ class Vizualizer:
             cmap=cmap,
         )
         if plot_legend:
-            # Create a ScalarMappable object using the specified colormap
-            sm = plt.cm.ScalarMappable(cmap=cmap)
-            unique_labels = np.unique(labels)
-            unique_labels.sort()
-            sm.set_array(unique_labels)  # Set the range of values for the colorbar
+            #TODO: check type of embedding_labels to define the colorbar
+            if not c:
+                # Create a ScalarMappable object using the specified colormap
+                sm = plt.cm.ScalarMappable(cmap=cmap)
+                unique_labels = np.unique(labels)
+                unique_labels.sort()
+                sm.set_array(unique_labels)  # Set the range of values for the colorbar
 
-            # Manually create colorbar
-            cbar = plt.colorbar(sm, ax=ax)
-            # Adjust colorbar ticks if specified
-            cbar.set_label(embedding_labels["name"])  # Set the label for the colorbar
+                # Manually create colorbar
+                cbar = plt.colorbar(sm, ax=ax)
+                # Adjust colorbar ticks if specified
+                cbar.set_label(embedding_labels["name"])  # Set the label for the colorbar
 
-            if colorbar_ticks:
-                cbar.ax.yaxis.set_major_locator(
-                    MaxNLocator(integer=True)
-                )  # Adjust ticks to integers
-                cbar.set_ticks(colorbar_ticks)  # Set custom ticks
+                if colorbar_ticks:
+                    cbar.ax.yaxis.set_major_locator(
+                        MaxNLocator(integer=True)
+                    )  # Adjust ticks to integers
+                    cbar.set_ticks(colorbar_ticks)  # Set custom ticks
+            else:
+                #TODO: immpelment 2D colorbar for c
+                pass
         return ax
 
     def plot_multiple_embeddings(
@@ -426,6 +433,33 @@ class Vizualizer:
 
         axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
+        labels......need to be changed to a 2D array with RGB or RGBA colors which will overwrite cmap
+
+                """c : array-like or list of colors or color, optional
+            The marker colors. Possible values:
+
+            - A scalar or sequence of n numbers to be mapped to colors using
+              *cmap* and *norm*.
+            - A 2D array in which the rows are RGB or RGBA.
+            - A sequence of colors of length n.
+            - A single color format string.
+
+            Note that *c* should not be a single numeric RGB or RGBA sequence
+            because that is indistinguishable from an array of values to be
+            colormapped. If you want to specify the same RGB or RGBA value for
+            all points, use a 2D array with a single row.  Otherwise,
+            value-matching will have precedence in case of a size matching with
+            *x* and *y*.
+
+            If you wish to specify a single color for all points
+            prefer the *color* keyword argument.
+
+            Defaults to `None`. In that case the marker color is determined
+            by the value of *color*, *facecolor* or *facecolors*. In case
+            those are not specified or `None`, the marker color is determined
+            by the next color of the ``Axes``' current "shape and fill" color
+            cycle. This cycle defaults to :rc:`axes.prop_cycle`."""
+
         for i, (subplot_title, embedding) in enumerate(embeddings.items()):
             ax = axes[i]
             ax = self.plot_embedding(
@@ -440,9 +474,6 @@ class Vizualizer:
                 dpi=dpi,
             )
 
-        for ax in axes[num_subplots:]:
-            ax.remove()  # Remove any excess subplot axes
-
         if plot_legend:
             # Create a ScalarMappable object using the specified colormap
             sm = plt.cm.ScalarMappable(cmap=cmap)
@@ -451,9 +482,12 @@ class Vizualizer:
             sm.set_array(unique_labels)  # Set the range of values for the colorbar
 
             # Manually create colorbar
-            cbar = plt.colorbar(sm, ax=ax)
+            cbar = plt.colorbar(sm, ax=axes[cols - 1])
             # Adjust colorbar ticks if specified
             cbar.set_label(labels["name"])  # Set the label for the colorbar
+
+        for ax in axes[num_subplots:]:
+            ax.remove()  # Remove any excess subplot axes
 
         self.plot_ending(title)
 
