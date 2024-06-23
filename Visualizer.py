@@ -7,6 +7,14 @@ from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 import plotly
 
+import matplotlib.axes
+import matplotlib.cm
+import matplotlib.colors
+import matplotlib.figure
+import matplotlib.pyplot as plt
+import numpy as np
+import numpy.typing as npt
+import torch
 
 # from pySankey.sankey import sankey
 import cebra
@@ -366,21 +374,19 @@ class Vizualizer:
         embedding, labels = force_equal_dimensions(
             embedding, embedding_labels["labels"]
         )
-
-        ax = cebra.plot_embedding(
-            ax=ax,
-            embedding=embedding,
-            embedding_labels=labels,
-            markersize=markersize,
-            alpha=alpha,
-            dpi=dpi,
-            title=title,
-            figsize=figsize,
-            cmap=cmap,
-        )
-        if plot_legend:
-            #TODO: check type of embedding_labels to define the colorbar
-            if not c:
+        if labels.ndim == 1:
+            ax = cebra.plot_embedding(
+                ax=ax,
+                embedding=embedding,
+                embedding_labels=labels,
+                markersize=markersize,
+                alpha=alpha,
+                dpi=dpi,
+                title=title,
+                figsize=figsize,
+                cmap=cmap,
+            )
+            if plot_legend:
                 # Create a ScalarMappable object using the specified colormap
                 sm = plt.cm.ScalarMappable(cmap=cmap)
                 unique_labels = np.unique(labels)
@@ -390,17 +396,155 @@ class Vizualizer:
                 # Manually create colorbar
                 cbar = plt.colorbar(sm, ax=ax)
                 # Adjust colorbar ticks if specified
-                cbar.set_label(embedding_labels["name"])  # Set the label for the colorbar
+                cbar.set_label(
+                    embedding_labels["name"]
+                )  # Set the label for the colorbar
 
                 if colorbar_ticks:
                     cbar.ax.yaxis.set_major_locator(
                         MaxNLocator(integer=True)
                     )  # Adjust ticks to integers
                     cbar.set_ticks(colorbar_ticks)  # Set custom ticks
-            else:
-                #TODO: immpelment 2D colorbar for c
-                pass
+        elif labels.ndim == 2:
+            c = labels
+            ax = Vizualizer.plot_embedding_3d(
+                axis=ax,
+                embedding=embedding,
+                embedding_labels=labels,
+                markersize=markersize,
+                alpha=alpha,
+                cmap=cmap,
+                title=title,
+                figsize=figsize,
+                dpi=dpi,
+                plot_legend=plot_legend,
+            )
+        else:
+            raise NotImplementedError(
+                "Invalid labels dimension. Choose 1D or 2D labels."
+            )
         return ax
+
+    def plot_embedding_3d(
+        embedding: Union[npt.NDArray, torch.Tensor],
+        embedding_labels: Optional[Union[npt.NDArray, torch.Tensor, str]],
+        idx_order: Optional[Tuple[int]] = None,
+        markersize: float = 0.05,
+        alpha: float = 0.4,
+        cmap: str = "cool",
+        title: str = "3D Embedding",
+        axis: Optional[matplotlib.axes.Axes] = None,
+        figsize: tuple = (5, 5),
+        dpi: float = 100,
+        grey_fig: bool = False,
+        plot_legend: bool = True,
+        **kwargs,
+    ):
+        """
+        This function is based on the plot_embedding function from the cebra library.
+        """
+        # define plot dimensions
+        if (idx_order is None and embedding.shape[1] >= 3) or (
+            idx_order is not None and len(idx_order) == 3
+        ):
+            _is_plot_3d = True
+        else:
+            raise ValueError(
+                f"Invalid embedding dimension, expects 2D or more, got {self.embedding.shape[1]}"
+            )
+
+        # define the axis
+        if axis is None:
+            fig = plt.figure(figsize=figsize, dpi=dpi)
+            if _is_plot_3d:
+                ax = fig.add_subplot(projection="3d")
+            else:
+                ax = fig.add_subplot()
+        else:
+            ax = axis
+
+        # define idx order
+        if idx_order is None:
+            if _is_plot_3d:
+                idx_order = (0, 1, 2)
+            else:
+                idx_order = (0, 1)
+        else:
+            # If the idx_order was provided by the user
+            ## Check size validity
+            if _is_plot_3d and len(idx_order) != 3:
+                raise ValueError(
+                    f"idx_order must contain 3 dimension values, got {len(idx_order)}."
+                )
+            elif not _is_plot_3d and len(idx_order) != 2:
+                raise ValueError(
+                    f"idx_order must contain 2 dimension values, got {len(idx_order)}."
+                )
+
+            # Check value validity
+            for dim in idx_order:
+                if dim < 0 or dim > embedding.shape[1] - 1:
+                    raise ValueError(
+                        f"List of dimensions to plot is invalid, got {idx_order}, with {dim} invalid."
+                        f"Values should be between 0 and {embedding.shape[1]}."
+                    )
+
+        # plot the embedding
+        idx1, idx2, idx3 = idx_order
+        ax.scatter(
+            xs=embedding[:, idx1],
+            ys=embedding[:, idx2],
+            zs=embedding[:, idx3],
+            c=embedding_labels,
+            cmap=cmap,
+            alpha=alpha,
+            s=markersize,
+            **kwargs,
+        )
+
+        ax.grid(False)
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+        ax.xaxis.pane.set_edgecolor("w")
+        ax.yaxis.pane.set_edgecolor("w")
+        ax.zaxis.pane.set_edgecolor("w")
+        ax.set_title(title, y=1.0, pad=-10)
+
+        if grey_fig:
+            ax.xaxis.pane.set_edgecolor("grey")
+            ax.yaxis.pane.set_edgecolor("grey")
+            ax.zaxis.pane.set_edgecolor("grey")
+
+        if plot_legend:
+            Vizualizer.add_2d_colormap_legend(fig)
+
+        return ax
+
+    def add_2d_colormap_legend(fig, xticks=None, yticks=None):
+        # plt.subplots_adjust(left=0.1, right=0.65, top=0.85)
+        cax = fig.add_axes([1, 0.55, 0.3, 0.3])
+        cp1 = np.linspace(0, 1)
+        cp2 = np.linspace(0, 1)
+        Cp1, Cp2 = np.meshgrid(cp1, cp2)
+        C0 = np.zeros_like(Cp1) + 0.5
+        # make RGB image, p1 to red channel, p2 to blue channel
+        Legend = np.dstack((Cp1, C0, Cp2))
+        # parameters range between 0 and 1
+        cax.imshow(Legend, origin="lower", extent=[0, 1, 0, 1])
+        cax.set_xlabel("X")
+        cax.set_ylabel("Y")
+        if xticks is None:
+            xticks = []
+        if yticks is None:
+            yticks = []
+        cax.set_xticks(xticks)
+        cax.set_yticks(yticks)
+        xlabels = [f"{x:.1f}" for x in xticks]
+        ylabels = [f"{y:.1f}" for y in yticks]
+        cax.set_xticklabels(xlabels, rotation=45, ha="right")
+        cax.set_yticklabels(ylabels)
+        cax.set_title("2D colormap", fontsize=10)
 
     def plot_multiple_embeddings(
         self,
@@ -413,52 +557,39 @@ class Vizualizer:
         plot_legend=True,
         markersize=0.05,
         alpha=0.4,
+        max_plot_per_row=4,
         dpi=300,
     ):
-        figsize_x, figsize_y = figsize
-        fig = plt.figure(figsize=figsize)
-
+        figsize_y = 4
         # Compute the number of subplots
         num_subplots = len(embeddings)
         rows = 1
         cols = num_subplots
-        if num_subplots > 4:
+        if num_subplots > max_plot_per_row:
             rows = int(num_subplots**0.5)
             cols = (num_subplots + rows - 1) // rows
-            figsize = (figsize_x, figsize_y * rows)
+            figsize_x = 5 * max_plot_per_row
+        else:
+            figsize_x = 5 * num_subplots
+        figsize = (figsize_x, figsize_y * rows)
 
+        fig = plt.figure(figsize=figsize)
         fig, axes = plt.subplots(
             rows, cols, figsize=figsize, subplot_kw={"projection": projection}
         )
 
         axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
-        labels......need to be changed to a 2D array with RGB or RGBA colors which will overwrite cmap
+        # create 2D RGBA labels to overwrite 1D cmap coloring
+        if labels["labels"].ndim == 2:
+            min_vals = np.min(labels["labels"], axis=0)
+            max_vals = np.max(labels["labels"], axis=0)
+            # steps = 5
+            xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
+            yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
 
-                """c : array-like or list of colors or color, optional
-            The marker colors. Possible values:
-
-            - A scalar or sequence of n numbers to be mapped to colors using
-              *cmap* and *norm*.
-            - A 2D array in which the rows are RGB or RGBA.
-            - A sequence of colors of length n.
-            - A single color format string.
-
-            Note that *c* should not be a single numeric RGB or RGBA sequence
-            because that is indistinguishable from an array of values to be
-            colormapped. If you want to specify the same RGB or RGBA value for
-            all points, use a 2D array with a single row.  Otherwise,
-            value-matching will have precedence in case of a size matching with
-            *x* and *y*.
-
-            If you wish to specify a single color for all points
-            prefer the *color* keyword argument.
-
-            Defaults to `None`. In that case the marker color is determined
-            by the value of *color*, *facecolor* or *facecolors*. In case
-            those are not specified or `None`, the marker color is determined
-            by the next color of the ``Axes``' current "shape and fill" color
-            cycle. This cycle defaults to :rc:`axes.prop_cycle`."""
+            rgba_colors = Vizualizer.create_rgba_labels(labels["labels"])
+            labels["labels"] = rgba_colors
 
         for i, (subplot_title, embedding) in enumerate(embeddings.items()):
             ax = axes[i]
@@ -475,21 +606,64 @@ class Vizualizer:
             )
 
         if plot_legend:
-            # Create a ScalarMappable object using the specified colormap
-            sm = plt.cm.ScalarMappable(cmap=cmap)
-            unique_labels = np.unique(labels["labels"])
-            unique_labels.sort()
-            sm.set_array(unique_labels)  # Set the range of values for the colorbar
+            if labels["labels"].ndim == 1:
+                # Create a ScalarMappable object using the specified colormap
+                sm = plt.cm.ScalarMappable(cmap=cmap)
+                unique_labels = np.unique(labels["labels"])
+                unique_labels.sort()
+                sm.set_array(unique_labels)  # Set the range of values for the colorbar
 
-            # Manually create colorbar
-            cbar = plt.colorbar(sm, ax=axes[cols - 1])
-            # Adjust colorbar ticks if specified
-            cbar.set_label(labels["name"])  # Set the label for the colorbar
+                # Manually create colorbar
+                cbar = plt.colorbar(sm, ax=axes[cols - 1])
+                # Adjust colorbar ticks if specified
+                cbar.set_label(labels["name"])  # Set the label for the colorbar
+            else:
+                Vizualizer.add_2d_colormap_legend(
+                    fig, xticks_2d_colormap, yticks_2d_colormap
+                )
 
         for ax in axes[num_subplots:]:
             ax.remove()  # Remove any excess subplot axes
 
         self.plot_ending(title)
+
+    def create_rgba_labels(values):
+        """c : array-like or list of colors or color, optional
+        The marker colors. Possible values:
+
+        - A scalar or sequence of n numbers to be mapped to colors using
+            *cmap* and *norm*.
+        - A 2D array in which the rows are RGB or RGBA.
+        - A sequence of colors of length n.
+        - A single color format string.
+
+        Note that *c* should not be a single numeric RGB or RGBA sequence
+        because that is indistinguishable from an array of values to be
+        colormapped. If you want to specify the same RGB or RGBA value for
+        all points, use a 2D array with a single row.  Otherwise,
+        value-matching will have precedence in case of a size matching with
+        *x* and *y*.
+
+        If you wish to specify a single color for all points
+        prefer the *color* keyword argument.
+
+        Defaults to `None`. In that case the marker color is determined
+        by the value of *color*, *facecolor* or *facecolors*. In case
+        those are not specified or `None`, the marker color is determined
+        by the next color of the ``Axes``' current "shape and fill" color
+        cycle. This cycle defaults to :rc:`axes.prop_cycle`."""
+
+        cmap = lambda x, y: (x, 0.5, y, 0)
+        normalized_values = normalize_01(values, axis=0)
+
+        if values.ndim == 1:
+            raise ValueError("1D values not supported yet.")
+        elif values.ndim == 2:
+            # Create a 2D array of RGBA values
+            rgba_colors = np.array([cmap(x, y) for x, y in normalized_values])
+        elif values.ndim == 3:
+            raise ValueError("3D values not supported yet.")
+        return rgba_colors
 
     def plot_losses(
         self,

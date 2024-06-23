@@ -874,13 +874,16 @@ class Task:
             global_logger.error("No embedding labels given.")
             global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
             print(f"Using behavior_data_types: {behavior_data_types}")
-            behavior_datas, _ = self.behavior.get_multi_data(behavior_data_types)
-            embedding_labels
+
             embedding_labels_dict = {}
-            for behavior_data_type, behavior_data in zip(
-                behavior_data_types, behavior_datas.transpose()
-            ):
-                embedding_labels_dict[behavior_data_type] = behavior_data
+            for behavior_data_type in behavior_data_types:
+                behavior_data, _ = self.behavior.get_multi_data(behavior_data_type)
+                # create 1D labels
+                if behavior_data.shape[1] == 1:
+                    embedding_labels_dict[behavior_data_type] = behavior_data.transpose()
+                # create multi Dimension labels
+                else:
+                    embedding_labels_dict[behavior_data_type] = behavior_data
         else:
             if isinstance(embedding_labels, np.ndarray):
                 embedding_labels_dict = {"Provided_labels": embedding_labels}
