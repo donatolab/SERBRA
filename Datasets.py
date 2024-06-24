@@ -208,12 +208,12 @@ class Dataset:
         show=False,
         dpi=300,
     ):
+        self.refine_plot_attributes(
+            title=title, ylable=ylable, xlimits=xlimits, save_path=save_path
+        )
         if regenerate_plot or not save_file_present(
             fpath=self.plot_attributes["save_path"],
         ):
-            self.refine_plot_attributes(
-                title=title, ylable=ylable, xlimits=xlimits, save_path=save_path
-            )
             self.plot_attributes = Vizualizer.default_plot_start(
                 plot_attributes=self.plot_attributes,
                 figsize=figsize,
@@ -432,7 +432,7 @@ class Data_Position(BehaviorDataset):
         if len(self.metadata["environment_dimensions"]) == 1:
             self.plot_attributes["ylable"] = "position cm"
         elif len(self.metadata["environment_dimensions"]) == 2:
-            self.plot_attributes["figsize"] = (10, 10)
+            self.plot_attributes["figsize"] = (11, 10)
 
     def plot_data(self):
         if self.data.ndim == 1:
@@ -453,14 +453,14 @@ class Data_Position(BehaviorDataset):
             )
 
     def plot_local_env_shape_types(self):
-        #TODO: move to Stimulus class
+        # TODO: move to Stimulus class
         stimulus = Environment.get_env_shapes_from_pos(self.data)
         Vizualizer.data_plot_2D(
-                data=stimulus,
-                position_data=self.data,
-                # border_limits=self.metadata["environment_dimensions"],
-                plot_attributes=self.plot_attributes,
-            )
+            data=stimulus,
+            position_data=self.data,
+            # border_limits=self.metadata["environment_dimensions"],
+            plot_attributes=self.plot_attributes,
+        )
 
     def bin_data(self, data=None, bin_size=None):
         """

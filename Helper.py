@@ -352,7 +352,7 @@ def cosine_similarity(v1, v2):
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
 
-def correlate_vectors(vectors: np.ndarray):
+def correlate_vectors(vectors: np.ndarray, method="pearson"):
     """
     Matrix Multiplikation is used to calculate the correlation matrix.
 
@@ -372,8 +372,14 @@ def correlate_vectors(vectors: np.ndarray):
         correlation_matrix = correlation_matrix(vectors)
         print(correlation_matrix)
     """
-    normalized_vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
-    correlation_matrix = normalized_vectors @ normalized_vectors.T
+    if method == "pearson":
+        correlation_matrix = np.corrcoef(vectors)
+    elif method == "cosine":
+        #normalized_vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+        #correlation_matrix = normalized_vectors @ normalized_vectors.T
+        correlation_matrix = sklearn.metrics.pairwise.cosine_similarity(vectors)
+    else:
+        raise ValueError("Method must be 'pearson' or 'cosine'.")
 
     return correlation_matrix
 

@@ -627,7 +627,7 @@ class Vizualizer:
 
         self.plot_ending(title)
 
-    def create_rgba_labels(values):
+    def create_rgba_labels(values, alpha=0):
         """c : array-like or list of colors or color, optional
         The marker colors. Possible values:
 
@@ -653,7 +653,7 @@ class Vizualizer:
         by the next color of the ``Axes``' current "shape and fill" color
         cycle. This cycle defaults to :rc:`axes.prop_cycle`."""
 
-        cmap = lambda x, y: (x, 0.5, y, 0)
+        cmap = lambda x, y: (x, 0.5, y, alpha)
         normalized_values = normalize_01(values, axis=0)
 
         if values.ndim == 1:
