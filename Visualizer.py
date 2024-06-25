@@ -6,6 +6,9 @@ from matplotlib.collections import LineCollection
 from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 import plotly
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+from scipy.spatial import ConvexHull
 
 import matplotlib.axes
 import matplotlib.cm
@@ -369,7 +372,6 @@ class Vizualizer:
         alpha=0.4,
         figsize=(10, 10),
         dpi=300,
-        c=None,
     ):
         embedding, labels = force_equal_dimensions(
             embedding, embedding_labels["labels"]
@@ -406,24 +408,227 @@ class Vizualizer:
                     )  # Adjust ticks to integers
                     cbar.set_ticks(colorbar_ticks)  # Set custom ticks
         elif labels.ndim == 2:
-            c = labels
-            ax = Vizualizer.plot_embedding_3d(
-                axis=ax,
-                embedding=embedding,
-                embedding_labels=labels,
-                markersize=markersize,
-                alpha=alpha,
-                cmap=cmap,
-                title=title,
-                figsize=figsize,
-                dpi=dpi,
-                plot_legend=plot_legend,
-            )
+            if embedding.shape[1] == 2:
+                ax = Vizualizer.plot_embedding_2d(
+                    axis=ax,
+                    embedding=embedding,
+                    embedding_labels=labels,
+                    markersize=markersize,
+                    alpha=alpha,
+                    cmap=cmap,
+                    title=title,
+                    figsize=figsize,
+                    dpi=dpi,
+                    plot_legend=plot_legend,
+                )
+            else:
+                ax = Vizualizer.plot_embedding_3d(
+                    axis=ax,
+                    embedding=embedding,
+                    embedding_labels=labels,
+                    markersize=markersize,
+                    alpha=alpha,
+                    cmap=cmap,
+                    title=title,
+                    figsize=figsize,
+                    dpi=dpi,
+                    plot_legend=plot_legend,
+                )
         else:
             raise NotImplementedError(
                 "Invalid labels dimension. Choose 1D or 2D labels."
             )
         return ax
+
+    def plot_embedding_2d(
+        embedding: Union[npt.NDArray, torch.Tensor],
+        embedding_labels: Optional[Union[npt.NDArray, torch.Tensor, str]],
+        idx_order: Optional[Tuple[int]] = None,
+        markersize: float = 0.05,
+        alpha: float = 0.4,
+        cmap: str = "cool",
+        title: str = "2D Embedding",
+        axis: Optional[matplotlib.axes.Axes] = None,
+        figsize: tuple = (5, 5),
+        dpi: float = 100,
+        grey_fig: bool = False,
+        plot_legend: bool = True,
+        **kwargs,
+    ):
+        """
+        This function is based on the plot_embedding function from the cebra library.
+        """
+        # define plot dimensions
+        if (idx_order is None and embedding.shape[1] >= 2) or (
+            idx_order is not None and len(idx_order) == 2
+        ):
+            _is_plot_2d = True
+        else:
+            raise ValueError(
+                f"Invalid embedding dimension, expects 2D or more, got {embedding.shape[1]}"
+            )
+
+        # define the axis
+        if axis is None:
+            fig = plt.figure(figsize=figsize, dpi=dpi)
+            if _is_plot_2d:
+                ax = fig.add_subplot()
+            else:
+                ax = fig.add_subplot(projection="3d")
+        else:
+            ax = axis
+
+        # define idx order
+        if idx_order is None:
+            if _is_plot_2d:
+                idx_order = (0, 1)
+            else:
+                idx_order = (0, 1, 2)
+        else:
+            # If the idx_order was provided by the user
+            ## Check size validity
+            if _is_plot_2d and len(idx_order) != 2:
+                raise ValueError(
+                    f"idx_order must contain 2 dimension values, got {len(idx_order)}."
+                )
+            elif not _is_plot_2d and len(idx_order) != 3:
+                raise ValueError(
+                    f"idx_order must contain 3 dimension values, got {len(idx_order)}."
+                )
+
+            # Check value validity
+            for dim in idx_order:
+                if dim < 0 or dim > embedding.shape[1] - 1:
+                    raise ValueError(
+                        f"List of dimensions to plot is invalid, got {idx_order}, with {dim} invalid."
+                        f"Values should be between 0 and {embedding.shape[1]}."
+                    )
+
+        # plot the embedding
+        (
+            idx1,
+            idx2,
+        ) = idx_order
+        ax.scatter(
+            xs=embedding[:, idx1],
+            ys=embedding[:, idx2],
+            c=embedding_labels,
+            cmap=cmap,
+            alpha=alpha,
+            s=markersize,
+            **kwargs,
+        )
+
+        ax.grid(False)
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.xaxis.pane.set_edgecolor("w")
+        ax.yaxis.pane.set_edgecolor("w")
+        ax.set_title(title, y=1.0, pad=-10)
+
+        if grey_fig:
+            ax.xaxis.pane.set_edgecolor("grey")
+            ax.yaxis.pane.set_edgecolor("grey")
+
+        if plot_legend:
+            Vizualizer.add_2d_colormap_legend(fig)
+
+        return ax
+
+    def plot_embedding_3d_by_groups(
+        groups: dict,
+        plot_hulls=False,
+        alpha=0.8,
+        legend=True,
+    ):
+        """
+        Create 3D plot with convex hull surfaces for each group of points.
+        parameters:
+        - groups: dict
+            - keys: labels for each group (Only numeric labels are supported for now.)
+            - values: list of 3D points for each group
+        """
+        # Create a 3D plot
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection="3d")
+
+        np_labels = np.array(list(groups.keys()))
+        rgba_colors = Vizualizer.create_rgba_labels(np_labels, alpha=alpha)
+
+        # Plot the points
+        for rgba, (label, points) in zip(rgba_colors, groups.items()):
+            points = np.array(points)
+            colors = np.array([rgba for _ in range(len(points))])
+            ax.scatter(
+                points[:, 0],
+                points[:, 1],
+                points[:, 2],
+                c=colors,
+                s=1,
+                label=label,
+            )
+
+        # Plot the convex hull surfaces
+        if plot_hulls:
+            # Step 2: Fit Areas (Convex Hulls)
+            hulls = {}
+            for label, points in groups.items():
+                points = np.array(points)
+                if len(points) >= 4:  # Minimum 4 points needed to form a 3D convex hull
+                    hull = ConvexHull(points)
+                    hulls[label] = hull
+                else:
+                    print(f"Not enough points to form a convex hull for {label}")
+
+            for rgba, (label, hull) in zip(rgba_colors, hulls.items()):
+                vertices = hull.points[hull.vertices]
+                poly3d = []
+                for s in hull.simplices:
+                    available_vertices = []
+                    for v in s:
+                        if len(vertices) <= v:
+                            print(f"Vertex {v} not found in vertices")
+                            bad = True
+                        else:
+                            available_vertices.append(vertices[v])
+                    if np.array(available_vertices).shape[0] == 3:
+                        poly3d.append(np.array(available_vertices))
+
+                poly3d = np.array(poly3d)
+                ax.add_collection3d(
+                    Poly3DCollection(
+                        poly3d,
+                        facecolors=rgba,
+                        linewidths=0.01,
+                        edgecolors="r",
+                        alpha=0.1,
+                    )
+                )
+
+        ax.grid(False)
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+
+        ax.xaxis.pane.set_edgecolor("w")
+        ax.yaxis.pane.set_edgecolor("w")
+        ax.zaxis.pane.set_edgecolor("w")
+        # Set axis labels
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+
+        # Set plot title
+        ax.set_title("3D Plot with Convex Hull Surfaces")
+
+        # Add legend
+        if legend:
+            ax.legend()
+
+        Vizualizer.add_2d_colormap_legend(fig, move_right=0.9)
+
+        # Show the plot
+        plt.show()
 
     def plot_embedding_3d(
         embedding: Union[npt.NDArray, torch.Tensor],
@@ -443,51 +648,17 @@ class Vizualizer:
         """
         This function is based on the plot_embedding function from the cebra library.
         """
-        # define plot dimensions
-        if (idx_order is None and embedding.shape[1] >= 3) or (
-            idx_order is not None and len(idx_order) == 3
-        ):
-            _is_plot_3d = True
-        else:
-            raise ValueError(
-                f"Invalid embedding dimension, expects 2D or more, got {self.embedding.shape[1]}"
-            )
 
         # define the axis
         if axis is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
-            if _is_plot_3d:
-                ax = fig.add_subplot(projection="3d")
-            else:
-                ax = fig.add_subplot()
+            ax = fig.add_subplot(projection="3d")
         else:
             ax = axis
 
         # define idx order
         if idx_order is None:
-            if _is_plot_3d:
-                idx_order = (0, 1, 2)
-            else:
-                idx_order = (0, 1)
-        else:
-            # If the idx_order was provided by the user
-            ## Check size validity
-            if _is_plot_3d and len(idx_order) != 3:
-                raise ValueError(
-                    f"idx_order must contain 3 dimension values, got {len(idx_order)}."
-                )
-            elif not _is_plot_3d and len(idx_order) != 2:
-                raise ValueError(
-                    f"idx_order must contain 2 dimension values, got {len(idx_order)}."
-                )
-
-            # Check value validity
-            for dim in idx_order:
-                if dim < 0 or dim > embedding.shape[1] - 1:
-                    raise ValueError(
-                        f"List of dimensions to plot is invalid, got {idx_order}, with {dim} invalid."
-                        f"Values should be between 0 and {embedding.shape[1]}."
-                    )
+            idx_order = (0, 1, 2)
 
         # plot the embedding
         idx1, idx2, idx3 = idx_order
@@ -521,9 +692,9 @@ class Vizualizer:
 
         return ax
 
-    def add_2d_colormap_legend(fig, xticks=None, yticks=None):
+    def add_2d_colormap_legend(fig, move_right=1, xticks=None, yticks=None):
         # plt.subplots_adjust(left=0.1, right=0.65, top=0.85)
-        cax = fig.add_axes([1, 0.55, 0.3, 0.3])
+        cax = fig.add_axes([move_right, 0.55, 0.3, 0.3])
         cp1 = np.linspace(0, 1)
         cp2 = np.linspace(0, 1)
         Cp1, Cp2 = np.meshgrid(cp1, cp2)
@@ -594,11 +765,11 @@ class Vizualizer:
         for i, (subplot_title, embedding) in enumerate(embeddings.items()):
             ax = axes[i]
             ax = self.plot_embedding(
-                ax,
-                embedding,
-                labels,
-                subplot_title,
-                cmap,
+                ax=ax,
+                embedding=embedding,
+                embedding_labels=labels,
+                title=subplot_title,
+                cmap=cmap,
                 plot_legend=False,
                 markersize=markersize,
                 alpha=alpha,
@@ -627,7 +798,7 @@ class Vizualizer:
 
         self.plot_ending(title)
 
-    def create_rgba_labels(values, alpha=0):
+    def create_rgba_labels(values, alpha=0.8):
         """c : array-like or list of colors or color, optional
         The marker colors. Possible values:
 
@@ -655,7 +826,7 @@ class Vizualizer:
 
         cmap = lambda x, y: (x, 0.5, y, alpha)
         normalized_values = normalize_01(values, axis=0)
-
+        values = np.array(values)
         if values.ndim == 1:
             raise ValueError("1D values not supported yet.")
         elif values.ndim == 2:
@@ -903,7 +1074,7 @@ class Vizualizer:
             xlabel="Correlation Value",
             ylabel="Frequency",
         )
-        self.heatmap_subplot(correlation, "Correlation Heatmap", ax2, sort=sort)
+        Vizualizer.heatmap_subplot(correlation, "Correlation Heatmap", ax2, sort=sort)
         self.histogam_subplot(
             saliences,
             "Saliences",
@@ -1093,7 +1264,7 @@ class Vizualizer:
             ylabel="Frequency",
             color="tab:blue",
         )
-        self.heatmap_subplot(correlation1, title1, ax2, sort=sort)
+        Vizualizer.heatmap_subplot(correlation1, title1, ax2, sort=sort)
         self.histogam_subplot(
             correlation2,
             title2 + " Correlation",
@@ -1104,7 +1275,7 @@ class Vizualizer:
             ylabel="Frequency",
             color="tab:orange",
         )
-        self.heatmap_subplot(correlation2, title2, ax4, sort=sort)
+        Vizualizer.heatmap_subplot(correlation2, title2, ax4, sort=sort)
         self.plot_ending(title, save=True)
 
     def plot_ending(self, title, save=True):
@@ -1772,8 +1943,8 @@ class Vizualizer:
         if xticklabels == "empty":
             ax.set_xticklabels("")
 
+    @staticmethod
     def heatmap_subplot(
-        self,
         matrix,
         title,
         ax,
@@ -1781,6 +1952,12 @@ class Vizualizer:
         xlabel="Cell ID",
         ylabel="Cell ID",
         cmap="YlGnBu",
+        interpolation="none",
+        xticks=None,
+        xticks_positions=None,
+        yticks=None,
+        yticks_positions=None,
+        rotation=0,
     ):
         if sort:
             # Assuming correlations is your correlation matrix as a NumPy array
@@ -1793,4 +1970,65 @@ class Vizualizer:
         ax.set_title(title)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
-        sns.heatmap(matrix, annot=False, cmap=cmap, ax=ax)
+
+        if xticks is not None:
+            ax.set_xticklabels(xticks, rotation=rotation)
+            if xticks_positions is not None:
+                ax.set_xticks(xticks_positions)
+        if yticks is not None:
+            ax.set_yticklabels(yticks)
+            if yticks_positions is not None:
+                ax.set_yticks(yticks_positions)
+
+        cax = ax.imshow(matrix, cmap=cmap, interpolation=interpolation)
+        return cax
+
+    @staticmethod
+    def plot_heatmap(
+        data,
+        title="Heatmap",
+        figsize=(6, 5),
+        xlabel="Bin (x, y)",
+        ylabel="Bin (x, y)",
+        no_diag: bool = False,
+        xticks=None,
+        xticks_positions=None,
+        yticks=None,
+        yticks_positions=None,
+        rotation=45,
+        colorbar=True,
+        cmap="viridis",
+        save_path=None,
+        interpolation="none",
+        show=True,
+    ):
+        # Create figure and axis
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # Remove diagonal elements
+
+        data_no_diag = data - np.eye(data.shape[0]) if no_diag else data
+
+        # Plot heatmap
+        cax = Vizualizer.heatmap_subplot(
+            data_no_diag,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            xticks=xticks,
+            xticks_positions=xticks_positions,
+            yticks=yticks,
+            yticks_positions=yticks_positions,
+            rotation=rotation,
+            cmap=cmap,
+            ax=ax,
+            interpolation=interpolation,
+        )
+
+        if colorbar:
+            fig.colorbar(cax, ax=ax)
+
+        if save_path:
+            plt.savefig(save_path)
+        if show:
+            plt.show()
