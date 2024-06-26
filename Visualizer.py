@@ -792,7 +792,7 @@ class Vizualizer:
                 cbar.set_label(labels["name"])  # Set the label for the colorbar
             else:
                 Vizualizer.add_2d_colormap_legend(
-                    fig, xticks_2d_colormap, yticks_2d_colormap
+                    fig, xticks=xticks_2d_colormap, yticks=yticks_2d_colormap
                 )
 
         for ax in axes[num_subplots:]:

@@ -19,7 +19,7 @@ from sklearn.metrics import (
     rand_score,
     adjusted_rand_score,
 )
-from scipy.stats import wasserstein_distance, ks_2samp, entropy
+from scipy.stats import wasserstein_distance, ks_2samp, entropy, energy_distance
 from scipy.spatial.distance import cdist, mahalanobis
 from scipy.spatial import distance
 
@@ -441,12 +441,16 @@ def compare_distributions(dist1, dist2, metric="wasserstein"):
     Returns:
     - The computed distance between the two distributions.
     """
+    assert (
+        dist1.shape[1] == dist2.shape[1]
+    ), "Distributions must have the same number of dimensions"
+
     if metric == "wasserstein":
         distances = [
             wasserstein_distance(dist1[:, i], dist2[:, i])
             for i in range(dist1.shape[1])
         ]
-        return np.mean(distances)
+        return np.sum(distances)
 
     elif metric == "ks":
         # Calculate the Kolmogorov-Smirnov statistic for each dimension and take the maximum
@@ -459,7 +463,7 @@ def compare_distributions(dist1, dist2, metric="wasserstein"):
         # Chi-Squared test (requires binned data, here we just compare histograms)
         hist1, _ = np.histogram(dist1, bins=10, density=True)
         hist2, _ = np.histogram(dist2, bins=10, density=True)
-        return np.sum((hist1 - hist2) ** 2 / hist2)
+        return np.sum((hist1 - hist2) ** 2 / hist2 + 1e-10)
 
     elif metric == "kl":
         # Kullback-Leibler Divergence
@@ -479,20 +483,34 @@ def compare_distributions(dist1, dist2, metric="wasserstein"):
         )
 
     elif metric == "energy":
-        # Energy Distance only for 1D case
+        # Energy Distance
+        distances = [
+            energy_distance(dist1[:, i], dist2[:, i]) for i in range(dist1.shape[1])
+        ]
+        return np.mean(distances)
+
+    elif metric == "euclidean":
+        # Compute the pairwise distances between points
         dist1 = np.atleast_2d(dist1)
         dist2 = np.atleast_2d(dist2)
         d1 = cdist(dist1, dist1, "euclidean")
         d2 = cdist(dist2, dist2, "euclidean")
         d3 = cdist(dist1, dist2, "euclidean")
-        return 2 * np.mean(d3) - np.mean(d1) - np.mean(d2)
+        return np.abs(np.mean(d1) + np.mean(d2) - 2 * np.mean(d3))
 
     elif metric == "mahalanobis":
         # Mahalanobis Distance
-        cov = np.cov(np.vstack([dist1.T, dist2.T]), rowvar=False)
-        cov_inv = np.linalg.inv(cov)
-        mean_diff = np.mean(dist1, axis=0) - np.mean(dist2, axis=0)
-        return np.sqrt(np.dot(np.dot(mean_diff.T, cov_inv), mean_diff))
+        # Compute the covariance matrix for each distribution (can be estimated from data)
+        cov_matrix1 = np.cov(dist1, rowvar=False)
+        cov_matrix2 = np.cov(dist2, rowvar=False)
+        # Compute the inverse of the covariance matrices
+        cov_inv1 = np.linalg.inv(cov_matrix1)
+        cov_inv2 = np.linalg.inv(cov_matrix2)
+
+        # Compute the Mahalanobis distance between the means of the dists
+        mean1 = np.mean(dist1, axis=0)
+        mean2 = np.mean(dist2, axis=0)
+        return mahalanobis(mean1, mean2, cov_inv1 + cov_inv2)
 
     else:
         raise ValueError(f"Unsupported metric: {metric}")
