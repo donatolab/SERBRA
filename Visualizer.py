@@ -540,6 +540,7 @@ class Vizualizer:
         plot_hulls=False,
         alpha=0.8,
         legend=True,
+        title="3D Plot",
     ):
         """
         Create 3D plot with convex hull surfaces for each group of points.
@@ -570,7 +571,8 @@ class Vizualizer:
 
         # Plot the convex hull surfaces
         if plot_hulls:
-            # Step 2: Fit Areas (Convex Hulls)
+            title += " with Convex Hulls"
+
             hulls = {}
             for label, points in groups.items():
                 points = np.array(points)
@@ -619,7 +621,7 @@ class Vizualizer:
         ax.set_zlabel("Z")
 
         # Set plot title
-        ax.set_title("3D Plot with Convex Hull Surfaces")
+        ax.set_title(title)
 
         # Add legend
         if legend:

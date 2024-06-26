@@ -10,6 +10,18 @@ from typing import List, Union, Dict, Any, Tuple, Optional
 import numpy as np
 from scipy.signal import butter, filtfilt  # , lfilter, freqz
 import sklearn
+from sklearn.metrics import (
+    mutual_info_score,
+    normalized_mutual_info_score,
+    adjusted_mutual_info_score,
+    v_measure_score,
+    fowlkes_mallows_score,
+    rand_score,
+    adjusted_rand_score,
+)
+from scipy.stats import wasserstein_distance, ks_2samp, entropy
+from scipy.spatial.distance import cdist, mahalanobis
+from scipy.spatial import distance
 
 # import cupy as cp  # numpy using CUDA for faster computation
 import yaml
@@ -352,6 +364,140 @@ def cosine_similarity(v1, v2):
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
 
+def compute_mutual_information(
+    true_labels: List[int], predicted_labels: List[int], metric="adjusted"
+):
+    """
+    Mutual Information is a measure of the similarity between two labels of the same data.
+    This metric is independent of the absolute values of the labels: a permutation of the class or
+    cluster label values won’t change the score value in any way.
+    Also note that the metric is not symmetric: switching true and predicted labels will return the same score value.
+
+    parameters:
+        true_labels: List[int] - true labels of the data
+        predicted_labels: List[int] - predicted labels of the data
+        metric: str - metric to use for the computation. Options: "mutual", "normalized", "adjusted"
+            - "mutual": Mutual Information: Mutual Information (MI) is a measure of the similarity between two labels of the same data.
+
+            - "normalized": Normalized Mutual Information: Normalized Mutual Information (NMI) is a normalization of the Mutual Information (MI)
+            score to scale the results between 0 (no mutual information) and 1 (perfect correlation)
+
+            - "adjusted": Adjusted Mutual Information: Adjusted Mutual Information is an adjustment of the Normalized Mutual Information (NMI)
+            score to account for chance. -1 <= AMI <= 1.0 (1.0 is the perfect match, 0 is the random match, and -1 is the worst match)
+
+            - "v": V-measure: The V-measure is the harmonic mean between homogeneity and completeness: v = (1 + beta) * homogeneity * completeness / (beta * homogeneity + completeness).
+
+            - "fmi": Fowlkes-Mallows Index: The Fowlkes-Mallows index (FMI) is defined as the geometric mean between precision and recall: FMI = sqrt(precision * recall).
+
+            - "rand": Rand Index: The Rand Index computes a similarity measure between two clusterings by considering all pairs of samples and counting pairs that are assigned in the same or different clusters in the predicted and true clusterings.
+
+            - "adjrand": Adjusted Rand Index: The Adjusted Rand Index is the corrected-for-chance version of the Rand Index.
+
+    returns:
+        mi: float - mutual information score
+    """
+    if metric == "mutual":
+        mi = mutual_info_score(true_labels.flatten(), predicted_labels.flatten())
+    elif metric == "normalized":
+        mi = normalized_mutual_info_score(
+            true_labels.flatten(), predicted_labels.flatten()
+        )
+    elif metric == "ami":
+        mi = adjusted_mutual_info_score(
+            true_labels.flatten(), predicted_labels.flatten()
+        )
+    elif metric == "v":
+        mi = v_measure_score(true_labels.flatten(), predicted_labels.flatten())
+    elif metric == "fmi":
+        # particularly useful for evaluating clustering algorithms where the pairwise clustering structure is important. It provides a balanced view by taking into account both precision and recall.
+        mi = fowlkes_mallows_score(true_labels.flatten(), predicted_labels.flatten())
+    elif metric == "rand":
+        mi = rand_score(true_labels.flatten(), predicted_labels.flatten())
+    elif metric == "adjrand":
+        mi = adjusted_rand_score(true_labels.flatten(), predicted_labels.flatten())
+    else:
+        raise ValueError(
+            f"Metric {metric} is not supported. Use 'mutual', 'normalized', or 'adjusted'."
+        )
+    return mi
+
+
+def compare_distributions(dist1, dist2, metric="wasserstein"):
+    """
+    Compare two distributions using the specified metric.
+
+    Parameters:
+    - dist1: array-like, first distribution
+    - dist2: array-like, second distribution
+    - metric: str, the metric to use for comparison ('wasserstein', 'ks', 'chi2', 'kl', 'js', 'energy', 'mahalanobis')
+        - 'wasserstein': Wasserstein Distance (Earth Mover's Distance) energy needed to move one distribution to the other
+        - 'ks': Kolmogorov-Smirnov statistic for each dimension and take the maximum (typically used for 1D distributions)
+        - 'chi2': Chi-Squared test (requires binned data, here we just compare histograms) - sum of squared differences between observed and expected frequencies
+        - 'kl': Kullback-Leibler Divergence - measure of how one probability distribution diverges from a second, expected probability distribution
+        - 'js': Jensen-Shannon Divergence - measure of similarity between two probability distributions
+        - 'energy': Energy Distance - measure of the distance between two probability distributions (typically used for 1D distributions)
+        - 'mahalanobis': Mahalanobis Distance - measure of the distance between two probability distributions
+
+    Returns:
+    - The computed distance between the two distributions.
+    """
+    if metric == "wasserstein":
+        distances = [
+            wasserstein_distance(dist1[:, i], dist2[:, i])
+            for i in range(dist1.shape[1])
+        ]
+        return np.mean(distances)
+
+    elif metric == "ks":
+        # Calculate the Kolmogorov-Smirnov statistic for each dimension and take the maximum
+        ks_statistics = [
+            ks_2samp(dist1[:, i], dist2[:, i]).statistic for i in range(dist1.shape[1])
+        ]
+        return np.max(ks_statistics)
+
+    elif metric == "chi2":
+        # Chi-Squared test (requires binned data, here we just compare histograms)
+        hist1, _ = np.histogram(dist1, bins=10, density=True)
+        hist2, _ = np.histogram(dist2, bins=10, density=True)
+        return np.sum((hist1 - hist2) ** 2 / hist2)
+
+    elif metric == "kl":
+        # Kullback-Leibler Divergence
+        hist1, _ = np.histogram(dist1, bins=10, density=True)
+        hist2, _ = np.histogram(dist2, bins=10, density=True)
+        return entropy(
+            hist1 + 1e-10, hist2 + 1e-10
+        )  # Adding a small value to avoid division by zero
+
+    elif metric == "js":
+        # Jensen-Shannon Divergence
+        hist1, _ = np.histogram(dist1, bins=10, density=True)
+        hist2, _ = np.histogram(dist2, bins=10, density=True)
+        m = 0.5 * (hist1 + hist2)
+        return 0.5 * (
+            entropy(hist1 + 1e-10, m + 1e-10) + entropy(hist2 + 1e-10, m + 1e-10)
+        )
+
+    elif metric == "energy":
+        # Energy Distance only for 1D case
+        dist1 = np.atleast_2d(dist1)
+        dist2 = np.atleast_2d(dist2)
+        d1 = cdist(dist1, dist1, "euclidean")
+        d2 = cdist(dist2, dist2, "euclidean")
+        d3 = cdist(dist1, dist2, "euclidean")
+        return 2 * np.mean(d3) - np.mean(d1) - np.mean(d2)
+
+    elif metric == "mahalanobis":
+        # Mahalanobis Distance
+        cov = np.cov(np.vstack([dist1.T, dist2.T]), rowvar=False)
+        cov_inv = np.linalg.inv(cov)
+        mean_diff = np.mean(dist1, axis=0) - np.mean(dist2, axis=0)
+        return np.sqrt(np.dot(np.dot(mean_diff.T, cov_inv), mean_diff))
+
+    else:
+        raise ValueError(f"Unsupported metric: {metric}")
+
+
 def correlate_vectors(vectors: np.ndarray, method="pearson"):
     """
     Matrix Multiplikation is used to calculate the correlation matrix.
@@ -375,8 +521,8 @@ def correlate_vectors(vectors: np.ndarray, method="pearson"):
     if method == "pearson":
         correlation_matrix = np.corrcoef(vectors)
     elif method == "cosine":
-        #normalized_vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
-        #correlation_matrix = normalized_vectors @ normalized_vectors.T
+        # normalized_vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+        # correlation_matrix = normalized_vectors @ normalized_vectors.T
         correlation_matrix = sklearn.metrics.pairwise.cosine_similarity(vectors)
     else:
         raise ValueError("Method must be 'pearson' or 'cosine'.")
