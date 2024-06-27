@@ -526,7 +526,7 @@ class Femtonics(NeuralSetup):
 
             # Search for multi file dataset if no unique file is found
             if not data_path.exists():
-                allowed_symbols = "\-A-Za-z_0-9()"
+                allowed_symbols = "\-A-Za-z_0-9 ()"
                 animal_id, date, task_name = self.identifier.values()
                 regex_search = f"{animal_id}_{date}[{allowed_symbols}]*{task_name}[{allowed_symbols}]*"
                 data_paths = get_files(
@@ -1080,16 +1080,14 @@ class Cam(Behavior_Preprocessing):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.root_dir_name = "TR-BSL"
         self.root_dir = self.root_dir.parent.joinpath(self.root_dir_name)
-        self.data_dir = self.root_dir.parent.joinpath(
-            f"TRD-{self.method}"
-        )  # TODO: probaly not TRD- folder
+        self.data_dir = self.root_dir
 
         self.raw_data_naming_scheme = "camdata.npy"
-        # "{animal_id}_{date}_{task_name}[-A-Za-z_0-9()]*_locs.npy"
+        # "{animal_id}_{date}_{task_name}[-A-Za-z_0-9 ()]*_locs.npy"
         self.data_naming_scheme = (
             "{animal_id}_{date}_"
             + f"{self.root_dir_name}"
-            + "_{task_name}[-A-Za-z_0-9()]*_locs.npy"
+            + "_{task_name}[-A-Za-z_0-9 ()]*_locs.npy"
         )
 
         self.outputs = {
@@ -1488,7 +1486,9 @@ class Environment(Behavior_Processing):
             # detect corners
             # detect circular spaces (open)
         else:
-            print("Not able to generate environmental shapes. Data should be 2D for this function.")
+            print(
+                "Not able to generate environmental shapes. Data should be 2D for this function."
+            )
         return in_shape_at_frame
 
     def process_data(
@@ -1565,7 +1565,9 @@ class CaBinCorr(Neural_Processing):
         self.data_dir = self.root_dir
 
         self.raw_data_naming_scheme = "F.npy"
-        self.data_naming_scheme = "[A-Za-z0-9()_-]*binarized_traces[A-Za-z0-9()_-]*.npz"
+        self.data_naming_scheme = (
+            "[A-Za-z0-9 ()_-]*binarized_traces[A-Za-z0-9 ()_-]*.npz"
+        )
         self.outputs = {
             self.data_dir: [self.data_naming_scheme, self.data_naming_scheme]
         }

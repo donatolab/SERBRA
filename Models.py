@@ -28,11 +28,13 @@ class Models:
         if not model_settings:
             model_settings = kwargs
         # TODO: catch possible error if model_settings is not a dict
-        place_cell_settings = model_settings["place_cell"] if "place_cell" in model_settings else None
-        cebra_cell_settings = model_settings["cebra"] if "cebra" in model_settings else None
-        self.place_cell = PlaceCellDetectors(
-            model_dir, model_id, place_cell_settings
+        place_cell_settings = (
+            model_settings["place_cell"] if "place_cell" in model_settings else None
         )
+        cebra_cell_settings = (
+            model_settings["cebra"] if "cebra" in model_settings else None
+        )
+        self.place_cell = PlaceCellDetectors(model_dir, model_id, place_cell_settings)
         self.cebras = Cebras(model_dir, model_id, cebra_cell_settings)
 
     def train(self):
@@ -647,13 +649,13 @@ class Cebras(ModelsWrapper, Model):
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
         super().__init__(model_dir, model_settings, **kwargs)
         Model.__init__(self, model_dir, model_id, model_settings, **kwargs)
-        self.time_model = self.time()
-        self.behavior_model = self.behavior()
-        self.hybrid_model = self.hybrid()
+        # self.time_model = self.time()
+        # self.behavior_model = self.behavior()
+        # self.hybrid_model = self.hybrid()
 
     def define_parameter_save_path(self, model):
         save_path = self.model_dir.joinpath(
-            f"cebra_{model.name}_iter-{model.max_iterations}_dim-{model.output_dimension}_model-{self.model_id}.pt"
+            f"cebra_{model.name}_dim-{model.output_dimension}_model-{self.model_id}.pt"
         )
         return save_path
 
@@ -692,6 +694,7 @@ class Cebras(ModelsWrapper, Model):
             fitted_model = CEBRA.load(fitted_model_path)
             if fitted_model.get_params() == model.get_params():
                 fitted_full_model = define_cls_attributes(fitted_model, model.__dict__)
+                fitted_full_model.name = model.name
                 model = fitted_full_model
                 global_logger.info(f"Loaded matching model {fitted_model_path}")
                 print(f"Loaded matching model {fitted_model_path}")
@@ -747,22 +750,42 @@ def decode(
 ):
     # TODO: Improve decoder
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
-    decoder = cebra.KNNDecoder(n_neighbors=n_neighbors, metric=metric)
+    knn = cebra.KNNDecoder(n_neighbors=n_neighbors, metric=metric)
+    if is_floating(label_train):
+        knn = sklearn.neighbors.KNeighborsRegressor(
+            n_neighbors=n_neighbors, metric=metric
+        )
+    elif is_integer(label_train):
+        knn = sklearn.neighbors.KNeighborsClassifier(
+            n_neighbors=n_neighbors, metric=metric
+        )
+    else:
+        raise NotImplementedError(
+            f"Invalid tlabel_trainpe: targets must be either floats or integers, got label_train:{label_train.dtype}."
+        )
     label_train = Dataset.force_2d(label_train)
     # label_train = force_1_dim_larger(label_train)
-
     label_test = Dataset.force_2d(label_test)
     # label_test = force_1_dim_larger(label_test)
 
-    embedding_train, label_train = Datasets.force_equal_dimensions(
-        embedding_train, label_train
-    )
+    embedding_train, label_train = force_equal_dimensions(embedding_train, label_train)
 
-    decoder.fit(embedding_train, label_train[:, 0])
+    knn.fit(embedding_train, label_train)
 
-    pred = decoder.predict(embedding_test)
+    # Predict the targets for data ``X``
+    labels_pred = knn.predict(embedding_test)
 
-    prediction = np.stack([pred], axis=1)
+    from sklearn.metrics import accuracy_score, classification_report
+
+    # Calculate accuracy
+    accuracy = accuracy_score(label_test, labels_pred)
+    print(f"Accuracy: {accuracy}")
+
+    # Print a detailed classification report
+    print("Classification Report:")
+    print(classification_report(label_test, labels_pred))
+
+    prediction = labels_pred  # np.stack(pred, axis=1)
 
     test_score = 0  # sklearn.metrics.r2_score(label_test, prediction)
     # test_score = sklearn.metrics.r2_score(label_test[:,:2], prediction)
@@ -771,6 +794,6 @@ def decode(
     ########################################################
     pos_test_err = np.mean(abs(prediction - label_test))
     ########################################################
-    pos_test_score = sklearn.metrics.r2_score(label_test[:, 0], prediction[:, 0])
+    pos_test_score = sklearn.metrics.r2_score(label_test, prediction)
 
     return test_score, pos_test_err, pos_test_score

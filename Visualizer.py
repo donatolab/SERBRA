@@ -376,67 +376,35 @@ class Vizualizer:
         embedding, labels = force_equal_dimensions(
             embedding, embedding_labels["labels"]
         )
-        if labels.ndim == 1:
-            ax = cebra.plot_embedding(
-                ax=ax,
+        if embedding.shape[1] == 2:
+            ax = Vizualizer.plot_embedding_2d(
+                axis=ax,
                 embedding=embedding,
                 embedding_labels=labels,
                 markersize=markersize,
                 alpha=alpha,
-                dpi=dpi,
+                cmap=cmap,
                 title=title,
                 figsize=figsize,
-                cmap=cmap,
+                dpi=dpi,
+                plot_legend=plot_legend,
             )
-            if plot_legend:
-                # Create a ScalarMappable object using the specified colormap
-                sm = plt.cm.ScalarMappable(cmap=cmap)
-                unique_labels = np.unique(labels)
-                unique_labels.sort()
-                sm.set_array(unique_labels)  # Set the range of values for the colorbar
-
-                # Manually create colorbar
-                cbar = plt.colorbar(sm, ax=ax)
-                # Adjust colorbar ticks if specified
-                cbar.set_label(
-                    embedding_labels["name"]
-                )  # Set the label for the colorbar
-
-                if colorbar_ticks:
-                    cbar.ax.yaxis.set_major_locator(
-                        MaxNLocator(integer=True)
-                    )  # Adjust ticks to integers
-                    cbar.set_ticks(colorbar_ticks)  # Set custom ticks
-        elif labels.ndim == 2:
-            if embedding.shape[1] == 2:
-                ax = Vizualizer.plot_embedding_2d(
-                    axis=ax,
-                    embedding=embedding,
-                    embedding_labels=labels,
-                    markersize=markersize,
-                    alpha=alpha,
-                    cmap=cmap,
-                    title=title,
-                    figsize=figsize,
-                    dpi=dpi,
-                    plot_legend=plot_legend,
-                )
-            else:
-                ax = Vizualizer.plot_embedding_3d(
-                    axis=ax,
-                    embedding=embedding,
-                    embedding_labels=labels,
-                    markersize=markersize,
-                    alpha=alpha,
-                    cmap=cmap,
-                    title=title,
-                    figsize=figsize,
-                    dpi=dpi,
-                    plot_legend=plot_legend,
-                )
+        elif embedding.shape[1] == 3:
+            ax = Vizualizer.plot_embedding_3d(
+                axis=ax,
+                embedding=embedding,
+                embedding_labels=labels,
+                markersize=markersize,
+                alpha=alpha,
+                cmap=cmap,
+                title=title,
+                figsize=figsize,
+                dpi=dpi,
+                plot_legend=plot_legend,
+            )
         else:
             raise NotImplementedError(
-                "Invalid labels dimension. Choose 1D or 2D labels."
+                "Invalid labels dimension. Choose 2D or 3D labels."
             )
         return ax
 
@@ -458,42 +426,23 @@ class Vizualizer:
         """
         This function is based on the plot_embedding function from the cebra library.
         """
-        # define plot dimensions
-        if (idx_order is None and embedding.shape[1] >= 2) or (
-            idx_order is not None and len(idx_order) == 2
-        ):
-            _is_plot_2d = True
-        else:
-            raise ValueError(
-                f"Invalid embedding dimension, expects 2D or more, got {embedding.shape[1]}"
-            )
-
         # define the axis
         if axis is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
-            if _is_plot_2d:
-                ax = fig.add_subplot()
-            else:
-                ax = fig.add_subplot(projection="3d")
+            ax = fig.add_subplot()
         else:
             ax = axis
 
         # define idx order
         if idx_order is None:
-            if _is_plot_2d:
-                idx_order = (0, 1)
-            else:
-                idx_order = (0, 1, 2)
+            idx_order = (0, 1)
+
         else:
             # If the idx_order was provided by the user
             ## Check size validity
-            if _is_plot_2d and len(idx_order) != 2:
+            if len(idx_order) != 2:
                 raise ValueError(
                     f"idx_order must contain 2 dimension values, got {len(idx_order)}."
-                )
-            elif not _is_plot_2d and len(idx_order) != 3:
-                raise ValueError(
-                    f"idx_order must contain 3 dimension values, got {len(idx_order)}."
                 )
 
             # Check value validity
@@ -531,7 +480,7 @@ class Vizualizer:
             ax.yaxis.pane.set_edgecolor("grey")
 
         if plot_legend:
-            Vizualizer.add_2d_colormap_legend(fig)
+            Vizualizer.add_2d_colormap_legend(fig, move_right=1)
 
         return ax
 
@@ -682,7 +631,7 @@ class Vizualizer:
         ax.xaxis.pane.set_edgecolor("w")
         ax.yaxis.pane.set_edgecolor("w")
         ax.zaxis.pane.set_edgecolor("w")
-        ax.set_title(title, y=1.0, pad=-10)
+        ax.set_title(title, y=1.08, pad=-10)
 
         if grey_fig:
             ax.xaxis.pane.set_edgecolor("grey")
@@ -690,11 +639,39 @@ class Vizualizer:
             ax.zaxis.pane.set_edgecolor("grey")
 
         if plot_legend:
-            Vizualizer.add_2d_colormap_legend(fig)
+            if embedding_labels.ndim == 1:
+                Vizualizer.add_1d_colormap_legend(
+                    ax, embedding_labels, label_name="labels", ticks=None, cmap=cmap
+                )
+            elif embedding_labels.ndim == 2:
+                Vizualizer.add_2d_colormap_legend(fig)
+            else:
+                raise ValueError("Invalid labels dimension. Choose 2D or 3D labels.")
 
         return ax
 
-    def add_2d_colormap_legend(fig, move_right=1, xticks=None, yticks=None):
+    def add_1d_colormap_legend(
+        ax, labels, label_name="labels", ticks=None, cmap="rainbow"
+    ):
+        # Create a ScalarMappable object using the specified colormap
+        sm = plt.cm.ScalarMappable(cmap=cmap)
+        unique_labels = np.unique(labels)
+        unique_labels.sort()
+        sm.set_array(unique_labels)  # Set the range of values for the colorbar
+
+        # Manually create colorbar
+        cbar = plt.colorbar(sm, ax=ax)
+        # Adjust colorbar ticks if specified
+        cbar.set_label(label_name)  # Set the label for the colorbar
+        if ticks is not None:
+            cbar.ax.yaxis.set_major_locator(
+                MaxNLocator(integer=True)
+            )  # Adjust ticks to integers
+            cbar.set_ticks(ticks)  # Set custom ticks
+
+    def add_2d_colormap_legend(
+        fig, move_right=1, xticks=None, yticks=None, additional_title=""
+    ):
         # plt.subplots_adjust(left=0.1, right=0.65, top=0.85)
         cax = fig.add_axes([move_right, 0.55, 0.3, 0.3])
         cp1 = np.linspace(0, 1)
@@ -711,13 +688,14 @@ class Vizualizer:
             xticks = []
         if yticks is None:
             yticks = []
+        title = f"2D colormap - {additional_title}"
         cax.set_xticks(xticks)
         cax.set_yticks(yticks)
         xlabels = [f"{x:.1f}" for x in xticks]
         ylabels = [f"{y:.1f}" for y in yticks]
         cax.set_xticklabels(xlabels, rotation=45, ha="right")
         cax.set_yticklabels(ylabels)
-        cax.set_title("2D colormap", fontsize=10)
+        cax.set_title(title, fontsize=10)
 
     def plot_multiple_embeddings(
         self,
@@ -780,19 +758,16 @@ class Vizualizer:
 
         if plot_legend:
             if labels["labels"].ndim == 1:
-                # Create a ScalarMappable object using the specified colormap
-                sm = plt.cm.ScalarMappable(cmap=cmap)
-                unique_labels = np.unique(labels["labels"])
-                unique_labels.sort()
-                sm.set_array(unique_labels)  # Set the range of values for the colorbar
-
-                # Manually create colorbar
-                cbar = plt.colorbar(sm, ax=axes[cols - 1])
-                # Adjust colorbar ticks if specified
-                cbar.set_label(labels["name"])  # Set the label for the colorbar
+                Vizualizer.add_1d_colormap_legend(
+                    ax, labels["labels"], label_name="labels", ticks=None, cmap=cmap
+                )
             else:
                 Vizualizer.add_2d_colormap_legend(
-                    fig, xticks=xticks_2d_colormap, yticks=yticks_2d_colormap
+                    fig,
+                    move_right=0.95,
+                    xticks=xticks_2d_colormap,
+                    yticks=yticks_2d_colormap,
+                    additional_title=labels["name"],
                 )
 
         for ax in axes[num_subplots:]:
@@ -1280,8 +1255,8 @@ class Vizualizer:
         Vizualizer.heatmap_subplot(correlation2, title2, ax4, sort=sort)
         self.plot_ending(title, save=True)
 
-    def plot_ending(self, title, save=True):
-        plt.suptitle(title)
+    def plot_ending(self, title, title_size=20, save=True):
+        plt.suptitle(title, fontsize=title_size)
         plt.tight_layout()  # Ensure subplots fit within figure area
         plot_save_path = (
             str(self.save_dir.joinpath(title + ".png"))
@@ -1950,6 +1925,7 @@ class Vizualizer:
         matrix,
         title,
         ax,
+        title_size=10,
         sort=False,
         xlabel="Cell ID",
         ylabel="Cell ID",
@@ -1969,7 +1945,7 @@ class Vizualizer:
             matrix = correlations_df.sort_values(by=0, axis=1, ascending=False)
 
         # Creating a heatmap with sort correlations
-        ax.set_title(title)
+        ax.set_title(title, fontsize=title_size)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
 
@@ -2034,3 +2010,160 @@ class Vizualizer:
             plt.savefig(save_path)
         if show:
             plt.show()
+
+    @staticmethod
+    def plot_group_distr_similarities(
+        similarities: dict,  # {metric: {group_name: np.array}}
+        bins,
+        skip=[],
+        figsize=(4, 3),
+        tick_steps=3,
+        additional_title="",
+        colorbar=False,
+        cmap="GnBu",
+    ):
+        ticks = [f"{x}, {y}" for x, y in bins]
+        tick_positions = np.arange(len(bins))
+        max_bins = np.max(bins, axis=0) + 1
+
+        for name, group_similarities in similarities.items():
+            if name in skip:
+                continue
+            # plot with all groups of a distance metric into a single plot with multiple heatmaps
+            title = f"{str(name).capitalize()} Distances{additional_title}"
+            if name == "cosine":
+                title = title.replace("Distances", "Similarities")
+            supxlabel = "Positional Bin X"
+            supylabel = "Positional Bin Y"
+            fig, axes = plt.subplots(
+                max_bins[0],
+                max_bins[1],
+                figsize=(max_bins[0] * figsize[0], max_bins[1] * figsize[1]),
+            )
+            fig.suptitle(title, fontsize=max_bins[0] * max_bins[1] / 2, y=1.01)
+            fig.tight_layout()
+
+            fig.supxlabel(
+                supxlabel, fontsize=max_bins[0] * max_bins[1] / 2, x=0.5, y=-0.03
+            )
+            fig.align_xlabels()
+            fig.supylabel(
+                supylabel, fontsize=max_bins[0] * max_bins[1] / 2, x=-0.02, y=0.5
+            )
+
+            for group_name, dists in group_similarities.items():
+                if name == "cosine":
+                    dists *= -1
+                i, j = group_name
+                # ax = axes[max_bins[1]-1-j, max_bins[0]-1-i]
+                subplot_xticks = []
+                subplot_xticks_positions = []
+                subplot_yticks = []
+                subplot_yticks_positions = []
+                ax = axes[i, j]
+                if i == max_bins[0] - 1:
+                    subplot_xticks = ticks[::tick_steps]
+                    subplot_xticks_positions = tick_positions[::tick_steps]
+                if j == 0:
+                    subplot_yticks = ticks[::tick_steps]
+                    subplot_yticks_positions = tick_positions[::tick_steps]
+
+                cax = Vizualizer.heatmap_subplot(
+                    dists,
+                    title=f"{group_name}",
+                    title_size=max_bins[0] * 1.7,
+                    xlabel="",
+                    ylabel="",
+                    xticks=subplot_xticks,
+                    xticks_positions=subplot_xticks_positions,
+                    yticks=subplot_yticks[::tick_steps],
+                    yticks_positions=subplot_yticks_positions[::tick_steps],
+                    ax=ax,
+                    cmap=cmap,
+                    interpolation="none",
+                )
+
+                if colorbar:
+                    fig.colorbar(cax, ax=ax)
+            plt.show()
+
+    @staticmethod
+    def plot_decoding_results(
+        decoder_results: List[float],
+        
+    ):
+        decoded_lists = [[decoder_results]]
+        labels = [["All Cells"]]
+        labels_flattened = ["All Cells"]
+        for scoring_type_reverse, decoded_test_sets in decoded_test_datasets_reverse.items():
+            decoded_lists.append([])
+            labels.append([])
+            for percentage, decoded_test_set in decoded_test_sets.items():
+                decoded_lists[-1].append(decoded_test_set)
+                label = f"{scoring_type_reverse} - {percentage}% cells"
+                labels[-1].append(label)
+                labels_flattened.append(label)
+        print(labels)
+
+        #viz = Vizualizer(root_dir=root_dir)
+        #TODO: Is this working????????
+
+        # viz.plot_decoding_score(decoded_model_lists=decoded_model_lists, labels=labels, figsize=(13, 5))
+        fig = plt.figure(figsize=(13, 5))
+        fig.suptitle(f"{task.id} lowest % cells fro Behavioral Decoding of stimulus", fontsize=16)
+        colors=["green", "red", "deepskyblue"]
+        ax1 = plt.subplot(111)
+        #ax2 = plt.subplot(211)
+
+        overall_num = 0
+        for color, docoded_model_list, labels_list in zip(colors, decoded_lists, labels):
+            for num, (decoded, label) in enumerate(zip(docoded_model_list, labels_list)):
+                #color = "deepskyblue" if "A\'" == "".join(label[:2]) else "red" if "B" == label[0] else "green"
+                alpha = 1 - ((1 / len(docoded_model_list)) * num / 1.3)
+                x_pos = overall_num + num
+                width = 0.4  # Width of the bars
+                ax1.bar(
+                    #x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
+                    x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
+                )
+                #ax2.bar(
+                    #x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
+                    #x_pos, decoded[2], width=0.4, color=color, alpha=alpha, label = label
+                #)
+                ##ax2.scatter(
+                #    middle_A_model.state_dict_["loss"][-1],
+                #    decoded[1],
+                #    s=50,
+                #    c=color,
+                #    alpha=alpha,
+                #    label=label,
+                #)
+            overall_num = x_pos + 1
+
+        ylabel = "Mean stimulus error"
+
+        ax1.spines["top"].set_visible(False)
+        ax1.spines["right"].set_visible(False)
+        ax1.set_ylabel(ylabel)
+        ax1.grid(axis="y", alpha=0.2)
+        print_labels = labels_flattened
+        label_pos = np.arange(len(labels_flattened))
+        ax1.set_xticks(label_pos)
+        #ax1.set_ylim([0, 1])
+        ax1.set_xticklabels(print_labels, rotation=45, ha="right")
+
+
+        ylabel = "mean stimulus in cm"
+
+        #ax2.spines["top"].set_visible(False)
+        #ax2.spines["right"].set_visible(False)
+        #ax2.set_ylabel(ylabel)
+        #ax2.grid(axis="y", alpha=0.5)
+        #print_labels = labels_flattened
+        #label_pos = np.arange(len(labels_flattened))
+        #ax2.set_xticks(label_pos)
+        ##ax2.set_ylim([0, 130])
+        #ax2.set_xticklabels(print_labels, rotation=45, ha="right")
+
+        #plt.legend()
+        plt.show()

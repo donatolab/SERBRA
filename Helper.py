@@ -437,6 +437,7 @@ def compare_distributions(dist1, dist2, metric="wasserstein"):
         - 'js': Jensen-Shannon Divergence - measure of similarity between two probability distributions
         - 'energy': Energy Distance - measure of the distance between two probability distributions (typically used for 1D distributions)
         - 'mahalanobis': Mahalanobis Distance - measure of the distance between two probability distributions
+        - "cosine": Cosine Similarity only for mean vector of distribution- measure of the cosine of the angle between two non-zero vectors. This metric is equivalent to the Pearson correlation coefficient for normalized vectors.
 
     Returns:
     - The computed distance between the two distributions.
@@ -452,7 +453,7 @@ def compare_distributions(dist1, dist2, metric="wasserstein"):
         ]
         return np.sum(distances)
 
-    elif metric == "ks":
+    elif metric == "kolmogorov-smirnov":
         # Calculate the Kolmogorov-Smirnov statistic for each dimension and take the maximum
         ks_statistics = [
             ks_2samp(dist1[:, i], dist2[:, i]).statistic for i in range(dist1.shape[1])
@@ -465,7 +466,7 @@ def compare_distributions(dist1, dist2, metric="wasserstein"):
         hist2, _ = np.histogram(dist2, bins=10, density=True)
         return np.sum((hist1 - hist2) ** 2 / hist2 + 1e-10)
 
-    elif metric == "kl":
+    elif metric == "kullback-leibler":
         # Kullback-Leibler Divergence
         hist1, _ = np.histogram(dist1, bins=10, density=True)
         hist2, _ = np.histogram(dist2, bins=10, density=True)
@@ -473,7 +474,7 @@ def compare_distributions(dist1, dist2, metric="wasserstein"):
             hist1 + 1e-10, hist2 + 1e-10
         )  # Adding a small value to avoid division by zero
 
-    elif metric == "js":
+    elif metric == "jensen-shannon":
         # Jensen-Shannon Divergence
         hist1, _ = np.histogram(dist1, bins=10, density=True)
         hist2, _ = np.histogram(dist2, bins=10, density=True)
@@ -511,6 +512,12 @@ def compare_distributions(dist1, dist2, metric="wasserstein"):
         mean1 = np.mean(dist1, axis=0)
         mean2 = np.mean(dist2, axis=0)
         return mahalanobis(mean1, mean2, cov_inv1 + cov_inv2)
+
+    elif metric == "cosine":
+        # Cosine Similarity
+        mean1 = np.mean(dist1, axis=0)
+        mean2 = np.mean(dist2, axis=0)
+        return cosine_similarity(mean1, mean2)
 
     else:
         raise ValueError(f"Unsupported metric: {metric}")
@@ -644,6 +651,12 @@ def check_correct_metadata(string_or_list, name_parts):
 
 
 # array
+def is_integer(array: np.ndarray) -> bool:
+    return np.issubdtype(array.dtype, np.integer)
+
+def is_floating(array: np.ndarray) -> bool:
+    return np.issubdtype(array.dtype, np.floating)
+
 def force_1_dim_larger(data: np.ndarray):
     if len(data.shape) == 1 or data.shape[0] < data.shape[1]:
         global_logger.warning(
@@ -864,6 +877,12 @@ def sort_dict(dictionary):
 
 
 def load_yaml(path, mode="r"):
+    if not Path(path).exists():
+        # check for .yml file
+        if Path(path).with_suffix(".yml").exists():
+            path = Path(path).with_suffix(".yml")
+        else:
+            raise FileNotFoundError(f"No yaml file found: {path}")
     with open(path, mode) as file:
         dictionary = yaml.safe_load(file)
     return dictionary

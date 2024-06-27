@@ -155,7 +155,7 @@ class Animal:
         if not model_settings:
             model_settings = kwargs if len(kwargs) > 0 else self.model_settings
         # Search for Sessions
-        sessions_root_path = self.root_dir.joinpath(self.animal_id)
+        sessions_root_path = self.root_dir.joinpath(self.id)
         present_session_dates = get_directories(
             sessions_root_path, regex_search="202[A-Za-z0-9-_]*"
         )
@@ -260,9 +260,9 @@ class Session:
         if behavior_datas:
             self.add_all_tasks(model_settings=self.model_settings, **kwargs)
             self.load_all_data(
-                behavior_datas=behavior_datas, 
+                behavior_datas=behavior_datas,
                 regenerate=regenerate,
-                regenerate_plots=regenerate_plots
+                regenerate_plots=regenerate_plots,
             )
 
     def load_metadata(self, yaml_path=None, name_parts=None):
@@ -311,13 +311,15 @@ class Session:
             self.add_task(task, metadata=metadata, model_settings=model_settings)
         return self.tasks[task]
 
-    def load_all_data(self, behavior_datas=["position"], regenerate=False, regenerate_plots=False):
+    def load_all_data(
+        self, behavior_datas=["position"], regenerate=False, regenerate_plots=False
+    ):
         data = {}
         for task_name, task in self.tasks.items():
             data[task_name] = task.load_all_data(
-                behavior_datas=behavior_datas, 
+                behavior_datas=behavior_datas,
                 regenerate=regenerate,
-                regenerate_plots=regenerate_plots
+                regenerate_plots=regenerate_plots,
             )
         return data
 
@@ -588,21 +590,21 @@ class Task:
             self.behavior_metadata["area"] = neural.metadata["area"]
         return self.behavior_metadata
 
-    def load_data(self, data_source, data_type="neural", 
-                  regenerate=False,
-                  regenerate_plot=False):
+    def load_data(
+        self, data_source, data_type="neural", regenerate=False, regenerate_plot=False
+    ):
         # loads neural or behaviour data
         datasets_object = getattr(self, data_type)
         data = datasets_object.load(
-            data_source=data_source, 
+            data_source=data_source,
             regenerate=regenerate,
-            regenerate_plot=regenerate_plot
+            regenerate_plot=regenerate_plot,
         )
         return data
 
-    def load_all_data(self, behavior_datas=["position"], 
-                      regenerate=False,
-                      regenerate_plots=False):
+    def load_all_data(
+        self, behavior_datas=["position"], regenerate=False, regenerate_plots=False
+    ):
         """
         neural_Data = ["photon"]
         behavior_datas = ["position", "velocity", "stimulus"]
@@ -666,6 +668,7 @@ class Task:
         shuffled=False,
         movement_state="all",
         split_ratio=1,
+        model_settings=None,
     ):
         if model_name:
             if model_type not in model_name:
@@ -681,6 +684,10 @@ class Task:
 
         if split_ratio != 1:
             model_name = f"{model_name}_{split_ratio}"
+
+        if model_settings is not None:
+            max_iterations = model_settings["max_iterations"]
+            model_name = f"{model_name}_iter-{max_iterations}"
         return model_name
 
     def get_model(self, models_class, model_name, model_type, model_settings=None):
@@ -725,7 +732,12 @@ class Task:
         available model_types are: time, behavior, hybrid
         """
         model_name = self.set_model_name(
-            model_type, model_name, shuffled, movement_state, split_ratio
+            model_type,
+            model_name,
+            shuffled,
+            movement_state,
+            split_ratio,
+            model_settings,
         )
 
         # TODO: add other manifolds pipelines
@@ -880,7 +892,9 @@ class Task:
                 behavior_data, _ = self.behavior.get_multi_data(behavior_data_type)
                 # create 1D labels
                 if behavior_data.shape[1] == 1:
-                    embedding_labels_dict[behavior_data_type] = behavior_data.transpose()
+                    embedding_labels_dict[behavior_data_type] = (
+                        behavior_data.transpose()
+                    )
                 # create multi Dimension labels
                 else:
                     embedding_labels_dict[behavior_data_type] = behavior_data
@@ -907,7 +921,7 @@ class Task:
                         dictionary=self.behavior_metadata,
                         keys=descriptive_metadata_keys,
                     )
-                    + f" - {embedding_title}{' '+str(title_comment) if title_comment else ''}"
+                    + f"{' '+str(title_comment) if title_comment else ''}"
                 )
             labels_dict = {"name": embedding_title, "labels": embedding_labels}
             viz.plot_multiple_embeddings(
@@ -1010,7 +1024,11 @@ class Task:
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
         )
-        stimulus_type = self.behavior_metadata["stimulus_type"] if "stimulus_type" in self.behavior_metadata.keys() else ""
+        stimulus_type = (
+            self.behavior_metadata["stimulus_type"]
+            if "stimulus_type" in self.behavior_metadata.keys()
+            else ""
+        )
         num_iterations = (
             models_original[0].max_iterations if not num_iterations else num_iterations
         )
