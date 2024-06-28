@@ -689,8 +689,8 @@ class Vizualizer:
         if yticks is None:
             yticks = []
         title = f"2D colormap - {additional_title}"
-        cax.set_xticks(xticks)
-        cax.set_yticks(yticks)
+        cax.set_xticks(np.linspace(0, 1, len(xticks)))
+        cax.set_yticks(np.linspace(0, 1, len(yticks)))
         xlabels = [f"{x:.1f}" for x in xticks]
         ylabels = [f"{y:.1f}" for y in yticks]
         cax.set_xticklabels(xlabels, rotation=45, ha="right")
@@ -2090,12 +2090,14 @@ class Vizualizer:
     @staticmethod
     def plot_decoding_results(
         decoder_results: List[float],
-        
     ):
         decoded_lists = [[decoder_results]]
         labels = [["All Cells"]]
         labels_flattened = ["All Cells"]
-        for scoring_type_reverse, decoded_test_sets in decoded_test_datasets_reverse.items():
+        for (
+            scoring_type_reverse,
+            decoded_test_sets,
+        ) in decoded_test_datasets_reverse.items():
             decoded_lists.append([])
             labels.append([])
             for percentage, decoded_test_set in decoded_test_sets.items():
@@ -2105,31 +2107,42 @@ class Vizualizer:
                 labels_flattened.append(label)
         print(labels)
 
-        #viz = Vizualizer(root_dir=root_dir)
-        #TODO: Is this working????????
+        # viz = Vizualizer(root_dir=root_dir)
+        # TODO: Is this working????????
 
         # viz.plot_decoding_score(decoded_model_lists=decoded_model_lists, labels=labels, figsize=(13, 5))
         fig = plt.figure(figsize=(13, 5))
-        fig.suptitle(f"{task.id} lowest % cells fro Behavioral Decoding of stimulus", fontsize=16)
-        colors=["green", "red", "deepskyblue"]
+        fig.suptitle(
+            f"{task.id} lowest % cells fro Behavioral Decoding of stimulus", fontsize=16
+        )
+        colors = ["green", "red", "deepskyblue"]
         ax1 = plt.subplot(111)
-        #ax2 = plt.subplot(211)
+        # ax2 = plt.subplot(211)
 
         overall_num = 0
-        for color, docoded_model_list, labels_list in zip(colors, decoded_lists, labels):
-            for num, (decoded, label) in enumerate(zip(docoded_model_list, labels_list)):
-                #color = "deepskyblue" if "A\'" == "".join(label[:2]) else "red" if "B" == label[0] else "green"
+        for color, docoded_model_list, labels_list in zip(
+            colors, decoded_lists, labels
+        ):
+            for num, (decoded, label) in enumerate(
+                zip(docoded_model_list, labels_list)
+            ):
+                # color = "deepskyblue" if "A\'" == "".join(label[:2]) else "red" if "B" == label[0] else "green"
                 alpha = 1 - ((1 / len(docoded_model_list)) * num / 1.3)
                 x_pos = overall_num + num
                 width = 0.4  # Width of the bars
                 ax1.bar(
-                    #x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
-                    x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
+                    # x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
+                    x_pos,
+                    decoded[1],
+                    width=0.4,
+                    color=color,
+                    alpha=alpha,
+                    label=label,
                 )
-                #ax2.bar(
-                    #x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
-                    #x_pos, decoded[2], width=0.4, color=color, alpha=alpha, label = label
-                #)
+                # ax2.bar(
+                # x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
+                # x_pos, decoded[2], width=0.4, color=color, alpha=alpha, label = label
+                # )
                 ##ax2.scatter(
                 #    middle_A_model.state_dict_["loss"][-1],
                 #    decoded[1],
@@ -2137,7 +2150,7 @@ class Vizualizer:
                 #    c=color,
                 #    alpha=alpha,
                 #    label=label,
-                #)
+                # )
             overall_num = x_pos + 1
 
         ylabel = "Mean stimulus error"
@@ -2149,21 +2162,20 @@ class Vizualizer:
         print_labels = labels_flattened
         label_pos = np.arange(len(labels_flattened))
         ax1.set_xticks(label_pos)
-        #ax1.set_ylim([0, 1])
+        # ax1.set_ylim([0, 1])
         ax1.set_xticklabels(print_labels, rotation=45, ha="right")
-
 
         ylabel = "mean stimulus in cm"
 
-        #ax2.spines["top"].set_visible(False)
-        #ax2.spines["right"].set_visible(False)
-        #ax2.set_ylabel(ylabel)
-        #ax2.grid(axis="y", alpha=0.5)
-        #print_labels = labels_flattened
-        #label_pos = np.arange(len(labels_flattened))
-        #ax2.set_xticks(label_pos)
+        # ax2.spines["top"].set_visible(False)
+        # ax2.spines["right"].set_visible(False)
+        # ax2.set_ylabel(ylabel)
+        # ax2.grid(axis="y", alpha=0.5)
+        # print_labels = labels_flattened
+        # label_pos = np.arange(len(labels_flattened))
+        # ax2.set_xticks(label_pos)
         ##ax2.set_ylim([0, 130])
-        #ax2.set_xticklabels(print_labels, rotation=45, ha="right")
+        # ax2.set_xticklabels(print_labels, rotation=45, ha="right")
 
-        #plt.legend()
+        # plt.legend()
         plt.show()

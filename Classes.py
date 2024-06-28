@@ -640,6 +640,7 @@ class Task:
         datasets_object,
         data_types,
         data=None,
+        binned=False,
         movement_state="all",
         shuffled=False,
         split_ratio=1,
@@ -651,6 +652,7 @@ class Task:
             data, _ = datasets_object.get_multi_data(
                 data_types,
                 idx_to_keep=idx_to_keep,
+                binned=binned,
                 # shuffle=shuffled,
                 # split_ratio=split_ratio
             )
@@ -723,6 +725,7 @@ class Task:
         model_name: str = None,
         neural_data: np.ndarray = None,
         behavior_data: np.ndarray = None,
+        binned: bool = True,
         neural_data_types: List[str] = None,  # ["femtonics"],
         behavior_data_types: List[str] = None,  # ["position"],
         manifolds_pipeline: str = "cebra",
@@ -762,6 +765,7 @@ class Task:
             movement_state=movement_state,
             shuffled=shuffled,
             split_ratio=split_ratio,
+            binned=binned,
         )
 
         # get behavior data
@@ -773,6 +777,7 @@ class Task:
                 movement_state=movement_state,
                 shuffled=shuffled,
                 split_ratio=split_ratio,
+                binned=binned,
             )
 
         if not model.fitted or regenerate:
@@ -841,7 +846,7 @@ class Task:
         )
         embeddings = {}
         for model_name, model in filtered_models.items():
-            embedding_title = f"{model_name} - {model.max_iterations}"
+            embedding_title = f"{model_name}"
             if model.fitted:
                 embedding = model.transform(to_transform_data)
                 self.embeddings[embedding_title] = embedding
@@ -889,7 +894,9 @@ class Task:
 
             embedding_labels_dict = {}
             for behavior_data_type in behavior_data_types:
-                behavior_data, _ = self.behavior.get_multi_data(behavior_data_type)
+                behavior_data, _ = self.behavior.get_multi_data(
+                    behavior_data_type, binned=False
+                )
                 # create 1D labels
                 if behavior_data.shape[1] == 1:
                     embedding_labels_dict[behavior_data_type] = (
@@ -1032,7 +1039,7 @@ class Task:
         num_iterations = (
             models_original[0].max_iterations if not num_iterations else num_iterations
         )
-        title = title or f"Losses {self.task_id} {stimulus_type}"
+        title = title or f"Losses {self.id} {stimulus_type}"
         title += f" - {num_iterations} Iterartions" if not plot_model_iterations else ""
 
         viz = Vizualizer(self.data_dir.parent.parent)

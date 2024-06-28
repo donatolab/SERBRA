@@ -896,14 +896,14 @@ class Datasets:
         return data
 
     def get_multi_data(
-        self, sources, shuffle=False, idx_to_keep=None, split_ratio=1, binned=True
+        self, sources, shuffle=False, idx_to_keep=None, split_ratio=1, binned=False
     ):
         sources = make_list_ifnot(sources)
         concatenated_data = None
         for source in sources:
             dataset_object = getattr(self, source)
-            data = dataset_object.data
-            # data = dataset_object.binned_data if binned else dataset_object.data
+            # data = dataset_object.data
+            data = dataset_object.binned_data if binned else dataset_object.data
             data = np.array([data]).transpose() if len(data.shape) == 1 else data
             if type(concatenated_data) != np.ndarray:
                 concatenated_data = data

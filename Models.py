@@ -7,6 +7,15 @@ from tqdm import tqdm, trange
 # calculations
 import numpy as np
 import sklearn
+from sklearn.metrics import (
+    mean_squared_error,
+    r2_score,
+    classification_report,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+)
 import scipy
 
 # parralelize
@@ -743,57 +752,136 @@ class Cebras(ModelsWrapper, Model):
 def decode(
     embedding_train,
     embedding_test,
-    label_train,
-    label_test,
+    labels_train,
+    labels_test,
     n_neighbors=36,
     metric="cosine",
+    bin_size=0.1,
+    min_bin=0,
+    max_bin=1,
 ):
     # TODO: Improve decoder
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
-    knn = cebra.KNNDecoder(n_neighbors=n_neighbors, metric=metric)
-    if is_floating(label_train):
+    if is_floating(labels_train):
         knn = sklearn.neighbors.KNeighborsRegressor(
             n_neighbors=n_neighbors, metric=metric
         )
-    elif is_integer(label_train):
+    elif is_integer(labels_train):
         knn = sklearn.neighbors.KNeighborsClassifier(
             n_neighbors=n_neighbors, metric=metric
         )
     else:
         raise NotImplementedError(
-            f"Invalid tlabel_trainpe: targets must be either floats or integers, got label_train:{label_train.dtype}."
+            f"Invalid tlabels_trainpe: targets must be either floats or integers, got labels_train:{labels_train.dtype}."
         )
-    label_train = Dataset.force_2d(label_train)
-    # label_train = force_1_dim_larger(label_train)
-    label_test = Dataset.force_2d(label_test)
-    # label_test = force_1_dim_larger(label_test)
+    labels_train = Dataset.force_2d(labels_train)
+    # labels_train = force_1_dim_larger(labels_train)
+    labels_test = Dataset.force_2d(labels_test)
+    # labels_test = force_1_dim_larger(labels_test)
 
-    embedding_train, label_train = force_equal_dimensions(embedding_train, label_train)
+    embedding_train, labels_train = force_equal_dimensions(
+        embedding_train, labels_train
+    )
 
-    knn.fit(embedding_train, label_train)
+    knn.fit(embedding_train, labels_train)
 
     # Predict the targets for data ``X``
     labels_pred = knn.predict(embedding_test)
 
-    from sklearn.metrics import accuracy_score, classification_report
+    if is_floating(labels_test) or is_integer(labels_test):
+        # Use regression metrics
+        mse = np.mean(abs(labels_test - labels_pred))
+        r2 = r2_score(labels_test, labels_pred)
+        print(f"Mean Squared Error: {mse}")
+        print(f"R²: {r2}")
 
-    # Calculate accuracy
-    accuracy = accuracy_score(label_test, labels_pred)
-    print(f"Accuracy: {accuracy}")
+        if False:
+            # Use classification metrics
+            accuracies = []
+            precisions = []
+            recalls = []
+            f1s = []
+            # Convert floating labels to discrete classes for classification
+            if is_floating(labels_test):
+                discrete_label_pred = bin_array(
+                    labels_pred, bin_size=bin_size, min_bin=min_bin, max_bin=max_bin
+                )
+                discrete_label_test = bin_array(
+                    labels_test, bin_size=bin_size, min_bin=min_bin, max_bin=max_bin
+                )
+            # handle multi-classification
+            for i in range(discrete_label_test.shape[1]):
+                accuracy = accuracy_score(
+                    discrete_label_test[:, i], discrete_label_pred[:, i]
+                )
+                accuracies.append(accuracy)
 
-    # Print a detailed classification report
-    print("Classification Report:")
-    print(classification_report(label_test, labels_pred))
+                accuracy = accuracy_score(
+                    discrete_label_test[:, i], discrete_label_pred[:, i]
+                )
+                precision = precision_score(
+                    discrete_label_test[:, i],
+                    discrete_label_pred[:, i],
+                    average="macro",
+                )
+                recall = recall_score(
+                    discrete_label_test[:, i],
+                    discrete_label_pred[:, i],
+                    average="macro",
+                )
+                f1 = f1_score(
+                    discrete_label_test[:, i],
+                    discrete_label_pred[:, i],
+                    average="macro",
+                )
 
-    prediction = labels_pred  # np.stack(pred, axis=1)
+                accuracies.append(accuracy)
+                precisions.append(precision)
+                recalls.append(recall)
+                f1s.append(f1)
 
-    test_score = 0  # sklearn.metrics.r2_score(label_test, prediction)
-    # test_score = sklearn.metrics.r2_score(label_test[:,:2], prediction)
+                # ROC and AUC
+                from sklearn.metrics import roc_curve, roc_auc_score
+                from sklearn.preprocessing import label_binarize
 
-    # pos_test_err = np.median(abs(prediction - label_test))
-    ########################################################
-    pos_test_err = np.mean(abs(prediction - label_test))
-    ########################################################
-    pos_test_score = sklearn.metrics.r2_score(label_test, prediction)
+                y_test_bin = label_binarize(
+                    discrete_label_test[:, i],
+                    classes=np.unique(discrete_label_test[:, i]),
+                )
+                y_pred_bin = label_binarize(
+                    discrete_label_pred[:, i],
+                    classes=np.unique(discrete_label_pred[:, i]),
+                )
+                n_classes = y_test_bin.shape[1]
 
-    return test_score, pos_test_err, pos_test_score
+                for j in range(n_classes):
+                    import matplotlib.pyplot as plt
+
+                    fpr, tpr, _ = roc_curve(y_test_bin[:, j], y_pred_bin[:, j])
+                    auc = roc_auc_score(y_test_bin[:, j], y_pred_bin[:, j])
+                    plt.plot(fpr, tpr, label=f"Class {j} (AUC: {auc:.2f})")
+
+                plt.plot([0, 1], [0, 1], "k--")
+                plt.xlabel("False Positive Rate")
+                plt.ylabel("True Positive Rate")
+                plt.title(f"ROC Curve for Output {i}")
+                plt.legend(bbox_to_anchor=(1, 0), frameon=False)
+                plt.show()
+
+                # print(f"Accuracy for output {i}: {accuracy}")
+                # print(f"Classification Report for output {i}:")
+                print(f"Average Accuracy: {np.mean(accuracies)}")
+                print(f"Average Precision: {np.mean(precisions)}")
+                print(f"Average Recall: {np.mean(recalls)}")
+                print(f"Average F1 Score: {np.mean(f1s)}")
+    else:
+        raise NotImplementedError(
+            f"Invalid label_test type: targets must be either floats or integers, got label_test:{labels_test.dtype}."
+        )
+    
+    results = {
+        "mse": mse,
+        "r2": r2,
+        #accuracies, precisions, recalls, f1s
+    }
+    return results
