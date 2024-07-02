@@ -15,6 +15,8 @@ import scipy.io as sio
 # math
 from scipy.interpolate import interp1d
 import cebra
+from itertools import product  # create all possible combinations of a list
+
 
 # debugging
 import inspect
@@ -1477,19 +1479,102 @@ class Environment(Behavior_Processing):
         return stimulus_type_at_frame
 
     @staticmethod
-    def get_env_shapes_from_pos(positions: np.ndarray):
-        in_shape_at_frame = np.zeros(positions.shape[0])
+    def define_boarder_by_pos(positions: np.ndarray, percentile: int = 1):
+        """
+        Define boarders of a Box the environment based on the positions of the animal.
+        """
+        # detect borders with 99% of the data
+        boarders = np.zeros((positions.shape[1], 2))
+        for dim in range(positions.shape[1]):
+            # filter 1% of the data
+            lower = positions[:, dim] > np.percentile(positions[:, dim], percentile)
+            upper = positions[:, dim] < np.percentile(
+                positions[:, dim], 100 - percentile
+            )
+            min_pos = np.min(positions[lower, dim])
+            max_pos = np.max(positions[upper, dim])
+            boarders[dim] = [min_pos, max_pos]
+        return boarders
+
+    @staticmethod
+    def at_corner_boarder(
+        positions: np.ndarray,
+        boarders: np.ndarray,
+        boarder_thr=0.10,  # m  #previouse method was based on percentage of box 0.2 percentage of the box
+    ):
+        """
+        Check if the animal is at a specific position of a box.
+
+        Attributes:
+            positions: np.ndarray
+            boarders: np.ndarray
+            boarder_thr: float, optional (default=0.2)
+                The percentage of the box to consider as corner
+
+        return: at_corners: List[bool], at_boarder: List[bool]
+        """
+        if positions.ndim != boarders.ndim:
+            raise ValueError(
+                f"Number of dimensions must be the same as the segment dimensions and sequence. Got {positions.ndim} and {boarders.ndim}"
+            )
+        n_dims = positions.shape[1]
+        at_boarder = np.zeros(positions.shape[0], dtype=bool)
+        at_corners = np.zeros(positions.shape[0], dtype=bool)
+
+        # Calculate corner radius (same for all dimensions)
+        box_sizes = boarders[:, 1] - boarders[:, 0]
+        corner_radius = boarder_thr
+
+        # corner boarder detection based on percetage of the box
+        # corner_radius = boarder_thr * np.min(box_sizes)
+
+        # Generate all corner positions
+        corners = list(product(*boarders))
+
+        # Check for each corner
+        for corner in corners:
+            distances = np.sqrt(np.sum((positions - corner) ** 2, axis=1))
+            at_corners |= distances <= corner_radius
+
+        # Check for borders (excluding corners)
+        for dim in range(n_dims):
+            min_border = boarders[dim, 0] + corner_radius * 0.7
+            max_border = boarders[dim, 1] - corner_radius * 0.7
+            at_boarder |= (
+                (positions[:, dim] <= min_border) | (positions[:, dim] >= max_border)
+            ) & ~at_corners
+
+        return at_corners, at_boarder
+
+    @staticmethod
+    def get_env_shapes_from_pos(
+        positions: np.ndarray, boarder_thr=0.1  # percentage of the box
+    ):
+        """
+        Classify the position of the animal in the environment based on position coordinates
+
+        return: in_shape_at_frame: List[int]
+            , where 0 is center, 1 is corner, 2 is boarder, 3 is corner and boarder
+        """
+        in_shape_at_frame = np.zeros(positions.shape[0], dtype=int)
+        shapes = {"center": 0, "corner": 1, "boarder": 2}
         if positions.ndim == 2:
-            # detect borders
-            min_dims = np.min(positions, axis=0)
-            max_dims = np.max(positions, axis=0)
-            # detect corners
-            # detect circular spaces (open)
+            boarders = Environment.define_boarder_by_pos(positions)
+            at_corners, at_boarder = Environment.at_corner_boarder(
+                positions, boarders, boarder_thr=boarder_thr
+            )
+
+            # in_shape_at_frame[at_free] = shapes["free"]
+            in_shape_at_frame[at_corners] = shapes["corner"]
+            in_shape_at_frame[at_boarder] = shapes["boarder"]
+
+            # at_corner_or_boarder = at_corners | at_boarder
+            # in_shape_at_frame[at_corner_or_boarder] = 3
         else:
             print(
                 "Not able to generate environmental shapes. Data should be 2D for this function."
             )
-        return in_shape_at_frame
+        return list(shapes.keys()), in_shape_at_frame
 
     def process_data(
         self,

@@ -239,12 +239,14 @@ class Dataset:
             )
 
     def plot_data(self):
-        if self.data.ndim == 1:
+        # dimensions =  self.data.ndim
+        dimensions = len(self.metadata["environment_dimensions"])
+        if dimensions == 1:
             Vizualizer.data_plot_1D(
                 data=self.data,
                 plot_attributes=self.plot_attributes,
             )
-        elif self.data.ndim == 2:
+        elif dimensions == 2:
             if self.key != "position":
                 raw_data_object = self.raw_data_object
                 while raw_data_object is not None:
@@ -432,7 +434,7 @@ class Data_Position(BehaviorDataset):
         if len(self.metadata["environment_dimensions"]) == 1:
             self.plot_attributes["ylable"] = "position cm"
         elif len(self.metadata["environment_dimensions"]) == 2:
-            self.plot_attributes["figsize"] = (11, 10)
+            self.plot_attributes["figsize"] = (12, 10)
 
     def plot_data(self):
         if self.data.ndim == 1:
@@ -451,16 +453,6 @@ class Data_Position(BehaviorDataset):
                 plot_attributes=self.plot_attributes,
                 color_by="time",
             )
-
-    def plot_local_env_shape_types(self):
-        # TODO: move to Stimulus class
-        stimulus = Environment.get_env_shapes_from_pos(self.data)
-        Vizualizer.data_plot_2D(
-            data=stimulus,
-            position_data=self.data,
-            # border_limits=self.metadata["environment_dimensions"],
-            plot_attributes=self.plot_attributes,
-        )
 
     def bin_data(self, data=None, bin_size=None):
         """
@@ -531,28 +523,42 @@ class Data_Stimulus(BehaviorDataset):
         self.stimulus_type = self.metadata["stimulus_type"]
         self.stimulus_by = self.metadata["stimulus_by"]
         self.fps = self.metadata["fps"] if "fps" in self.metadata.keys() else None
+        self.define_plot_attributes()
 
-    def process_raw_data(self, save=True):
+    def define_plot_attributes(self):
+        if len(self.metadata["environment_dimensions"]) == 1:
+            self.plot_attributes["ylable"] = "position cm"
+        elif len(self.metadata["environment_dimensions"]) == 2:
+            self.plot_attributes["figsize"] = (12, 10)
+
+    def process_raw_data(self, save=True, stimulus_by="location"):
         """ "
         Returns:
             - data: Numpy array composed of stimulus type at frames.
         """
         stimulus_raw_data = self.raw_data_object.data  # e.g. Position on a track/time
-        if self.stimulus_by == "location":
-            stimulus_type_at_frame = Environment.get_stimulus_at_position(
-                positions=stimulus_raw_data,
-                stimulus_dimensions=self.stimulus_dimensions,
-                stimulus_sequence=self.stimulus_sequence,
-                max_position=self.stimulus_dimensions,
-            )
-        elif self.stimulus_by == "frames":
+        stimulus_by = self.stimulus_by or stimulus_by
+        if stimulus_by == "location":
+            if len(self.metadata["environment_dimensions"]) == 1:
+                stimulus_type_at_frame = Environment.get_stimulus_at_position(
+                    positions=stimulus_raw_data,
+                    stimulus_dimensions=self.stimulus_dimensions,
+                    stimulus_sequence=self.stimulus_sequence,
+                    max_position=self.stimulus_dimensions,
+                )
+            elif len(self.metadata["environment_dimensions"]) == 2:
+                shapes, stimulus_type_at_frame = Environment.get_env_shapes_from_pos(
+                    stimulus_raw_data
+                )
+                self.plot_attributes["yticks"] = [range(len(shapes)), shapes]
+        elif stimulus_by == "frames":
             stimulus_type_at_frame = self.stimulus_by_time(stimulus_raw_data)
-        elif self.stimulus_by == "seconds":
+        elif stimulus_by == "seconds":
             stimulus_type_at_frame = self.stimulus_by_time(
                 stimulus_raw_data,
                 time_to_frame_multiplier=self.self.metadata["imaging_fps"],
             )
-        elif self.stimulus_by == "minutes":
+        elif stimulus_by == "minutes":
             stimulus_type_at_frame = self.stimulus_by_time(
                 stimulus_raw_data,
                 time_to_frame_multiplier=60 * self.self.metadata["imaging_fps"],

@@ -813,8 +813,6 @@ class Task:
             )
             print(f"{self.id}: {model.name} model already trained. Skipping.")
 
-        # TODO: add saving test dataset somewhere and maybe provide decoded results or decode directly.....
-
         if split_ratio != 1:
             return (
                 model,
@@ -867,6 +865,7 @@ class Task:
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         embeddings: Optional[Dict[str, np.ndarray]] = None,
         to_transform_data: Optional[np.ndarray] = None,
+        colorbar_ticks: Optional[List] = None,
         embedding_labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
         behavior_data_types: List[str] = ["position"],
         manifolds_pipeline: str = "cebra",
@@ -897,19 +896,17 @@ class Task:
                 behavior_data, _ = self.behavior.get_multi_data(
                     behavior_data_type, binned=False
                 )
-                # create 1D labels
-                if behavior_data.shape[1] == 1:
-                    embedding_labels_dict[behavior_data_type] = (
-                        behavior_data.transpose()
-                    )
-                # create multi Dimension labels
-                else:
-                    embedding_labels_dict[behavior_data_type] = behavior_data
+                embedding_labels_dict[behavior_data_type] = behavior_data
         else:
             if isinstance(embedding_labels, np.ndarray):
                 embedding_labels_dict = {"Provided_labels": embedding_labels}
             else:
                 embedding_labels_dict = embedding_labels
+
+        # get ticks
+        if len(behavior_data_types) == 1 and colorbar_ticks is None:
+            dataset_object = getattr(self.behavior, behavior_data_types[0])
+            colorbar_ticks = dataset_object.plot_attributes["yticks"]
 
         viz = Vizualizer(self.data_dir.parent.parent)
 
@@ -934,6 +931,7 @@ class Task:
             viz.plot_multiple_embeddings(
                 embeddings,
                 labels=labels_dict,
+                ticks=colorbar_ticks,
                 title=title,
                 markersize=markersize,
                 alpha=alpha,

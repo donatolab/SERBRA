@@ -224,6 +224,9 @@ class Vizualizer:
         marker=None,
         fps=None,
         seconds_interval=5,
+        colormap_label: str = None,
+        tick_label=None,
+        tick_pos=None,
         color_by="value",
         cmap="plasma",  # "viridis", "winter", "plasma"
     ):
@@ -236,7 +239,8 @@ class Vizualizer:
         #    order=2,
         # )
         data, position_data = force_equal_dimensions(data, position_data)
-
+        if data.ndim == 1:
+            data = data.reshape(-1, 1)
         # Convert coordinates to a numpy array if it's not already
         coordinates = np.array(position_data) * 100  # Convert to cm
 
@@ -261,8 +265,13 @@ class Vizualizer:
         elif color_by == "value":
             absolute_data = np.linalg.norm(np.abs(data), axis=1)
             color_value_reference = np.array(absolute_data)
-            color_map_label = plot_attributes["ylable"]
-            tick_label, tick_pos = None, None
+            color_map_label = colormap_label or plot_attributes["ylable"]
+
+            if tick_label is None:
+                if plot_attributes["yticks"] is not None:
+                    tick_pos, tick_label = plot_attributes["yticks"]
+                if tick_label is not None and tick_pos is None:
+                    tick_pos = np.range(0, 1, len(tick_label))
             scatter_alpha = 0.8
             dot_size = 3
         # Create the plot
@@ -667,7 +676,10 @@ class Vizualizer:
             cbar.ax.yaxis.set_major_locator(
                 MaxNLocator(integer=True)
             )  # Adjust ticks to integers
-            cbar.set_ticks(ticks)  # Set custom ticks
+            cbar.set_ticks(
+                np.linspace(cbar.vmin, cbar.vmax, len(ticks))
+            )  # Set custom ticks
+            cbar.set_ticklabels(ticks)
 
     def add_2d_colormap_legend(
         fig, move_right=1, xticks=None, yticks=None, additional_title=""
@@ -701,6 +713,7 @@ class Vizualizer:
         self,
         embeddings: dict,
         labels: dict,
+        ticks=None,
         title="Embeddings",
         cmap="rainbow",
         projection="3d",
@@ -732,7 +745,7 @@ class Vizualizer:
         axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
         # create 2D RGBA labels to overwrite 1D cmap coloring
-        if labels["labels"].ndim == 2:
+        if labels["labels"].shape[1] == 2:
             min_vals = np.min(labels["labels"], axis=0)
             max_vals = np.max(labels["labels"], axis=0)
             # steps = 5
@@ -757,9 +770,13 @@ class Vizualizer:
             )
 
         if plot_legend:
-            if labels["labels"].ndim == 1:
+            if labels["labels"].shape[1] == 1:
                 Vizualizer.add_1d_colormap_legend(
-                    ax, labels["labels"], label_name="labels", ticks=None, cmap=cmap
+                    ax,
+                    labels["labels"],
+                    label_name=labels["name"],
+                    ticks=ticks,
+                    cmap=cmap,
                 )
             else:
                 Vizualizer.add_2d_colormap_legend(
