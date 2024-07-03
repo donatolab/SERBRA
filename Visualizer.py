@@ -1944,14 +1944,20 @@ class Vizualizer:
         ax,
         title_size=10,
         sort=False,
+        cmap="viridis",
+        interpolation="none",
         xlabel="Cell ID",
         ylabel="Cell ID",
-        cmap="YlGnBu",
-        interpolation="none",
+        vmin=None,
+        vmax=None,
+        ylim=None,
+        xlim=None,
         xticks=None,
-        xticks_positions=None,
+        xticks_pos=None,
+        xtick_size=10,
         yticks=None,
-        yticks_positions=None,
+        yticks_pos=None,
+        ytick_size=10,
         rotation=0,
     ):
         if sort:
@@ -1966,16 +1972,28 @@ class Vizualizer:
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
 
+        if ylim is not None:
+            ax.set_ylim(ylim)
+        if xlim is not None:
+            ax.set_xlim(xlim)
+
         if xticks is not None:
             ax.set_xticklabels(xticks, rotation=rotation)
-            if xticks_positions is not None:
-                ax.set_xticks(xticks_positions)
+            if xticks_pos is not None:
+                ax.set_xticks(xticks_pos)
         if yticks is not None:
             ax.set_yticklabels(yticks)
-            if yticks_positions is not None:
-                ax.set_yticks(yticks_positions)
+            if yticks_pos is not None:
+                ax.set_yticks(yticks_pos)
 
-        cax = ax.imshow(matrix, cmap=cmap, interpolation=interpolation)
+        # Set tick sizes
+        ax.tick_params(axis="x", which="major", labelsize=xtick_size)
+        ax.tick_params(axis="y", which="major", labelsize=ytick_size)
+
+        matrix = np.atleast_2d(matrix)
+        cax = ax.imshow(
+            matrix, cmap=cmap, vmin=vmin, vmax=vmax, interpolation=interpolation
+        )
         return cax
 
     @staticmethod
@@ -1987,9 +2005,9 @@ class Vizualizer:
         ylabel="Bin (x, y)",
         no_diag: bool = False,
         xticks=None,
-        xticks_positions=None,
+        xticks_pos=None,
         yticks=None,
-        yticks_positions=None,
+        yticks_pos=None,
         rotation=45,
         colorbar=True,
         cmap="viridis",
@@ -2011,9 +2029,9 @@ class Vizualizer:
             xlabel=xlabel,
             ylabel=ylabel,
             xticks=xticks,
-            xticks_positions=xticks_positions,
+            xticks_pos=xticks_pos,
             yticks=yticks,
-            yticks_positions=yticks_positions,
+            yticks_pos=yticks_pos,
             rotation=rotation,
             cmap=cmap,
             ax=ax,
@@ -2033,15 +2051,21 @@ class Vizualizer:
         similarities: dict,  # {metric: {group_name: np.array}}
         bins,
         skip=[],
+        supxlabel="Bin X",
+        supylabel="Bin Y",
         figsize=(4, 3),
         tick_steps=3,
         additional_title="",
         colorbar=False,
         cmap="GnBu",
     ):
-        ticks = [f"{x}, {y}" for x, y in bins]
+        if np.array(bins).ndim == 1:
+            ticks = bins
+            max_bins = len(bins)
+        elif bins.ndim == 2:
+            ticks = [f"{x}, {y}" for x, y in bins]
+            max_bins = np.max(bins, axis=0) + 1
         tick_positions = np.arange(len(bins))
-        max_bins = np.max(bins, axis=0) + 1
 
         for name, group_similarities in similarities.items():
             if name in skip:
@@ -2050,59 +2074,216 @@ class Vizualizer:
             title = f"{str(name).capitalize()} Distances{additional_title}"
             if name == "cosine":
                 title = title.replace("Distances", "Similarities")
-            supxlabel = "Positional Bin X"
-            supylabel = "Positional Bin Y"
-            fig, axes = plt.subplots(
-                max_bins[0],
-                max_bins[1],
-                figsize=(max_bins[0] * figsize[0], max_bins[1] * figsize[1]),
-            )
-            fig.suptitle(title, fontsize=max_bins[0] * max_bins[1] / 2, y=1.01)
+            if name == "overlap":
+                title = title.replace("Distances", "")
+            if isinstance(max_bins, int) or max_bins.ndim == 0:
+                fig, axes = plt.subplots(
+                    max_bins,
+                    1,
+                    figsize=(figsize[0], figsize[1]),
+                )
+                fig.suptitle(title, fontsize=max_bins * max_bins, y=1.01)
+                fig.supxlabel(supxlabel, fontsize=max_bins * max_bins, x=0.5, y=-0.03)
+                fig.align_xlabels()
+                fig.supylabel(supylabel, fontsize=max_bins * max_bins, x=-0.02, y=0.5)
+            elif max_bins.ndim == 1:
+                fig, axes = plt.subplots(
+                    max_bins[0],
+                    max_bins[1],
+                    figsize=(max_bins[0] * figsize[0], max_bins[1] * figsize[1]),
+                )
+                fig.suptitle(title, fontsize=max_bins[0] * max_bins[1] / 2, y=1.01)
+                fig.supxlabel(
+                    supxlabel, fontsize=max_bins[0] * max_bins[1] / 2, x=0.5, y=-0.03
+                )
+                fig.align_xlabels()
+                fig.supylabel(
+                    supylabel, fontsize=max_bins[0] * max_bins[1] / 2, x=-0.02, y=0.5
+                )
             fig.tight_layout()
 
-            fig.supxlabel(
-                supxlabel, fontsize=max_bins[0] * max_bins[1] / 2, x=0.5, y=-0.03
-            )
-            fig.align_xlabels()
-            fig.supylabel(
-                supylabel, fontsize=max_bins[0] * max_bins[1] / 2, x=-0.02, y=0.5
-            )
-
-            for group_name, dists in group_similarities.items():
-                if name == "cosine":
-                    dists *= -1
-                i, j = group_name
+            for group_i, (group_name, dists) in enumerate(group_similarities.items()):
+                vmin = None
+                vmax = None
+                if name == "cosine" or name == "overlap":
+                    cmap = "GnBu_r"
+                    vmin = 0
+                    vmax = 1
                 # ax = axes[max_bins[1]-1-j, max_bins[0]-1-i]
                 subplot_xticks = []
-                subplot_xticks_positions = []
+                subplot_xticks_pos = []
                 subplot_yticks = []
-                subplot_yticks_positions = []
-                ax = axes[i, j]
-                if i == max_bins[0] - 1:
-                    subplot_xticks = ticks[::tick_steps]
-                    subplot_xticks_positions = tick_positions[::tick_steps]
-                if j == 0:
-                    subplot_yticks = ticks[::tick_steps]
-                    subplot_yticks_positions = tick_positions[::tick_steps]
+                subplot_yticks_pos = []
+                if isinstance(group_name, str) or group_name.ndim == 0:
+                    i = group_i
+                    ax = axes[i]
+                    subplot_title_size = max_bins * 1.7
+                    if i == max_bins - 1:
+                        subplot_xticks = ticks[::tick_steps]
+                        subplot_xticks_pos = tick_positions[::tick_steps]
+                elif group_name.ndim == 1:
+                    i, j = group_name
+                    ax = axes[i, j]
+                    subplot_title_size = max_bins[0] * 1.7
+                    if i == max_bins[0] - 1:
+                        subplot_xticks = ticks[::tick_steps]
+                        subplot_xticks_pos = tick_positions[::tick_steps]
+                    if j == 0:
+                        subplot_yticks = ticks[::tick_steps]
+                        subplot_yticks_pos = tick_positions[::tick_steps]
 
                 cax = Vizualizer.heatmap_subplot(
                     dists,
                     title=f"{group_name}",
-                    title_size=max_bins[0] * 1.7,
+                    title_size=subplot_title_size,
                     xlabel="",
                     ylabel="",
+                    vmin=vmin,
+                    vmax=vmax,
                     xticks=subplot_xticks,
-                    xticks_positions=subplot_xticks_positions,
+                    xticks_pos=subplot_xticks_pos,
                     yticks=subplot_yticks[::tick_steps],
-                    yticks_positions=subplot_yticks_positions[::tick_steps],
+                    yticks_pos=subplot_yticks_pos[::tick_steps],
                     ax=ax,
                     cmap=cmap,
                     interpolation="none",
                 )
 
                 if colorbar:
+                    # set colorbar range
                     fig.colorbar(cax, ax=ax)
             plt.show()
+
+    def plot_1d_iter_group_distr_similarities(
+        similarities: dict,  # {metric: {group_name: np.array}}
+        bins,
+        skip=[],
+        supxlabel="Bin X",
+        supylabel="Bin Y",
+        figsize=(3, 3),
+        tick_steps=3,
+        additional_title="",
+        colorbar=False,
+        cmap="viridis",
+    ):
+
+        # plot with all groups of a distance metric into a single plot with multiple heatmaps
+        num_x_plots = len(similarities)
+        num_y_plots = len(similarities[list(similarities.keys())[0]])
+        figsize = (figsize[0] * num_y_plots, figsize[1] * num_x_plots)
+        fig, axes = plt.subplots(
+            num_y_plots,
+            num_x_plots,
+            figsize=(figsize[0], figsize[1]),
+        )
+        suptitle = (
+            f"Similarity Measure comparisson using spatial zones{additional_title}"
+        )
+        fig.suptitle(suptitle, fontsize=figsize[0], y=0.98)
+        fig.supxlabel(supxlabel, fontsize=figsize[0] / 2, x=0.5, y=-0.03)
+        fig.align_xlabels()
+        fig.supylabel(supylabel, fontsize=figsize[0] / 2, x=-0.02, y=0.5)
+
+        max_value = {}
+        for iter_num, (iter, metric_similarities) in enumerate(similarities.items()):
+            for name, group_similarities in metric_similarities.items():
+                if name not in max_value.keys():
+                    max_value[name] = 0
+                for dists in group_similarities.values():
+                    max_value[name] = np.max([max_value[name], np.max(dists)])
+
+        for iter_num, (iter, metric_similarities) in enumerate(similarities.items()):
+            for group_num, (name, group_similarities) in enumerate(
+                metric_similarities.items()
+            ):
+                if name in skip:
+                    continue
+
+                if np.array(bins).ndim == 1:
+                    ticks = bins
+                    max_bins = len(bins)
+                elif bins.ndim == 2:
+                    ticks = [f"{x}, {y}" for x, y in bins]
+                    max_bins = np.max(bins, axis=0) + 1
+                tick_positions = np.arange(len(bins))
+
+                subplot_title = f"{str(name).capitalize()} {iter}"
+
+                similarity_matrix = np.zeros((max_bins, max_bins))
+                for group_i, (group_name, dists) in enumerate(
+                    group_similarities.items()
+                ):
+                    similarity_matrix[group_i] = dists
+
+                vmin = None
+                vmax = None
+                if name in ["cosine", "overlap"]:
+                    vmax = 1
+                else:
+                    cmap = "viridis_r"
+                if name in [
+                    "euclidean",
+                    "wasserstein",
+                    "kolmogorov-smirnov",
+                    "chi2",
+                    "kullback-leibler",
+                    "jensen-shannon",
+                    "energy",
+                    "mahalanobis",
+                    "overlap",
+                ]:
+                    vmin = 0
+                elif name in ["correlation", "cosine"]:
+                    vmin = -1
+                    vmax = 1
+
+                if vmax is None:
+                    vmax = max_value[name]
+
+                # ax = axes[max_bins[1]-1-j, max_bins[0]-1-i]
+                subplot_xticks = []
+                subplot_xticks_pos = []
+                subplot_yticks = []
+                subplot_yticks_pos = []
+                xplot_num = len(similarities) - 1 - iter_num
+                ax = axes[group_num, xplot_num]
+                subplot_title_size = 20
+                tick_size = 20
+                if True:  # group_num == len(metric_similarities) - 1:
+                    subplot_xticks = ticks[::tick_steps]
+                    subplot_xticks_pos = tick_positions[::tick_steps]
+                if xplot_num == 0:
+                    subplot_yticks = ticks[::tick_steps]
+                    subplot_yticks_pos = tick_positions[::tick_steps]
+
+                cax = Vizualizer.heatmap_subplot(
+                    similarity_matrix,
+                    title=f"{subplot_title}",
+                    title_size=subplot_title_size,
+                    xlabel="",
+                    ylabel="",
+                    vmin=vmin,
+                    vmax=vmax,
+                    xticks=subplot_xticks,
+                    xticks_pos=subplot_xticks_pos,
+                    xtick_size=tick_size,
+                    yticks=subplot_yticks,
+                    yticks_pos=subplot_yticks_pos,
+                    ytick_size=tick_size,
+                    ax=ax,
+                    cmap=cmap,
+                    interpolation="none",
+                )
+
+                if colorbar and xplot_num == len(similarities) - 1:
+                    # move position of colorbar
+                    # fig.subplots_adjust(right=0.8)
+                    # cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+                    # set colorbar range
+                    fig.colorbar(cax, ax=ax)
+
+        fig.tight_layout()
+        plt.show()
 
     @staticmethod
     def plot_decoding_results(

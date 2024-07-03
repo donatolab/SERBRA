@@ -21,7 +21,8 @@ from sklearn.metrics import (
 )
 from scipy.stats import wasserstein_distance, ks_2samp, entropy, energy_distance
 from scipy.spatial.distance import cdist, mahalanobis
-from scipy.spatial import distance
+from scipy.spatial import distance, ConvexHull
+from sklearn.covariance import EllipticEnvelope
 
 # import cupy as cp  # numpy using CUDA for faster computation
 import yaml
@@ -422,13 +423,13 @@ def compute_mutual_information(
     return mi
 
 
-def compare_distributions(dist1, dist2, metric="wasserstein"):
+def compare_distributions(points1, points2, metric="wasserstein"):
     """
     Compare two distributions using the specified metric.
 
     Parameters:
-    - dist1: array-like, first distribution
-    - dist2: array-like, second distribution
+    - points1: array-like, first distribution
+    - points2: array-like, second distribution
     - metric: str, the metric to use for comparison ('wasserstein', 'ks', 'chi2', 'kl', 'js', 'energy', 'mahalanobis')
         - 'wasserstein': Wasserstein Distance (Earth Mover's Distance) energy needed to move one distribution to the other
         - 'ks': Kolmogorov-Smirnov statistic for each dimension and take the maximum (typically used for 1D distributions)
@@ -443,41 +444,42 @@ def compare_distributions(dist1, dist2, metric="wasserstein"):
     - The computed distance between the two distributions.
     """
     assert (
-        dist1.shape[1] == dist2.shape[1]
+        points1.shape[1] == points2.shape[1]
     ), "Distributions must have the same number of dimensions"
 
     if metric == "wasserstein":
         distances = [
-            wasserstein_distance(dist1[:, i], dist2[:, i])
-            for i in range(dist1.shape[1])
+            wasserstein_distance(points1[:, i], points2[:, i])
+            for i in range(points1.shape[1])
         ]
         return np.sum(distances)
 
     elif metric == "kolmogorov-smirnov":
         # Calculate the Kolmogorov-Smirnov statistic for each dimension and take the maximum
         ks_statistics = [
-            ks_2samp(dist1[:, i], dist2[:, i]).statistic for i in range(dist1.shape[1])
+            ks_2samp(points1[:, i], points2[:, i]).statistic
+            for i in range(points1.shape[1])
         ]
         return np.max(ks_statistics)
 
     elif metric == "chi2":
         # Chi-Squared test (requires binned data, here we just compare histograms)
-        hist1, _ = np.histogram(dist1, bins=10, density=True)
-        hist2, _ = np.histogram(dist2, bins=10, density=True)
+        hist1, _ = np.histogram(points1, bins=10, density=True)
+        hist2, _ = np.histogram(points2, bins=10, density=True)
         return np.sum((hist1 - hist2) ** 2 / hist2 + 1e-10)
 
     elif metric == "kullback-leibler":
         # Kullback-Leibler Divergence
-        hist1, _ = np.histogram(dist1, bins=10, density=True)
-        hist2, _ = np.histogram(dist2, bins=10, density=True)
+        hist1, _ = np.histogram(points1, bins=10, density=True)
+        hist2, _ = np.histogram(points2, bins=10, density=True)
         return entropy(
             hist1 + 1e-10, hist2 + 1e-10
         )  # Adding a small value to avoid division by zero
 
     elif metric == "jensen-shannon":
         # Jensen-Shannon Divergence
-        hist1, _ = np.histogram(dist1, bins=10, density=True)
-        hist2, _ = np.histogram(dist2, bins=10, density=True)
+        hist1, _ = np.histogram(points1, bins=10, density=True)
+        hist2, _ = np.histogram(points2, bins=10, density=True)
         m = 0.5 * (hist1 + hist2)
         return 0.5 * (
             entropy(hist1 + 1e-10, m + 1e-10) + entropy(hist2 + 1e-10, m + 1e-10)
@@ -486,41 +488,188 @@ def compare_distributions(dist1, dist2, metric="wasserstein"):
     elif metric == "energy":
         # Energy Distance
         distances = [
-            energy_distance(dist1[:, i], dist2[:, i]) for i in range(dist1.shape[1])
+            energy_distance(points1[:, i], points2[:, i])
+            for i in range(points1.shape[1])
         ]
         return np.mean(distances)
 
     elif metric == "euclidean":
         # Compute the pairwise distances between points
-        dist1 = np.atleast_2d(dist1)
-        dist2 = np.atleast_2d(dist2)
-        d1 = cdist(dist1, dist1, "euclidean")
-        d2 = cdist(dist2, dist2, "euclidean")
-        d3 = cdist(dist1, dist2, "euclidean")
+        points1 = np.atleast_2d(points1)
+        points2 = np.atleast_2d(points2)
+        d1 = cdist(points1, points1, "euclidean")
+        d2 = cdist(points2, points2, "euclidean")
+        d3 = cdist(points1, points2, "euclidean")
         return np.abs(np.mean(d1) + np.mean(d2) - 2 * np.mean(d3))
 
     elif metric == "mahalanobis":
         # Mahalanobis Distance
         # Compute the covariance matrix for each distribution (can be estimated from data)
-        cov_matrix1 = np.cov(dist1, rowvar=False)
-        cov_matrix2 = np.cov(dist2, rowvar=False)
+        cov_matrix1 = np.cov(points1, rowvar=False)
+        cov_matrix2 = np.cov(points2, rowvar=False)
         # Compute the inverse of the covariance matrices
         cov_inv1 = np.linalg.inv(cov_matrix1)
         cov_inv2 = np.linalg.inv(cov_matrix2)
 
         # Compute the Mahalanobis distance between the means of the dists
-        mean1 = np.mean(dist1, axis=0)
-        mean2 = np.mean(dist2, axis=0)
+        mean1 = np.mean(points1, axis=0)
+        mean2 = np.mean(points2, axis=0)
         return mahalanobis(mean1, mean2, cov_inv1 + cov_inv2)
 
     elif metric == "cosine":
         # Cosine Similarity
-        mean1 = np.mean(dist1, axis=0)
-        mean2 = np.mean(dist2, axis=0)
+        mean1 = np.mean(points1, axis=0)
+        mean2 = np.mean(points2, axis=0)
         return cosine_similarity(mean1, mean2)
 
+    elif metric == "overlap":
+        if points1.shape == points2.shape and np.allclose(points1, points2):
+            # Check if the distributions are identical
+            overlap = 1.0
+        else:
+            # 1. Convert surface of 3D sphere to 2D plane
+            points1_2d, points2_2d = sphere_to_plane(points1, points2)
+
+            # 2. Filter out outliers
+            points1_2d_filtered = filter_outlier(points1_2d)
+            points2_2d_filtered = filter_outlier(points2_2d)
+
+            # 3. Calculate overlap
+            hull1 = ConvexHull(points1_2d_filtered)
+            hull2 = ConvexHull(points2_2d_filtered)
+
+            overlap = area_of_intersection(hull1, hull2) / (
+                hull1.area + hull2.area - area_of_intersection(hull1, hull2)
+            )
+        return overlap
     else:
         raise ValueError(f"Unsupported metric: {metric}")
+
+
+def sphere_to_plane(points1: np.ndarray, points2: np.ndarray):
+    """
+    Convert 3D points on a sphere to 2D points on a plane.
+    """
+    phi1 = np.arctan2(points1[:, 1], points1[:, 0])
+    theta1 = np.arccos(points1[:, 2])
+    phi2 = np.arctan2(points2[:, 1], points2[:, 0])
+    theta2 = np.arccos(points2[:, 2])
+
+    points1_2d = np.column_stack((phi1, theta1))
+    points2_2d = np.column_stack((phi2, theta2))
+    return points1_2d, points2_2d
+
+
+def filter_outlier(points, contamination=0.2):
+    """
+    Filter out outliers from a 2D distribution using an Elliptic Envelope.
+    The algorithm fits an ellipse to the data, trying to encompass the most concentrated 80% of the points (since we set contamination to 0.2).
+    Points outside this ellipse are labeled as outliers.
+        - It estimates the robust covariance of the dataset.
+        - It computes the Mahalanobis distances of the points.
+        - Points with a Mahalanobis distance above a certain threshold (determined by the contamination parameter) are considered outliers.
+    """
+    outlier_detector = EllipticEnvelope(contamination=contamination, random_state=42)
+    mask = outlier_detector.fit_predict(points) != -1
+    return points[mask]
+
+
+def intersect_segments(seg1, seg2):
+    """
+    Determine if two line segments intersect and return the point of intersection.
+
+    This function uses the parametric form of line equations to find the
+    intersection point of two line segments.
+
+    Parameters:
+    seg1 (list of tuples): The first line segment, represented by two points [(x1, y1), (x2, y2)]
+    seg2 (list of tuples): The second line segment, represented by two points [(x3, y3), (x4, y4)]
+
+    Returns:
+    tuple or None: If the segments intersect, returns the (x, y) coordinates of the
+                   intersection point. If they don't intersect or are parallel, returns None.
+
+    Note:
+    - The function assumes that the input segments are valid (i.e., two distinct points for each segment).
+    - Parallel segments (including collinear segments) are considered as non-intersecting.
+    """
+    # Unpack the segment endpoints
+    x1, y1 = seg1[0]
+    x2, y2 = seg1[1]
+    x3, y3 = seg2[0]
+    x4, y4 = seg2[1]
+
+    # Calculate the denominator
+    den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+
+    # If den is zero, the lines are parallel
+    if den == 0:
+        return None
+
+    # Calculate the parameters t and u
+    t = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den
+    u = -((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den
+
+    # Check if the intersection point lies on both line segments
+    if 0 <= t <= 1 and 0 <= u <= 1:
+        # Calculate the point of intersection
+        x = x1 + t * (x2 - x1)
+        y = y1 + t * (y2 - y1)
+        return (x, y)
+    else:
+        return None
+
+
+def area_of_intersection(hull1, hull2):
+    """
+    Calculate the area of intersection between two 2D convex hulls.
+
+    This function finds the intersection points between the edges of two convex hulls
+    and calculates the area of the resulting intersection polygon.
+
+    Parameters:
+    hull1 (scipy.spatial.ConvexHull): The first convex hull
+    hull2 (scipy.spatial.ConvexHull): The second convex hull
+
+    Returns:
+    float: The area of intersection between the two convex hulls.
+           Returns 0 if there's no intersection or if the intersection is a point or a line.
+
+    Note:
+    - This function assumes that the hulls are 2D convex hulls.
+    - It uses the `intersect_segments` function to find edge intersections.
+    - It also includes points from one hull that lie inside the other hull.
+    - The function depends on an `in_hull` function (not provided) to check if a point is inside a hull.
+    - It uses scipy's ConvexHull to calculate the final intersection area.
+
+    Raises:
+    Any exceptions raised by the ConvexHull constructor if the intersection points are invalid.
+    """
+    intersect_points = []
+    for simplex1 in hull1.simplices:
+        for simplex2 in hull2.simplices:
+            intersect = intersect_segments(
+                hull1.points[simplex1], hull2.points[simplex2]
+            )
+            if intersect is not None:
+                intersect_points.append(intersect)
+
+    # Also include points from hull1 that are inside hull2 and vice versa
+    for point in hull1.points:
+        if in_hull(point, hull2):
+            intersect_points.append(point)
+    for point in hull2.points:
+        if in_hull(point, hull1):
+            intersect_points.append(point)
+
+    if len(intersect_points) > 2:
+        return ConvexHull(intersect_points).area
+    return 0
+
+
+def in_hull(point, hull):
+    # Check if a point is inside a convex hull
+    return all((np.dot(eq[:-1], point) + eq[-1] <= 0) for eq in hull.equations)
 
 
 def correlate_vectors(vectors: np.ndarray, method="pearson"):
@@ -654,8 +803,10 @@ def check_correct_metadata(string_or_list, name_parts):
 def is_integer(array: np.ndarray) -> bool:
     return np.issubdtype(array.dtype, np.integer)
 
+
 def is_floating(array: np.ndarray) -> bool:
     return np.issubdtype(array.dtype, np.floating)
+
 
 def force_1_dim_larger(data: np.ndarray):
     if len(data.shape) == 1 or data.shape[0] < data.shape[1]:
