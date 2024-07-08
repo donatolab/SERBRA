@@ -7,6 +7,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 import plotly
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import colorsys
+
+
 
 from scipy.spatial import ConvexHull
 
@@ -36,6 +39,47 @@ class Vizualizer:
         # TODO: combine plots from top to bottom aligned by time
         # distance, velocity, acceleration, position, raster
         pass
+
+    def calculate_alpha(value, min_value, max_value, min_alpha=0.1, max_alpha=1.0):
+        """
+        Calculates the alpha (transparency) value based on the given value and its range.
+
+        Parameters
+        ----------
+        value : float
+            The value for which to calculate the alpha.
+        min_value : float
+            The minimum value of the range.
+        max_value : float
+            The maximum value of the range.
+        min_alpha : float, optional
+            The minimum alpha value (default is 0.1).
+        max_alpha : float, optional
+            The maximum alpha value (default is 1.0).
+
+        Returns
+        -------
+        float
+            The calculated alpha value.
+        """
+        if max_value == min_value:
+            return 0.1  # max_alpha
+        normalized_value = (value - min_value) / (max_value - min_value)
+        return min_alpha + (max_alpha - min_alpha) * normalized_value
+
+    @staticmethod
+    def generate_similar_colors(base_color, num_colors):
+        """
+        Generates a list of similar colors based on a base color.
+        """
+        base_hls = colorsys.rgb_to_hls(*base_color[:3])
+        colors = []
+        for i in range(num_colors):
+            hue = (base_hls[0] + i * 0.05) % 1.0  # Small hue variations
+            lightness = max(0, min(1, base_hls[1] + (i - num_colors/2) * 0.1))  # Slight lightness variations
+            rgb = colorsys.hls_to_rgb(hue, lightness, base_hls[2])
+            colors.append(rgb)
+        return colors
 
     #############################  Data Plots #################################################
     @staticmethod
@@ -497,8 +541,10 @@ class Vizualizer:
         groups: dict,
         plot_hulls=False,
         alpha=0.8,
+        hull_alpha=0.2,
         legend=True,
         title="3D Plot",
+        filter_outliers=True,
     ):
         """
         Create 3D plot with convex hull surfaces for each group of points.
@@ -534,11 +580,12 @@ class Vizualizer:
             hulls = {}
             for label, points in groups.items():
                 points = np.array(points)
-                if len(points) >= 4:  # Minimum 4 points needed to form a 3D convex hull
-                    hull = ConvexHull(points)
+                filtered_points = filter_outlier(points) if filter_outliers else points
+                if (
+                    len(filtered_points) >= 4
+                ):  # Minimum 4 filtered_points needed to form a 3D convex hull
+                    hull = ConvexHull(filtered_points)
                     hulls[label] = hull
-                else:
-                    print(f"Not enough points to form a convex hull for {label}")
 
             for rgba, (label, hull) in zip(rgba_colors, hulls.items()):
                 vertices = hull.points[hull.vertices]
@@ -547,7 +594,6 @@ class Vizualizer:
                     available_vertices = []
                     for v in s:
                         if len(vertices) <= v:
-                            print(f"Vertex {v} not found in vertices")
                             bad = True
                         else:
                             available_vertices.append(vertices[v])
@@ -561,7 +607,7 @@ class Vizualizer:
                         facecolors=rgba,
                         linewidths=0.01,
                         edgecolors="r",
-                        alpha=0.1,
+                        alpha=hull_alpha,
                     )
                 )
 
@@ -1285,7 +1331,63 @@ class Vizualizer:
         plt.show()
         plt.close()
 
-    #########################
+    #################################################################
+    ##### statistics of decoding (accuracy, precision, recall, f1-score)
+    @staticmethod
+    def plot_decoding_statistics_by_training_iterations(decodings):
+        reordered_decodings = {}
+        for max_iter, decoding_data in decodings.items():
+            for animal_id, animal_data in decoding_data.items():
+                if animal_id not in reordered_decodings:
+                    reordered_decodings[animal_id] = {}
+                for task_name, task_data in animal_data.items():
+                    if task_name not in reordered_decodings[animal_id]:
+                        reordered_decodings[animal_id][task_name] = {"accuracy": [], 
+                                                                "precision": [],
+                                                                    "recall": [],
+                                                                    "f1": [],
+                                                                    "roc_auc": [],
+        }                                          
+                    reordered_decodings[animal_id][task_name]["accuracy"].append(task_data["accuracy"])
+                    reordered_decodings[animal_id][task_name]["precision"].append(task_data["precision"])
+                    reordered_decodings[animal_id][task_name]["recall"].append(task_data["recall"])
+                    reordered_decodings[animal_id][task_name]["f1"].append(task_data["f1"])
+                    reordered_decodings[animal_id][task_name]["roc_auc"].append(task_data["roc_auc"])
+        reordered_decodings[animal_id]["FS1"]
+
+        # plot accuracy, precision, recall, f1
+        fig, axes = plt.subplots(len(reordered_decodings), 1, figsize=(15, 8))
+
+        # Create a color map for tasks
+        task_colormap = plt.get_cmap("tab10")
+
+        num_tasks = max(len(task_data) for task_data in reordered_decodings.values())
+        max_eval_stats = max(len([stat for stat in task.values() if stat != "roc_auc"]) 
+                            for animal in reordered_decodings.values() 
+                            for task in animal.values())
+
+        for i, (animal_id, task_data) in enumerate(reordered_decodings.items()):
+            xticks = list(decodings.keys())[::-1]
+            for task_num, (task_name, decoding_data) in enumerate(task_data.items()):
+                base_color = task_colormap(task_num)
+                similar_colors = Vizualizer.generate_similar_colors(base_color, max_eval_stats)
+                
+                for eval_num, (eval_stat, values) in enumerate(decoding_data.items()):
+                    if eval_stat == "roc_auc":
+                        continue
+                    values = values[::-1]
+                    color = similar_colors[eval_num]
+                    axes[i].plot(xticks, values, label=f"{task_name} - {eval_stat}", color=color)
+            
+            axes[i].set_title(f"Evaluation scores for different tasks with different iterations for {animal_id}")
+            axes[i].set_ylabel("Score")
+            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+            axes[i].set_xlabel("Iterations")
+            axes[i].set_xticks(xticks, xticks, rotation=45, fontsize=8)
+
+        plt.tight_layout()
+        plt.show()
+
     @staticmethod
     def plot_cell_activites_heatmap(
         rate_map,
@@ -1747,33 +1849,6 @@ class Vizualizer:
 
         return ax
 
-    def calculate_alpha(value, min_value, max_value, min_alpha=0.1, max_alpha=1.0):
-        """
-        Calculates the alpha (transparency) value based on the given value and its range.
-
-        Parameters
-        ----------
-        value : float
-            The value for which to calculate the alpha.
-        min_value : float
-            The minimum value of the range.
-        max_value : float
-            The maximum value of the range.
-        min_alpha : float, optional
-            The minimum alpha value (default is 0.1).
-        max_alpha : float, optional
-            The maximum alpha value (default is 1.0).
-
-        Returns
-        -------
-        float
-            The calculated alpha value.
-        """
-        if max_value == min_value:
-            return 0.1  # max_alpha
-        normalized_value = (value - min_value) / (max_value - min_value)
-        return min_alpha + (max_alpha - min_alpha) * normalized_value
-
     # Subplots
     def traces_subplot(
         ax,
@@ -2067,6 +2142,13 @@ class Vizualizer:
             max_bins = np.max(bins, axis=0) + 1
         tick_positions = np.arange(len(bins))
 
+        max_value = {}
+        for name, group_similarities in similarities.items():
+            if name not in max_value.keys():
+                max_value[name] = 0
+            for dists in group_similarities.values():
+                max_value[name] = np.max([max_value[name], np.max(dists)])
+
         for name, group_similarities in similarities.items():
             if name in skip:
                 continue
@@ -2105,23 +2187,44 @@ class Vizualizer:
             for group_i, (group_name, dists) in enumerate(group_similarities.items()):
                 vmin = None
                 vmax = None
-                if name == "cosine" or name == "overlap":
-                    cmap = "GnBu_r"
-                    vmin = 0
+                if name in ["cosine", "overlap"]:
                     vmax = 1
+                    cmap = "viridis"
+                else:
+                    if "_r" not in cmap:
+                        cmap = f"{cmap}_r"
+                if name in [
+                    "euclidean",
+                    "wasserstein",
+                    "kolmogorov-smirnov",
+                    "chi2",
+                    "kullback-leibler",
+                    "jensen-shannon",
+                    "energy",
+                    "mahalanobis",
+                    "overlap",
+                ]:
+                    vmin = 0
+                elif name in ["correlation", "cosine"]:
+                    vmin = -1
+                    vmax = 1
+
+
+                if vmax is None:
+                    vmax = max_value[name]
                 # ax = axes[max_bins[1]-1-j, max_bins[0]-1-i]
                 subplot_xticks = []
                 subplot_xticks_pos = []
                 subplot_yticks = []
                 subplot_yticks_pos = []
-                if isinstance(group_name, str) or group_name.ndim == 0:
+                if isinstance(group_name, str) or np.array(group_name).ndim == 0:
                     i = group_i
                     ax = axes[i]
                     subplot_title_size = max_bins * 1.7
                     if i == max_bins - 1:
                         subplot_xticks = ticks[::tick_steps]
                         subplot_xticks_pos = tick_positions[::tick_steps]
-                elif group_name.ndim == 1:
+                elif np.array(group_name).ndim == 1:
                     i, j = group_name
                     ax = axes[i, j]
                     subplot_title_size = max_bins[0] * 1.7
@@ -2219,8 +2322,10 @@ class Vizualizer:
                 vmax = None
                 if name in ["cosine", "overlap"]:
                     vmax = 1
+                    cmap = "viridis"
                 else:
-                    cmap = "viridis_r"
+                    if "_r" not in cmap:
+                        cmap = f"{cmap}_r"
                 if name in [
                     "euclidean",
                     "wasserstein",
@@ -2288,7 +2393,9 @@ class Vizualizer:
     @staticmethod
     def plot_decoding_results(
         decoder_results: List[float],
+        additional_title: str = "",
     ):
+        decoded_test_datasets_reverse = None
         decoded_lists = [[decoder_results]]
         labels = [["All Cells"]]
         labels_flattened = ["All Cells"]
@@ -2309,10 +2416,9 @@ class Vizualizer:
         # TODO: Is this working????????
 
         # viz.plot_decoding_score(decoded_model_lists=decoded_model_lists, labels=labels, figsize=(13, 5))
+        title = f"{additional_title} lowest % cells fro Behavioral Decoding of stimulus"
         fig = plt.figure(figsize=(13, 5))
-        fig.suptitle(
-            f"{task.id} lowest % cells fro Behavioral Decoding of stimulus", fontsize=16
-        )
+        fig.suptitle(title, fontsize=16)
         colors = ["green", "red", "deepskyblue"]
         ax1 = plt.subplot(111)
         # ax2 = plt.subplot(211)

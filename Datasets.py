@@ -469,7 +469,16 @@ class Data_Position(BehaviorDataset):
         if self.binned_data is not None and bin_size == self.binning_size:
             return self.binned_data
         dimensions = self.metadata["environment_dimensions"]
-        binned_data = bin_array(data, bin_size=bin_size, min_bin=0, max_bin=dimensions)
+        if len(dimensions) == 1:
+            min_bins = 0
+            max_bins = dimensions
+        elif len(dimensions) == 2:
+            boarders = Environment.define_boarder_by_pos(data)
+            min_bins = boarders[:, 0]
+            max_bins = min_bins + dimensions
+        binned_data = bin_array(
+            data, bin_size=bin_size, min_bin=min_bins, max_bin=max_bins
+        )
         self.max_bin = np.array(dimensions) / np.array(bin_size)
         return binned_data
 
@@ -521,7 +530,7 @@ class Data_Stimulus(BehaviorDataset):
         self.stimulus_sequence = self.metadata["stimulus_sequence"]
         self.stimulus_dimensions = self.metadata["stimulus_dimensions"]
         self.stimulus_type = self.metadata["stimulus_type"]
-        self.stimulus_by = self.metadata["stimulus_by"]
+        self.stimulus_by = self.metadata["stimulus_by"] or "location"
         self.fps = self.metadata["fps"] if "fps" in self.metadata.keys() else None
         self.define_plot_attributes()
 
@@ -530,6 +539,9 @@ class Data_Stimulus(BehaviorDataset):
             self.plot_attributes["ylable"] = "position cm"
         elif len(self.metadata["environment_dimensions"]) == 2:
             self.plot_attributes["figsize"] = (12, 10)
+        if self.stimulus_by == "location":
+            shapes, stimulus_type_at_frame = Environment.get_env_shapes_from_pos()
+            self.plot_attributes["yticks"] = [range(len(shapes)), shapes]
 
     def process_raw_data(self, save=True, stimulus_by="location"):
         """ "
@@ -751,6 +763,12 @@ class Data_Moving(BehaviorDataset):
         needed_attributes = ["setup"]
         check_needed_keys(metadata, needed_attributes)
         self.define_plot_attributes()
+
+    def plot_data(self):
+        Vizualizer.data_plot_1D(
+            data=self.data,
+            plot_attributes=self.plot_attributes,
+        )
 
     def define_plot_attributes(self):
         self.plot_attributes["ylable"] = "Movement State"

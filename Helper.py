@@ -24,6 +24,9 @@ from scipy.spatial.distance import cdist, mahalanobis
 from scipy.spatial import distance, ConvexHull
 from sklearn.covariance import EllipticEnvelope
 
+# parallelization
+from numba import njit
+
 # import cupy as cp  # numpy using CUDA for faster computation
 import yaml
 import re
@@ -440,12 +443,46 @@ def compare_distributions(points1, points2, metric="wasserstein"):
         - 'mahalanobis': Mahalanobis Distance - measure of the distance between two probability distributions
         - "cosine": Cosine Similarity only for mean vector of distribution- measure of the cosine of the angle between two non-zero vectors. This metric is equivalent to the Pearson correlation coefficient for normalized vectors.
 
+    Wasserstein Distance (smaller = more similar)
+    In your case, a Wasserstein distance of 3.099 indicates that it would take an average of 3.099 units of “work” (moving mass) to transform one distribution into the other.
+    Commonly used for comparing probability distributions, especially in optimal transport problems.
+    Breakage: When the distributions have disjoint support (no overlap), the Wasserstein distance becomes infinite.
+
+    Kolmogorov-Smirnov Distance (smaller = more similar)
+    Measures the maximum vertical difference between the cumulative distribution functions (CDFs) of the two distributions.
+    A KS distance of 0.43 suggests that the two distributions differ significantly in terms of their shape or location.
+    Breakage: It assumes continuous distributions and may not work well for discrete data.
+
+
+    Chi-Squared Distance (smaller = more similar)
+    Compares the observed and expected frequencies in a contingency table.
+    Breakage: It is sensitive to sample size and may not work well for small datasets.
+
+    Kullback-Leibler Divergence (smaller = more similar)
+    Measures the relative entropy between two probability distributions.
+    Breakage: Not symmetric; it can be infinite if one distribution has zero probability where the other doesn’t.
+
+    Jensen-Shannon Divergence (smaller = more similar)
+    A smoothed version of KL divergence that is symmetric and bounded.
+    Breakage: Still sensitive to zero probabilities.
+
+    Energy Distance (smaller = more similar)
+    Measures the distance between two distributions using the energy distance.
+    Breakage: It is sensitive to outliers and may not work well for skewed data and small datasets.
+
+    Mahalanobis Distance (smaller = more similar)
+    Mahalanobis distance accounts for correlations between variables.
+    Breakage: It assumes that the data is normally distributed and may not work well for non-normal data.
+
     Returns:
     - The computed distance between the two distributions.
     """
     assert (
         points1.shape[1] == points2.shape[1]
     ), "Distributions must have the same number of dimensions"
+
+    points1 = filter_outlier(points1)
+    points2 = filter_outlier(points2)
 
     if metric == "wasserstein":
         distances = [
@@ -528,7 +565,8 @@ def compare_distributions(points1, points2, metric="wasserstein"):
             overlap = 1.0
         else:
             # 1. Convert surface of 3D sphere to 2D plane
-            points1_2d, points2_2d = sphere_to_plane(points1, points2)
+            points1_2d = sphere_to_plane(points1)
+            points2_2d = sphere_to_plane(points2)
 
             # 2. Filter out outliers
             points1_2d_filtered = filter_outlier(points1_2d)
@@ -542,22 +580,49 @@ def compare_distributions(points1, points2, metric="wasserstein"):
                 hull1.area + hull2.area - area_of_intersection(hull1, hull2)
             )
         return overlap
+
+    elif metric == "overlap_3d":
+        if points1.shape == points2.shape and np.allclose(points1, points2):
+            # Check if the distributions are identical
+            overlap = 1.0
+        else:
+            # 1. Filter out outliers
+            points1_filtered = filter_outlier(points1)
+            points2_filtered = filter_outlier(points2)
+
+            # 2. Calculate overlap
+            hull1 = ConvexHull(points1_filtered)
+            hull2 = ConvexHull(points2_filtered)
+
+            overlap = area_of_intersection(hull1, hull2) / (
+                hull1.area + hull2.area - area_of_intersection(hull1, hull2)
+            )
+        return overlap
+
     else:
         raise ValueError(f"Unsupported metric: {metric}")
 
 
-def sphere_to_plane(points1: np.ndarray, points2: np.ndarray):
+def sphere_to_plane(points: np.ndarray):
     """
     Convert 3D points on a sphere to 2D points on a plane.
     """
-    phi1 = np.arctan2(points1[:, 1], points1[:, 0])
-    theta1 = np.arccos(points1[:, 2])
-    phi2 = np.arctan2(points2[:, 1], points2[:, 0])
-    theta2 = np.arccos(points2[:, 2])
+    phi = np.arctan2(points[:, 1], points[:, 0])
+    theta = np.arccos(points[:, 2])
+    points1_2d = np.column_stack((phi, theta))
+    return points1_2d
 
-    points1_2d = np.column_stack((phi1, theta1))
-    points2_2d = np.column_stack((phi2, theta2))
-    return points1_2d, points2_2d
+
+# ........ test this function
+# import cupy as cp
+# from cuml.covariance import EllipticEnvelope as GPUEllipticEnvelope
+
+
+def filter_outlier_gpu(points, contamination=0.2):
+    gpu_points = cp.asarray(points)
+    outlier_detector = GPUEllipticEnvelope(contamination=contamination, random_state=42)
+    mask = outlier_detector.fit_predict(gpu_points) != -1
+    return cp.asnumpy(gpu_points[mask])
 
 
 def filter_outlier(points, contamination=0.2):
@@ -570,7 +635,12 @@ def filter_outlier(points, contamination=0.2):
         - Points with a Mahalanobis distance above a certain threshold (determined by the contamination parameter) are considered outliers.
     """
     outlier_detector = EllipticEnvelope(contamination=contamination, random_state=42)
-    mask = outlier_detector.fit_predict(points) != -1
+    num_points = points.shape[0]
+    mask = (
+        outlier_detector.fit_predict(points) != -1
+        if num_points > 2
+        else np.ones(num_points, dtype=bool)
+    )
     return points[mask]
 
 
@@ -662,9 +732,14 @@ def area_of_intersection(hull1, hull2):
         if in_hull(point, hull1):
             intersect_points.append(point)
 
+    area = 0
     if len(intersect_points) > 2:
-        return ConvexHull(intersect_points).area
-    return 0
+        try:
+            intersection_hull = ConvexHull(intersect_points)
+            area = intersection_hull.area
+        except:
+            area = 0
+    return area
 
 
 def in_hull(point, hull):
@@ -852,7 +927,11 @@ def split_array_by_zscore(array, zscore, threshold=2.5):
 
 
 def bin_array_1d(
-    arr: List[float], bin_size: float, min_bin: float = None, max_bin: float = None
+    arr: List[float],
+    bin_size: float,
+    min_bin: float = None,
+    max_bin: float = None,
+    restrict_to_range=True,
 ):
     """
     Bin a 1D array of floats based on a given bin size.
@@ -877,6 +956,9 @@ def bin_array_1d(
 
     # Bin the array
     binned_array = np.digitize(arr, bin_edges) - 1
+
+    if restrict_to_range:
+        binned_array = np.clip(binned_array, 0, num_bins - 1)
 
     return binned_array
 
@@ -1071,6 +1153,18 @@ def add_missing_keys(metadata, needed_attributes, fill_value=None):
         for key in missing:
             metadata[key] = fill_value
     return metadata
+
+
+def travers_dicts(dicts, prefix=None):
+    """
+    Traverse a nested dictionary and yield each key-value pair with a prefixed identifier.
+    """
+    for key, value in dicts.items():
+        identifier = prefix + key + "." if prefix else key
+        if isinstance(value, dict):
+            travers_dicts(value, prefix=identifier)
+        else:
+            yield identifier, value
 
 
 # class

@@ -697,6 +697,8 @@ class Cebras(ModelsWrapper, Model):
             default_model, model_settings_dict, override=True
         )
         initial_model.fitted = False
+        initial_model.data = None
+        initial_model.decoding_statistics = None
         return initial_model
 
     def load_fitted_model(self, model):
@@ -752,17 +754,51 @@ class Cebras(ModelsWrapper, Model):
 
 
 def decode(
-    embedding_train,
-    embedding_test,
-    labels_train,
-    labels_test,
+    model=None,
+    neural_data_train_to_embedd=None,
+    neural_data_test_to_embedd=None,
+    embedding_train=None,
+    embedding_test=None,
+    labels_train=None,
+    labels_test=None,
     n_neighbors=36,
     metric="cosine",
-    bin_size=0.1,
-    min_bin=0,
-    max_bin=1,
 ):
-    # TODO: Improve decoder
+    if model is None:
+        if (
+            neural_data_train_to_embedd is None
+            or neural_data_test_to_embedd is None
+            or embedding_train is None
+            or embedding_test is None
+            or labels_train is None
+            or labels_test is None
+        ):
+            raise ValueError(
+                "Not all data is provided. Please provide the model or the necessary data."
+            )
+
+    if (
+        neural_data_train_to_embedd is None
+        or neural_data_test_to_embedd is None
+        or embedding_train is None
+        or embedding_test is None
+        or labels_train is None
+        or labels_test is None
+    ):
+        print(
+            "WARNING: Not all data is provided. Using model data. Make sure correct data is provided."
+        )
+    neural_data_train_to_embedd = (
+        neural_data_train_to_embedd or model.data["train"]["neural"]
+    )
+    embedding_train = embedding_train or model.transform(neural_data_train_to_embedd)
+    labels_train = labels_train or model.data["train"]["behavior"]
+    neural_data_test_to_embedd = (
+        neural_data_test_to_embedd or model.data["test"]["neural"]
+    )
+    embedding_test = embedding_test or model.transform(neural_data_test_to_embedd)
+    labels_test = labels_test or model.data["test"]["behavior"]
+
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
     if is_floating(labels_train):
         knn = sklearn.neighbors.KNeighborsRegressor(
@@ -805,8 +841,7 @@ def decode(
         rmse_dict = {"values": rmse, "var": error_var}
         r2_dict = {"values": r2}
         results = {"rmse": rmse_dict, "r2": r2_dict}
-
-    if is_integer(labels_test):
+    elif is_integer(labels_test):
         accuracies = []
         precisions = []
         recalls = []

@@ -1548,7 +1548,7 @@ class Environment(Behavior_Processing):
 
     @staticmethod
     def get_env_shapes_from_pos(
-        positions: np.ndarray, boarder_thr=0.1  # percentage of the box
+        positions: np.ndarray = None, boarder_thr=0.1  # percentage of the box
     ):
         """
         Classify the position of the animal in the environment based on position coordinates
@@ -1556,24 +1556,27 @@ class Environment(Behavior_Processing):
         return: in_shape_at_frame: List[int]
             , where 0 is center, 1 is corner, 2 is boarder, 3 is corner and boarder
         """
-        in_shape_at_frame = np.zeros(positions.shape[0], dtype=int)
         shapes = {"center": 0, "corner": 1, "boarder": 2}
-        if positions.ndim == 2:
-            boarders = Environment.define_boarder_by_pos(positions)
-            at_corners, at_boarder = Environment.at_corner_boarder(
-                positions, boarders, boarder_thr=boarder_thr
-            )
-
-            # in_shape_at_frame[at_free] = shapes["free"]
-            in_shape_at_frame[at_corners] = shapes["corner"]
-            in_shape_at_frame[at_boarder] = shapes["boarder"]
-
-            # at_corner_or_boarder = at_corners | at_boarder
-            # in_shape_at_frame[at_corner_or_boarder] = 3
+        if positions is None:
+            in_shape_at_frame = None
         else:
-            print(
-                "Not able to generate environmental shapes. Data should be 2D for this function."
-            )
+            in_shape_at_frame = np.zeros(positions.shape[0], dtype=int)
+            if positions.ndim == 2:
+                boarders = Environment.define_boarder_by_pos(positions)
+                at_corners, at_boarder = Environment.at_corner_boarder(
+                    positions, boarders, boarder_thr=boarder_thr
+                )
+
+                # in_shape_at_frame[at_free] = shapes["free"]
+                in_shape_at_frame[at_corners] = shapes["corner"]
+                in_shape_at_frame[at_boarder] = shapes["boarder"]
+
+                # at_corner_or_boarder = at_corners | at_boarder
+                # in_shape_at_frame[at_corner_or_boarder] = 3
+            else:
+                print(
+                    "Not able to generate environmental shapes. Data should be 2D for this function."
+                )
         return list(shapes.keys()), in_shape_at_frame
 
     def process_data(
