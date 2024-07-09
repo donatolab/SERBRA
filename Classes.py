@@ -86,7 +86,7 @@ class Animal:
         self.root_dir = Path(root_dir)
         self.dir = animal_dir or self.root_dir.joinpath(animal_id)
         self.yaml_path = self.dir.joinpath(f"{animal_id}.yaml")
-        self.sessions = {}
+        self.sessions: List[Session] = {}
         self.model_settings = model_settings or kwargs
         success = self.load_metadata()
         if not success:
@@ -170,7 +170,7 @@ class Animal:
                 )
 
     def get_pipeline_models(
-        self, 
+        self,
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         manifolds_pipeline: str = "cebra",
@@ -185,16 +185,11 @@ class Animal:
             models[session_date] = session_models
         return models
 
-    def plot_decoding_statistics(
+    def get_decoding_statistics(
         self,
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         manifolds_pipeline: str = "cebra",
-        sort_by: str = "iter",
-        additional_title: Optional[str] = None,
-        markersize: float = 0.05,
-        alpha: float = 0.4,
-        dpi: int = 300,
     ):
         models = self.get_pipeline_models(
             model_naming_filter_include=model_naming_filter_include,
@@ -203,46 +198,29 @@ class Animal:
         )
 
         decodings = {}
-        for identifier, model in travers_dicts(models):
+        for identifier, model in traverse_dicts(models):
+            if model.data["test"]["neural"].shape[0] < 10:
+                print(f"Skipping {identifier}. Not enough frames to use for decoding.")
+                continue
             for model_part in model.name.split("_"):
                 iterations = None
-                if sort_by in model_part:
-                    iterations = int(identifier.split("-")[1])
+                if "iter-" in model_part:
+                    iterations = int(identifier.split("iter-")[-1])
                     break
-            print(isidentifiereokay)
-            decodings[iterations][identifier] = model.decoding_statistics or decode(model=model)
+            if iterations is None:
+                print(
+                    f"Could not find iteration in {model.name}. Skipping {identifier}."
+                )
+                continue
+            decodings[iterations] = {}
+            decodings[iterations][identifier] = model.decoding_statistics or decode(
+                model=model
+            )
+            model.decoding_statistics = decodings[iterations][identifier]
 
-        summary_decodings = {}
-        for identifier, model in travers_dicts(decodings):
-            ........................... continue working on a function, that can create plots like shown in Vizualizer.plot_decoding_statistics_by_training_iterations
-
-        animal_decodings = {}
-        for max_iter, decoding_data in decodings.items():
-            for animal_id, animal_data in decoding_data.items():
-                if animal_id not in animal_decodings:
-                    animal_decodings[animal_id] = {}
-                for task_name, task_data in animal_data.items():
-                    if task_name not in animal_decodings[animal_id]:
-                        animal_decodings[animal_id][task_name] = {"accuracy": [], 
-                                                                "precision": [],
-                                                                    "recall": [],
-                                                                    "f1": [],
-                                                                    "roc_auc": [],
-        }
-                    animal_decodings[animal_id][task_name]["accuracy"].append(task_data["accuracy"])
-                    animal_decodings[animal_id][task_name]["precision"].append(task_data["precision"])
-                    animal_decodings[animal_id][task_name]["recall"].append(task_data["recall"])
-                    animal_decodings[animal_id][task_name]["f1"].append(task_data["f1"])
-                    animal_decodings[animal_id][task_name]["roc_auc"].append(task_data["roc_auc"])
-        # animal_decodings[animal_id]["FS1"]
-
-        Vizualizer.plot_decoding_statistics(decodings, 
-                                            additional_title=additional_title,
-                                            markersize=markersize,
-                                            alpha=alpha,
-                                            dpi=dpi)
-
-        return decodings
+        # sort decodings
+        sorted_decodings = sort_dict(decodings)
+        return sorted_decodings
 
     def plot_consistency_scores(
         self,
@@ -329,7 +307,7 @@ class Session:
         self.model_settings = model_settings
         self.yaml_path = self.dir.joinpath(f"{self.date}.yaml")
         self.tasks_infos = None  # loaded from yaml
-        self.tasks = {}
+        self.tasks: List[Task] = {}
         success = self.load_metadata()
         if not success:
             return
@@ -899,15 +877,15 @@ class Task:
                 model.fitted = models_class.is_fitted(model)
                 model.save(model.save_path)
         else:
-
             global_logger.info(
                 f"{self.id}: {model.name} model already trained. Skipping."
             )
             print(f"{self.id}: {model.name} model already trained. Skipping.")
 
-        model.data = {"train": {"neural": neural_data_train, "behavior": behavior_data_train},
-                      "test": {"neural": neural_data_test, "behavior": behavior_data_test}
-                        }
+        model.data = {
+            "train": {"neural": neural_data_train, "behavior": behavior_data_train},
+            "test": {"neural": neural_data_test, "behavior": behavior_data_test},
+        }
         return model
 
     def create_embeddings(

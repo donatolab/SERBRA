@@ -25,7 +25,7 @@ from scipy.spatial import distance, ConvexHull
 from sklearn.covariance import EllipticEnvelope
 
 # parallelization
-from numba import njit
+from numba import njit, prange, jit
 
 # import cupy as cp  # numpy using CUDA for faster computation
 import yaml
@@ -426,7 +426,25 @@ def compute_mutual_information(
     return mi
 
 
-def compare_distributions(points1, points2, metric="wasserstein"):
+def same_distribution(points1, points2):
+    """
+    Check if two distributions are the same.
+
+    Parameters:
+    - points1: array-like, first distribution
+    - points2: array-like, second distribution
+
+    Returns:
+    - bool: True if the distributions are the same, False otherwise.
+    """
+    if points1.shape != points2.shape:
+        return False
+    return np.allclose(points1, points2)
+
+
+def compare_distributions(
+    points1, points2, metric="wasserstein", filter_outliers=True, prallel=True
+):
     """
     Compare two distributions using the specified metric.
 
@@ -481,8 +499,35 @@ def compare_distributions(points1, points2, metric="wasserstein"):
         points1.shape[1] == points2.shape[1]
     ), "Distributions must have the same number of dimensions"
 
-    points1 = filter_outlier(points1)
-    points2 = filter_outlier(points2)
+    if same_distribution(points1, points2):
+        if metric in [
+            "euclidean",
+            "wasserstein",
+            "ks",
+            "chi2",
+            "kullback-leibler",
+            "jensen-shannon",
+            "energy",
+            "mahalanobis",
+            "kolmogorov-smirnov",
+        ]:
+            max_similarity_value = 0.0
+        elif metric in ["cosine"]:
+            max_similarity_value = 1.0
+        elif "overlap" in metric:
+            max_similarity_value = 1.0
+        else:
+            raise NotImplementedError(f"Metric {metric} not implemented")
+        return max_similarity_value
+
+    # Filter out outliers from the distributions
+    if filter_outliers:
+        if prallel:
+            points1 = filter_outlier_numba(points1)
+            points2 = filter_outlier_numba(points2)
+        else:
+            points1 = filter_outlier(points1)
+            points2 = filter_outlier(points2)
 
     if metric == "wasserstein":
         distances = [
@@ -544,6 +589,8 @@ def compare_distributions(points1, points2, metric="wasserstein"):
         # Compute the covariance matrix for each distribution (can be estimated from data)
         cov_matrix1 = np.cov(points1, rowvar=False)
         cov_matrix2 = np.cov(points2, rowvar=False)
+        if cov_matrix1.ndim < 2 or cov_matrix2.ndim < 2:
+            return np.inf
         # Compute the inverse of the covariance matrices
         cov_inv1 = np.linalg.inv(cov_matrix1)
         cov_inv2 = np.linalg.inv(cov_matrix2)
@@ -559,44 +606,19 @@ def compare_distributions(points1, points2, metric="wasserstein"):
         mean2 = np.mean(points2, axis=0)
         return cosine_similarity(mean1, mean2)
 
-    elif metric == "overlap":
-        if points1.shape == points2.shape and np.allclose(points1, points2):
-            # Check if the distributions are identical
-            overlap = 1.0
-        else:
+    elif "overlap" in metric:
+        if "2d" in metric:
             # 1. Convert surface of 3D sphere to 2D plane
-            points1_2d = sphere_to_plane(points1)
-            points2_2d = sphere_to_plane(points2)
+            points1 = sphere_to_plane(points1)
+            points2 = sphere_to_plane(points2)
 
-            # 2. Filter out outliers
-            points1_2d_filtered = filter_outlier(points1_2d)
-            points2_2d_filtered = filter_outlier(points2_2d)
+        # 3. Calculate overlap
+        hull1 = ConvexHull(points1)
+        hull2 = ConvexHull(points2)
 
-            # 3. Calculate overlap
-            hull1 = ConvexHull(points1_2d_filtered)
-            hull2 = ConvexHull(points2_2d_filtered)
-
-            overlap = area_of_intersection(hull1, hull2) / (
-                hull1.area + hull2.area - area_of_intersection(hull1, hull2)
-            )
-        return overlap
-
-    elif metric == "overlap_3d":
-        if points1.shape == points2.shape and np.allclose(points1, points2):
-            # Check if the distributions are identical
-            overlap = 1.0
-        else:
-            # 1. Filter out outliers
-            points1_filtered = filter_outlier(points1)
-            points2_filtered = filter_outlier(points2)
-
-            # 2. Calculate overlap
-            hull1 = ConvexHull(points1_filtered)
-            hull2 = ConvexHull(points2_filtered)
-
-            overlap = area_of_intersection(hull1, hull2) / (
-                hull1.area + hull2.area - area_of_intersection(hull1, hull2)
-            )
+        overlap = area_of_intersection(hull1, hull2) / (
+            hull1.area + hull2.area - area_of_intersection(hull1, hull2)
+        )
         return overlap
 
     else:
@@ -613,16 +635,130 @@ def sphere_to_plane(points: np.ndarray):
     return points1_2d
 
 
-# ........ test this function
-# import cupy as cp
-# from cuml.covariance import EllipticEnvelope as GPUEllipticEnvelope
+@jit(nopython=True)
+def compute_mean_and_cov(X):
+    """
+    Compute the mean vector and covariance matrix of the input data.
+
+    Args:
+    X (np.ndarray): Input data, shape (n_samples, n_features)
+
+    Returns:
+    tuple: (mean, cov)
+        mean (np.ndarray): Mean vector, shape (n_features,)
+        cov (np.ndarray): Covariance matrix, shape (n_features, n_features)
+    """
+    n, d = X.shape
+    mean = np.zeros(d)
+    for i in range(d):
+        mean[i] = np.sum(X[:, i]) / n
+    cov = np.zeros((d, d))
+    for i in range(n):
+        diff = X[i] - mean
+        for j in range(d):
+            for k in range(d):
+                cov[j, k] += diff[j] * diff[k]
+    cov /= n - 1
+    return mean, cov
 
 
-def filter_outlier_gpu(points, contamination=0.2):
-    gpu_points = cp.asarray(points)
-    outlier_detector = GPUEllipticEnvelope(contamination=contamination, random_state=42)
-    mask = outlier_detector.fit_predict(gpu_points) != -1
-    return cp.asnumpy(gpu_points[mask])
+@jit(nopython=True)
+def all_finite(arr):
+    """Check if all elements in the array are finite."""
+    for x in arr.flat:
+        if not np.isfinite(x):
+            return False
+    return True
+
+
+@jit(nopython=True)
+def is_positive_definite(A):
+    """Check if a matrix is positive definite."""
+    try:
+        np.linalg.cholesky(A)
+        return True
+    except:
+        return False
+
+
+@jit(nopython=True)
+def mahalanobis_distance(x, mean, inv_cov):
+    """
+    Compute the Mahalanobis distance between a point and the distribution.
+
+    Args:
+    x (np.ndarray): Input point, shape (n_features,)
+    mean (np.ndarray): Mean of the distribution, shape (n_features,)
+    inv_cov (np.ndarray): Inverse of the covariance matrix, shape (n_features, n_features)
+
+    Returns:
+    float: Mahalanobis distance
+    """
+    diff = x - mean
+    return np.sqrt(diff.dot(inv_cov).dot(diff))
+
+
+@jit(nopython=True)
+def filter_outlier_numba(points, contamination=0.2):
+    """
+    Filter out outliers from a set of points using a simplified Elliptic Envelope method.
+
+    This function implements a basic form of outlier detection using Mahalanobis distances.
+    It's optimized for speed using Numba's just-in-time compilation.
+
+    Args:
+    points (np.ndarray): Input points, shape (n_samples, n_features)
+    contamination (float): The proportion of outliers in the data set. Default is 0.2.
+
+    Returns:
+    np.ndarray: Filtered points with outliers removed
+
+    Note:
+    - This is a simplified implementation and may not be as robust as sklearn's EllipticEnvelope
+      for all datasets.
+    - The first run will include compilation time; subsequent runs will be much faster.
+    """
+    n, d = points.shape
+
+    # Remove any rows with NaN or inf
+    mask_valid = np.zeros(n, dtype=np.bool_)
+    for i in range(n):
+        mask_valid[i] = all_finite(points[i])
+    valid_points = points[mask_valid]
+
+    if len(valid_points) < d + 1:
+        # Not enough valid points to compute covariance
+        return valid_points
+
+    # Compute mean and covariance
+    mean, cov = compute_mean_and_cov(valid_points)
+
+    # Check if covariance matrix is positive definite
+    if not is_positive_definite(cov):
+        # If not, add a small value to the diagonal
+        cov += np.eye(d) * 1e-6
+
+    try:
+        inv_cov = np.linalg.inv(cov)
+    except:
+        # If inversion fails, return valid points
+        return valid_points
+
+    # Compute Mahalanobis distances
+    distances = np.zeros(len(valid_points))
+    for i in range(len(valid_points)):
+        distances[i] = mahalanobis_distance(valid_points[i], mean, inv_cov)
+
+    # Determine threshold based on contamination
+    threshold = np.percentile(distances, 100 * (1 - contamination))
+
+    # Create mask for non-outlier points
+    mask_inliers = np.zeros(len(valid_points), dtype=np.bool_)
+    for i in range(len(valid_points)):
+        mask_inliers[i] = distances[i] <= threshold
+
+    # Return filtered points
+    return valid_points[mask_inliers]
 
 
 def filter_outlier(points, contamination=0.2):
@@ -1155,14 +1291,15 @@ def add_missing_keys(metadata, needed_attributes, fill_value=None):
     return metadata
 
 
-def travers_dicts(dicts, prefix=None):
+def traverse_dicts(dicts, prefix=None):
     """
     Traverse a nested dictionary and yield each key-value pair with a prefixed identifier.
     """
     for key, value in dicts.items():
-        identifier = prefix + key + "." if prefix else key
+        key = str(key)
+        identifier = prefix + "." + key if prefix else key
         if isinstance(value, dict):
-            travers_dicts(value, prefix=identifier)
+            yield from traverse_dicts(value, prefix=identifier)
         else:
             yield identifier, value
 
