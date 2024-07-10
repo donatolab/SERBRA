@@ -17,6 +17,7 @@ import torch
 
 # pip install binarize2pcalcium
 # from binarize2pcalcium import binarize2pcalcium as binca
+from copy import deepcopy
 
 plt.style.use("dark_background")
 
@@ -175,6 +176,7 @@ class Animal:
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         manifolds_pipeline: str = "cebra",
     ):
+        session: Session
         models = {}
         for session_date, session in self.sessions.items():
             session_models = session.get_pipeline_models(
@@ -185,7 +187,7 @@ class Animal:
             models[session_date] = session_models
         return models
 
-    def get_decoding_statistics(
+    def define_decoding_statistics(
         self,
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
@@ -197,30 +199,14 @@ class Animal:
             manifolds_pipeline=manifolds_pipeline,
         )
 
-        decodings = {}
-        for identifier, model in traverse_dicts(models):
+        for keys_list, model in traverse_dicts(deepcopy(models)):
             if model.data["test"]["neural"].shape[0] < 10:
-                print(f"Skipping {identifier}. Not enough frames to use for decoding.")
-                continue
-            for model_part in model.name.split("_"):
-                iterations = None
-                if "iter-" in model_part:
-                    iterations = int(identifier.split("iter-")[-1])
-                    break
-            if iterations is None:
-                print(
-                    f"Could not find iteration in {model.name}. Skipping {identifier}."
-                )
-                continue
-            decodings[iterations] = {}
-            decodings[iterations][identifier] = model.decoding_statistics or decode(
-                model=model
-            )
-            model.decoding_statistics = decodings[iterations][identifier]
-
-        # sort decodings
-        sorted_decodings = sort_dict(decodings)
-        return sorted_decodings
+                #print(f"Skipping {keys_list}. Not enough frames to use for decoding.")
+                delete_nested_key(models, keys_list)
+            else:
+                if model.decoding_statistics is None:
+                    model.decoding_statistics = decode(model=model)
+        return models
 
     def plot_consistency_scores(
         self,
@@ -383,6 +369,7 @@ class Session:
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         manifolds_pipeline: str = "cebra",
     ):
+        task: Task
         models = {}
         for task_name, task in self.tasks.items():
             task_models = task.get_pipeline_models(

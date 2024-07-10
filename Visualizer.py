@@ -10,7 +10,6 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import colorsys
 
 
-
 from scipy.spatial import ConvexHull
 
 import matplotlib.axes
@@ -76,7 +75,9 @@ class Vizualizer:
         colors = []
         for i in range(num_colors):
             hue = (base_hls[0] + i * 0.05) % 1.0  # Small hue variations
-            lightness = max(0, min(1, base_hls[1] + (i - num_colors/2) * 0.1))  # Slight lightness variations
+            lightness = max(
+                0, min(1, base_hls[1] + (i - num_colors / 2) * 0.1)
+            )  # Slight lightness variations
             rgb = colorsys.hls_to_rgb(hue, lightness, base_hls[2])
             colors.append(rgb)
         return colors
@@ -1334,56 +1335,288 @@ class Vizualizer:
     #################################################################
     ##### statistics of decoding (accuracy, precision, recall, f1-score)
     @staticmethod
-    def plot_decoding_statistics_by_training_iterations(decodings):
-        reordered_decodings = {}
-        for max_iter, decoding_data in decodings.items():
-            for animal_id, animal_data in decoding_data.items():
-                if animal_id not in reordered_decodings:
-                    reordered_decodings[animal_id] = {}
-                for task_name, task_data in animal_data.items():
-                    if task_name not in reordered_decodings[animal_id]:
-                        reordered_decodings[animal_id][task_name] = {"accuracy": [], 
-                                                                "precision": [],
-                                                                    "recall": [],
-                                                                    "f1": [],
-                                                                    "roc_auc": [],
-        }                                          
-                    reordered_decodings[animal_id][task_name]["accuracy"].append(task_data["accuracy"])
-                    reordered_decodings[animal_id][task_name]["precision"].append(task_data["precision"])
-                    reordered_decodings[animal_id][task_name]["recall"].append(task_data["recall"])
-                    reordered_decodings[animal_id][task_name]["f1"].append(task_data["f1"])
-                    reordered_decodings[animal_id][task_name]["roc_auc"].append(task_data["roc_auc"])
-        reordered_decodings[animal_id]["FS1"]
+    def plot_decoding_statistics(
+        models,
+        by="task",
+        additional_title: Optional[str] = None,
+        markersize: float = 0.05,
+        alpha: float = 0.4,
+        dpi: int = 300,
+    ):
+        """
+        decoding results by trainings iterations (left to right), 1 line for every task
+        Assumtions:
+            - models is a dictionary of dictionaries of dictionaries
+                - models[session_date][task_name][model_name] = model
+                - model has decoding_results attribute
+            - models are sorted by time
+        """
+        continuouse_stats = ["mse", "rmse", "r2"]
+        discrete_stats = ["accuracy", "precision", "recall", "f1-score"]
 
-        # plot accuracy, precision, recall, f1
-        fig, axes = plt.subplots(len(reordered_decodings), 1, figsize=(15, 8))
-
-        # Create a color map for tasks
-        task_colormap = plt.get_cmap("tab10")
-
-        num_tasks = max(len(task_data) for task_data in reordered_decodings.values())
-        max_eval_stats = max(len([stat for stat in task.values() if stat != "roc_auc"]) 
-                            for animal in reordered_decodings.values() 
-                            for task in animal.values())
-
-        for i, (animal_id, task_data) in enumerate(reordered_decodings.items()):
-            xticks = list(decodings.keys())[::-1]
-            for task_num, (task_name, decoding_data) in enumerate(task_data.items()):
-                base_color = task_colormap(task_num)
-                similar_colors = Vizualizer.generate_similar_colors(base_color, max_eval_stats)
-                
-                for eval_num, (eval_stat, values) in enumerate(decoding_data.items()):
-                    if eval_stat == "roc_auc":
+        summary_decodings_by_iterations = {}
+        for session_date, session_dict in models.items():
+            for task_name, models_dict in session_dict.items():
+                # Assuming task names are unique
+                init_dict_in_dict(summary_decodings_by_iterations, task_name)
+                for model_name, model in models_dict.items():
+                    # Assume modles are sorted by time
+                    # extract iterations from model name
+                    iterations = None
+                    for name_part in model_name.split("_"):
+                        if "iter-" in name_part:
+                            iterations = int(name_part.replace("iter-", ""))
+                    if iterations is None:
+                        print(
+                            f"No iterations information was found in model name: {model_name}. Skipping..."
+                        )
                         continue
-                    values = values[::-1]
-                    color = similar_colors[eval_num]
-                    axes[i].plot(xticks, values, label=f"{task_name} - {eval_stat}", color=color)
-            
-            axes[i].set_title(f"Evaluation scores for different tasks with different iterations for {animal_id}")
-            axes[i].set_ylabel("Score")
-            axes[i].legend(loc='center left', bbox_to_anchor=(1, 0.5))
-            axes[i].set_xlabel("Iterations")
-            axes[i].set_xticks(xticks, xticks, rotation=45, fontsize=8)
+                    else:
+                        current_dict = init_dict_in_dict(
+                            summary_decodings_by_iterations[task_name], iterations
+                        )
+
+                    # create a list of decodings stats
+                    for stat_name, stat in model.decoding_results.items():
+                        init_dict_in_dict(current_dict, stat_name)
+                        current_dict[stat_name] = stat
+
+        if stat_name in discrete_stats:
+            performance_measure_type = "discrete"
+        elif stat_name in continuouse_stats:
+            performance_measure_type = "continuouse"
+        else:
+            raise ValueError("Invalid performance measure type.")
+
+        if by == "task":
+            summary_decodings_by_task_array = {}
+            task_names = list(summary_decodings_by_iterations.keys())
+            for task_num, (task_name, iteration_datas) in enumerate(
+                summary_decodings_by_iterations.items()
+            ):
+                sorted_iteraion_datas = sort_dict(iteration_datas)
+                for iteration, stat_datas in sorted_iteraion_datas.items():
+                    current_dict = init_dict_in_dict(
+                        summary_decodings_by_task_array, iteration
+                    )
+                    for stat_name, stat in stat_datas.items():
+                        if stat_name in discrete_stats:
+                            add_to_list_in_dict(current_dict, stat_name, stat)
+                        elif stat_name in continuouse_stats:
+                            init_dict_in_dict(current_dict, stat_name)
+                            # create mean and variance list
+                            for moment, value in stat.items():
+                                add_to_list_in_dict(
+                                    current_dict[stat_name], moment, value
+                                )
+
+            if performance_measure_type == "discrete":
+                Vizualizer.plot_discrete_decoding_statistics_by_task(
+                    summary_decodings_by_task_array, xticks=task_names
+                )
+            elif performance_measure_type == "continuouse":
+                Vizualizer.plot_continuous_decoding_statistics_by_task(
+                    summary_decodings_by_task_array,
+                    xticks=task_names,
+                    additional_title=additional_title,
+                )
+
+        elif by == "iterations":
+            summary_decodings_by_iterations_array = {}
+            task_names = list(summary_decodings_by_iterations.keys())
+            iteration_values = []
+            for task_num, (task_name, iteration_datas) in enumerate(
+                summary_decodings_by_iterations.items()
+            ):
+                sorted_iteraion_datas = sort_dict(iteration_datas)
+                iteration_values.append(list(sorted_iteraion_datas.keys()))
+                current_dict = init_dict_in_dict(
+                    summary_decodings_by_iterations_array, task_name
+                )
+                for iteration, stat_datas in sorted_iteraion_datas.items():
+                    for stat_name, stat in stat_datas.items():
+                        if stat_name in discrete_stats:
+                            add_to_list_in_dict(current_dict, stat_name, stat)
+                        elif stat_name in continuouse_stats:
+                            init_dict_in_dict(current_dict, stat_name)
+                            # create mean and variance list
+                            for moment, value in stat.items():
+                                add_to_list_in_dict(
+                                    current_dict[stat_name], moment, value
+                                )
+
+            if performance_measure_type == "discrete":
+                Vizualizer.plot_discrete_decoding_statistics_by_training_iterations(
+                    summary_decodings_by_iterations_array, xticks=iteration_values
+                )
+            elif performance_measure_type == "continuouse":
+                Vizualizer.plot_continuous_decoding_statistics_by_training_iterations(
+                    summary_decodings_by_iterations_array,
+                    xticks=iteration_values,
+                    additional_title=additional_title,
+                )
+
+    @staticmethod
+    def plot_discrete_decoding_statistics_by_task(
+        decodings, xticks=None, min_max_roc_auc=(0, 1)
+    ):
+        raise NotImplementedError
+
+    @staticmethod
+    def plot_continuous_decoding_statistics_by_task(
+        decodings,
+        xticks=None,
+        min_max_r2=(-1, 1),
+        min_max_rmse=(0, 1),
+        additional_title="",
+    ):
+        # Plot decodings
+        c_dec = len(decodings)
+        # discrete colormap (nipy_spectral) and discrete
+        colormap = plt.get_cmap("tab10")
+        fig, axes = plt.subplots(len(decodings), 2, figsize=(15, 3 * c_dec))
+        fig.suptitle(
+            f"Decoding statistics for different tasks {additional_title}", fontsize=20
+        )
+        ........... improve this function
+        for dec_num, (iter, task_data) in enumerate(decodings.items()):
+            for i, (eval_name, eval_stat) in enumerate(task_data.items()):
+                if "values" in eval_stat.keys():
+                    values = eval_stat["values"]
+                else:
+                    values = eval_stat["mean"]
+
+                var = None
+                if "var" in eval_stat.keys():
+                    var = eval_stat["var"]
+                elif "variance" in eval_stat.keys():
+                    var = eval_stat["variance"]
+
+                axes[dec_num, i].plot(
+                    xticks,
+                    values,
+                    # label=f"{animal_id}",
+                    # color=colormap(animal_num),
+                )
+                axes[dec_num, i].set_title(
+                    f"{eval_name} score for tasks with {iter} iterations"
+                )
+                axes[dec_num, i].set_ylabel(eval_name)
+                axes[dec_num, i].set_ylim(
+                    min_max_r2 if eval_name == "r2" else min_max_rmse
+                )
+                # set xticks
+                xtick_pos = np.arange(len(xticks))
+                axes[dec_num, i].legend()
+                if dec_num == len(decodings) - 1:
+                    axes[dec_num, i].set_xlabel("Task")
+                    axes[dec_num, i].set_xticks(xtick_pos, xticks)
+                else:
+                    axes[dec_num, i].set_xticks(xtick_pos, [])
+
+                if var is not None:
+                    axes[dec_num, i].errorbar(
+                        xticks,
+                        values,
+                        # yerr=animal_eval_stat_var,
+                        # color=colormap(animal_num),
+                        alpha=0.5,
+                        fmt="o",
+                        capsize=5,
+                    )
+                    # label=f"{task_name}")#, capsize=5)
+        plt.tight_layout()
+        plt.show()
+
+    @staticmethod
+    def plot_discrete_decoding_statistics_by_training_iterations(decodings):
+        # plot accuracy, precision, recall, f1-score
+        classes = ["center", "corner", "boarder"]
+        max_iter_count = len(list(decodings.keys()))
+
+        for i, (animal_id, task_data) in enumerate(decodings.items()):
+            task_num = len(task_data)
+            fig, axes = plt.subplots(
+                task_num, max_iter_count, figsize=(5 * max_iter_count, 5 * task_num)
+            )
+            fig.suptitle(
+                f"ROC curves for spatial zones for different tasks with different iterations for {animal_id}",
+                fontsize=40,
+            )
+            for task_num, (task_name, eval_stat) in enumerate(task_data.items()):
+                eval_stat = decoding_data["roc_auc"]
+                for iter_eval_num, roc_auc_dict in enumerate(eval_stat):
+                    for class_num, values in roc_auc_dict.items():
+                        max_iter_value = list(decodings.keys())[iter_eval_num]
+                        max_iter_pos = max_iter_count - iter_eval_num - 1
+                        ax = axes[task_num, max_iter_pos]
+                        fpr, tpr, auc = values.values()
+                        ax.plot(
+                            fpr,
+                            tpr,
+                            label=f"{classes[class_num].capitalize()} AUC {auc:.2f}",
+                        )
+
+                        ax.set_title(
+                            f"{task_name}: iter. {max_iter_value}", fontsize=20
+                        )
+                        if iter_eval_num == 0:
+                            ax.set_ylabel("TPR")
+                        if task_num == len(task_data) - 1:
+                            ax.set_xlabel("FPR")
+                        ax.legend(loc="lower right")
+
+        plt.tight_layout()
+        plt.show()
+
+    @staticmethod
+    def plot_continuous_decoding_statistics_by_training_iterations(
+        decodings,
+        xticks=None,
+        additional_title="",
+        cmap="tab10",
+        figsize=(15, 8),
+    ):
+        # Create a color map for tasks
+        colormap = plt.get_cmap(cmap)
+        xticks = np.array(xticks)
+        if xticks.ndim < 2:
+            xticks = np.array([xticks] * len(decodings))
+        fig, axes = plt.subplots(2, 1, figsize=figsize)
+        for task_num, (task_name, decoding_data) in enumerate(decodings.items()):
+            for i, (eval_name, eval_stat) in enumerate(decoding_data.items()):
+                if "values" in eval_stat.keys():
+                    values = eval_stat["values"]
+                else:
+                    values = eval_stat["mean"]
+
+                var = None
+                if "var" in eval_stat.keys():
+                    var = eval_stat["var"]
+                elif "variance" in eval_stat.keys():
+                    var = eval_stat["variance"]
+
+                axes[i].plot(
+                    xticks[i], values, label=f"{task_name}", color=colormap(task_num)
+                )
+                if var:
+                    axes[i].errorbar(
+                        xticks[i],
+                        values,
+                        yerr=var,
+                        capsize=5,
+                        fmt=".",
+                        color=colormap(task_num),
+                        alpha=0.4,
+                    )
+
+                axes[i].set_title(
+                    f"{eval_name.upper()} score for different tasks with different iterations {additional_title}"
+                )
+                axes[i].set_ylabel(eval_name)
+                axes[i].legend()
+                axes[i].set_xlabel("Iterations")
+                axes[i].set_xticks(xticks[i], xticks[i], rotation=45, fontsize=8)
 
         plt.tight_layout()
         plt.show()
@@ -2208,7 +2441,6 @@ class Vizualizer:
                 elif name in ["correlation", "cosine"]:
                     vmin = -1
                     vmax = 1
-
 
                 if vmax is None:
                     vmax = max_value[name]

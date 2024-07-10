@@ -834,12 +834,12 @@ def decode(
         error_var = np.var(abs_error)
         rmse = np.mean(abs_error)
         r2 = r2_score(labels_test, labels_pred)
-        print(f"Root Mean Squared Error: {rmse}")
-        print(f"Variance of Absolute Error: {error_var}")
-        print(f"R²: {r2}")
+        # print(f"Root Mean Squared Error: {rmse}")
+        # print(f"Variance of Absolute Error: {error_var}")
+        # print(f"R²: {r2}")
 
-        rmse_dict = {"values": rmse, "var": error_var}
-        r2_dict = {"values": r2}
+        rmse_dict = {"mean": rmse, "variance": error_var}
+        r2_dict = {"mean": r2}
         results = {"rmse": rmse_dict, "r2": r2_dict}
     elif is_integer(labels_test):
         accuracies = []
@@ -898,10 +898,10 @@ def decode(
 
             # print(f"Accuracy for output {i}: {accuracy}")
             # print(f"Classification Report for output {i}:")
-            print(f"Average Accuracy: {np.mean(accuracies)}")
-            print(f"Average Precision: {np.mean(precisions)}")
-            print(f"Average Recall: {np.mean(recalls)}")
-            print(f"Average F1 Score: {np.mean(f1s)}")
+            # print(f"Average Accuracy: {np.mean(accuracies)}")
+            # print(f"Average Precision: {np.mean(precisions)}")
+            # print(f"Average Recall: {np.mean(recalls)}")
+            # print(f"Average F1 Score: {np.mean(f1s)}")
 
             results = {
                 "accuracy": accuracies,

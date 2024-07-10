@@ -1225,6 +1225,18 @@ def get_top_percentile_indices(vector, percentile=5, indices_smaller=True):
 
 
 # dict
+def init_dict_in_dict(dict, key):
+    if key not in dict:
+        dict[key] = {}
+    return dict[key]
+
+
+def add_to_list_in_dict(dict, key, value):
+    if key not in dict:
+        dict[key] = []
+    dict[key].append(value)
+
+
 def filter_dict_by_properties(
     dictionary,
     include_properties: List[List[str]] = None,  # or [str] or str
@@ -1241,8 +1253,8 @@ def filter_dict_by_properties(
     return filtered_dict
 
 
-def sort_dict(dictionary):
-    return {key: value for key, value in sorted(dictionary.items())}
+def sort_dict(dictionary, reverse=False):
+    return dict(sorted(dictionary.items(), reverse=reverse))
 
 
 def load_yaml(path, mode="r"):
@@ -1291,17 +1303,32 @@ def add_missing_keys(metadata, needed_attributes, fill_value=None):
     return metadata
 
 
-def traverse_dicts(dicts, prefix=None):
+def traverse_dicts(dicts, keys=None):
     """
-    Traverse a nested dictionary and yield each key-value pair with a prefixed identifier.
+    Traverse a nested dictionary and yield each key-value pair with a key list.
     """
     for key, value in dicts.items():
-        key = str(key)
-        identifier = prefix + "." + key if prefix else key
+        keys_list = keys + [key] if keys else [key]
         if isinstance(value, dict):
-            yield from traverse_dicts(value, prefix=identifier)
+            yield from traverse_dicts(value, keys=keys_list)
         else:
-            yield identifier, value
+            yield keys_list, value
+
+
+def delete_nested_key(d, keys):
+    """
+    Deletes a key from a nested dictionary.
+
+    Parameters:
+    d (dict): The dictionary to modify.
+    keys (list): A list of keys to traverse the dictionary.
+
+    Example:
+    delete_nested_key(my_dict, ['a', 'b', 'c']) will delete my_dict['a']['b']['c']
+    """
+    for key in keys[:-1]:
+        d = d[key]
+    del d[keys[-1]]
 
 
 # class
