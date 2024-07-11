@@ -1336,6 +1336,100 @@ class Vizualizer:
     ##### statistics of decoding (accuracy, precision, recall, f1-score)
     @staticmethod
     def plot_decoding_statistics(
+        decoder_results: List[float],
+        additional_title: str = "",
+    ):
+        decoded_test_datasets_reverse = None
+        decoded_lists = [[decoder_results]]
+        labels = [["All Cells"]]
+        labels_flattened = ["All Cells"]
+        for (
+            scoring_type_reverse,
+            decoded_test_sets,
+        ) in decoded_test_datasets_reverse.items():
+            decoded_lists.append([])
+            labels.append([])
+            for percentage, decoded_test_set in decoded_test_sets.items():
+                decoded_lists[-1].append(decoded_test_set)
+                label = f"{scoring_type_reverse} - {percentage}% cells"
+                labels[-1].append(label)
+                labels_flattened.append(label)
+        print(labels)
+
+        # viz = Vizualizer(root_dir=root_dir)
+        # TODO: Is this working????????
+
+        # viz.plot_decoding_score(decoded_model_lists=decoded_model_lists, labels=labels, figsize=(13, 5))
+        title = f"{additional_title} lowest % cells fro Behavioral Decoding of stimulus"
+        fig = plt.figure(figsize=(13, 5))
+        fig.suptitle(title, fontsize=16)
+        colors = ["green", "red", "deepskyblue"]
+        ax1 = plt.subplot(111)
+        # ax2 = plt.subplot(211)
+
+        overall_num = 0
+        for color, docoded_model_list, labels_list in zip(
+            colors, decoded_lists, labels
+        ):
+            for num, (decoded, label) in enumerate(
+                zip(docoded_model_list, labels_list)
+            ):
+                # color = "deepskyblue" if "A\'" == "".join(label[:2]) else "red" if "B" == label[0] else "green"
+                alpha = 1 - ((1 / len(docoded_model_list)) * num / 1.3)
+                x_pos = overall_num + num
+                width = 0.4  # Width of the bars
+                ax1.bar(
+                    # x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
+                    x_pos,
+                    decoded[1],
+                    width=0.4,
+                    color=color,
+                    alpha=alpha,
+                    label=label,
+                )
+                # ax2.bar(
+                # x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
+                # x_pos, decoded[2], width=0.4, color=color, alpha=alpha, label = label
+                # )
+                ##ax2.scatter(
+                #    middle_A_model.state_dict_["loss"][-1],
+                #    decoded[1],
+                #    s=50,
+                #    c=color,
+                #    alpha=alpha,
+                #    label=label,
+                # )
+            overall_num = x_pos + 1
+
+        ylabel = "Mean stimulus error"
+
+        ax1.spines["top"].set_visible(False)
+        ax1.spines["right"].set_visible(False)
+        ax1.set_ylabel(ylabel)
+        ax1.grid(axis="y", alpha=0.2)
+        print_labels = labels_flattened
+        label_pos = np.arange(len(labels_flattened))
+        ax1.set_xticks(label_pos)
+        # ax1.set_ylim([0, 1])
+        ax1.set_xticklabels(print_labels, rotation=45, ha="right")
+
+        ylabel = "mean stimulus in cm"
+
+        # ax2.spines["top"].set_visible(False)
+        # ax2.spines["right"].set_visible(False)
+        # ax2.set_ylabel(ylabel)
+        # ax2.grid(axis="y", alpha=0.5)
+        # print_labels = labels_flattened
+        # label_pos = np.arange(len(labels_flattened))
+        # ax2.set_xticks(label_pos)
+        ##ax2.set_ylim([0, 130])
+        # ax2.set_xticklabels(print_labels, rotation=45, ha="right")
+
+        # plt.legend()
+        plt.show()
+
+    @staticmethod
+    def plot_decoding_statistics_line(
         models,
         by="task",
         additional_title: Optional[str] = None,
@@ -1348,7 +1442,7 @@ class Vizualizer:
         Assumtions:
             - models is a dictionary of dictionaries of dictionaries
                 - models[session_date][task_name][model_name] = model
-                - model has decoding_results attribute
+                - model has decoding_statistics attribute
             - models are sorted by time
         """
         continuouse_stats = ["mse", "rmse", "r2"]
@@ -1377,7 +1471,7 @@ class Vizualizer:
                         )
 
                     # create a list of decodings stats
-                    for stat_name, stat in model.decoding_results.items():
+                    for stat_name, stat in model.decoding_statistics.items():
                         init_dict_in_dict(current_dict, stat_name)
                         current_dict[stat_name] = stat
 
@@ -1466,8 +1560,8 @@ class Vizualizer:
     def plot_continuous_decoding_statistics_by_task(
         decodings,
         xticks=None,
-        min_max_r2=(-1, 1),
-        min_max_rmse=(0, 1),
+        # min_max_r2=(-1, 1),
+        # min_max_rmse=(0, 1),
         additional_title="",
     ):
         # Plot decodings
@@ -1478,7 +1572,7 @@ class Vizualizer:
         fig.suptitle(
             f"Decoding statistics for different tasks {additional_title}", fontsize=20
         )
-        ........... improve this function
+        # ........... improve this function
         for dec_num, (iter, task_data) in enumerate(decodings.items()):
             for i, (eval_name, eval_stat) in enumerate(task_data.items()):
                 if "values" in eval_stat.keys():
@@ -1502,9 +1596,9 @@ class Vizualizer:
                     f"{eval_name} score for tasks with {iter} iterations"
                 )
                 axes[dec_num, i].set_ylabel(eval_name)
-                axes[dec_num, i].set_ylim(
-                    min_max_r2 if eval_name == "r2" else min_max_rmse
-                )
+                min_y = -1 if eval_name == "r2" else 0
+                max_y = 1 if eval_name == "r2" else None
+                axes[dec_num, i].set_ylim(min_y, max_y)
                 # set xticks
                 xtick_pos = np.arange(len(xticks))
                 axes[dec_num, i].legend()
@@ -2620,98 +2714,4 @@ class Vizualizer:
                     fig.colorbar(cax, ax=ax)
 
         fig.tight_layout()
-        plt.show()
-
-    @staticmethod
-    def plot_decoding_results(
-        decoder_results: List[float],
-        additional_title: str = "",
-    ):
-        decoded_test_datasets_reverse = None
-        decoded_lists = [[decoder_results]]
-        labels = [["All Cells"]]
-        labels_flattened = ["All Cells"]
-        for (
-            scoring_type_reverse,
-            decoded_test_sets,
-        ) in decoded_test_datasets_reverse.items():
-            decoded_lists.append([])
-            labels.append([])
-            for percentage, decoded_test_set in decoded_test_sets.items():
-                decoded_lists[-1].append(decoded_test_set)
-                label = f"{scoring_type_reverse} - {percentage}% cells"
-                labels[-1].append(label)
-                labels_flattened.append(label)
-        print(labels)
-
-        # viz = Vizualizer(root_dir=root_dir)
-        # TODO: Is this working????????
-
-        # viz.plot_decoding_score(decoded_model_lists=decoded_model_lists, labels=labels, figsize=(13, 5))
-        title = f"{additional_title} lowest % cells fro Behavioral Decoding of stimulus"
-        fig = plt.figure(figsize=(13, 5))
-        fig.suptitle(title, fontsize=16)
-        colors = ["green", "red", "deepskyblue"]
-        ax1 = plt.subplot(111)
-        # ax2 = plt.subplot(211)
-
-        overall_num = 0
-        for color, docoded_model_list, labels_list in zip(
-            colors, decoded_lists, labels
-        ):
-            for num, (decoded, label) in enumerate(
-                zip(docoded_model_list, labels_list)
-            ):
-                # color = "deepskyblue" if "A\'" == "".join(label[:2]) else "red" if "B" == label[0] else "green"
-                alpha = 1 - ((1 / len(docoded_model_list)) * num / 1.3)
-                x_pos = overall_num + num
-                width = 0.4  # Width of the bars
-                ax1.bar(
-                    # x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
-                    x_pos,
-                    decoded[1],
-                    width=0.4,
-                    color=color,
-                    alpha=alpha,
-                    label=label,
-                )
-                # ax2.bar(
-                # x_pos, decoded[1], width=0.4, color=color, alpha=alpha, label = label
-                # x_pos, decoded[2], width=0.4, color=color, alpha=alpha, label = label
-                # )
-                ##ax2.scatter(
-                #    middle_A_model.state_dict_["loss"][-1],
-                #    decoded[1],
-                #    s=50,
-                #    c=color,
-                #    alpha=alpha,
-                #    label=label,
-                # )
-            overall_num = x_pos + 1
-
-        ylabel = "Mean stimulus error"
-
-        ax1.spines["top"].set_visible(False)
-        ax1.spines["right"].set_visible(False)
-        ax1.set_ylabel(ylabel)
-        ax1.grid(axis="y", alpha=0.2)
-        print_labels = labels_flattened
-        label_pos = np.arange(len(labels_flattened))
-        ax1.set_xticks(label_pos)
-        # ax1.set_ylim([0, 1])
-        ax1.set_xticklabels(print_labels, rotation=45, ha="right")
-
-        ylabel = "mean stimulus in cm"
-
-        # ax2.spines["top"].set_visible(False)
-        # ax2.spines["right"].set_visible(False)
-        # ax2.set_ylabel(ylabel)
-        # ax2.grid(axis="y", alpha=0.5)
-        # print_labels = labels_flattened
-        # label_pos = np.arange(len(labels_flattened))
-        # ax2.set_xticks(label_pos)
-        ##ax2.set_ylim([0, 130])
-        # ax2.set_xticklabels(print_labels, rotation=45, ha="right")
-
-        # plt.legend()
         plt.show()

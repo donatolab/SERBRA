@@ -791,12 +791,20 @@ def decode(
     neural_data_train_to_embedd = (
         neural_data_train_to_embedd or model.data["train"]["neural"]
     )
-    embedding_train = embedding_train or model.transform(neural_data_train_to_embedd)
+    embedding_train = (
+        embedding_train
+        or model.data["train"]["embedding"]
+        or model.transform(neural_data_train_to_embedd)
+    )
     labels_train = labels_train or model.data["train"]["behavior"]
     neural_data_test_to_embedd = (
         neural_data_test_to_embedd or model.data["test"]["neural"]
     )
-    embedding_test = embedding_test or model.transform(neural_data_test_to_embedd)
+    embedding_test = (
+        embedding_test
+        or model.data["test"]["embedding"]
+        or model.transform(neural_data_test_to_embedd)
+    )
     labels_test = labels_test or model.data["test"]["behavior"]
 
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.

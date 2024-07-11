@@ -328,6 +328,60 @@ class BehaviorDataset(Dataset):
         # default binning size is 1cm
         self.binning_size = None
 
+    def occupancy_by_binned_feature(
+        self,
+        idx_to_keep=None,
+        plot=False,
+        figsize=(6, 5),
+        xticks=None,
+        xticks_pos=None,
+        yticks=None,
+        ylabel="",
+    ):
+        # Define bins and counts
+        bins, bin_counts = np.unique(self.binned_data, axis=0, return_counts=True)
+        bins = bins.astype(int)
+        max_bins = np.max(bins, axis=0) + 1
+        num_bins = len(bins)
+
+        filtered_data = self.filter_by_idx(self.binned_data, idx_to_keep)
+
+        occupancy = np.zeros(max_bins)
+        # Calculate similarity between each pair of bins
+        for i, bin in enumerate(bins):
+            idx = (
+                np.sum(force_1_dim_larger(np.atleast_2d(filtered_data == bin)), axis=1)
+                != 0
+            )
+            bin_occupancy_count = np.sum(idx)
+            if bin.ndim == 0:
+                occupancy[bin] = bin_occupancy_count
+            elif bin.ndim == 1:
+                x_bin, y_bin = bin
+                occupancy[x_bin, y_bin] = bin_occupancy_count
+            else:
+                raise ValueError("Bin dimensions not supported.")
+
+        occupancy /= sum(occupancy)
+
+        if plot:
+            if self.key == "stimulus":
+                xticks = xticks or self.plot_attributes["yticks"][1]
+                xticks_pos = xticks_pos or self.plot_attributes["yticks"][0]
+            # Plot occupancy map
+            Vizualizer.plot_heatmap(
+                occupancy,
+                figsize=figsize,
+                title=f"Occupancy Map {self.metadata['task_id']}",
+                xticks=xticks,
+                xticks_pos=xticks_pos,
+                yticks=yticks,
+                xlabel=f"{self.key.capitalize()} bins",
+                ylabel=ylabel,
+            )
+
+        return occupancy
+
     def get_setup(self, setup_name):
         self.setup_name = self.metadata["setup"]
         if setup_name == "active_avoidance":
@@ -387,10 +441,118 @@ class NeuralDataset(Dataset):
         )
         needed_attributes = ["method", "preprocessing", "processing", "setup"]
         check_needed_keys(metadata, needed_attributes)
+        self.embedding = None
 
     def create_dataset(self, raw_data_object=None, save=True):
         self.data = self.process_raw_data(save=save)
         return
+
+    def embedd_data(self, model):
+        self.embedding = model.transform(self.data)
+        return self.embedding
+
+    def similarity(
+        self,
+        method: str = "cosine",
+        model=None,
+        use_embedding: bool = False,
+        binned_features: np.ndarray = None,
+        show_frames: int = None,
+        idx_to_keep: np.ndarray = None,
+        xticks=None,
+        xticks_pos=None,
+        xlabel=None,
+        ylabel=None,
+        title=None,
+        plot: bool = False,
+        figsize=(6, 5),
+    ):
+        """
+        Parameters:
+            - method (str): The method used to calculate the similarity.
+            - binned_features (np.ndarray): If the behavior data used to bin the neural data.
+            - show_frames (int): Number of frames to show in the heatmap.
+            - figsize (Tuple): Size of the heatmap.
+            - idx_to_keep (np.ndarray): The indices to keep.
+            - plot (bool): If the heatmap should be plotted.
+        """
+        if use_embedding:
+            if model is None and self.embedding is None:
+                raise (f"Embedding was not generated. Model needed for embedding.")
+        elif model:
+            if self.embedding is not None:
+                print(f"Embedding will be recalculated. Based on given model")
+            self.embedd_data(model)
+
+        data = self.embedding if use_embedding or model is not None else self.data
+
+        filtered_neural_data = self.filter_by_idx(data, idx_to_keep=idx_to_keep)
+
+        similarities = correlate_vectors(filtered_neural_data, method=method)
+        if binned_features is not None:
+            # Define bins and counts
+            bins, bin_counts = np.unique(binned_features, axis=0, return_counts=True)
+            bins = bins.astype(int)
+            max_bins = np.max(bins, axis=0) + 1
+            num_bins = len(bins)
+
+            filtered_binned_features = self.filter_by_idx(binned_features, idx_to_keep)
+            binned_similarities = np.zeros(max_bins)
+            for i, bin in enumerate(bins):
+                idx = (
+                    np.sum(
+                        force_1_dim_larger(
+                            np.atleast_2d(filtered_binned_features == bin)
+                        ),
+                        axis=1,
+                    )
+                    != 0
+                )
+                if bin.ndim == 0:
+                    binned_similarities[bin] = np.mean(similarities[idx][:, idx])
+                elif bin.ndim == 1:
+                    x_bin, y_bin = bin
+                    binned_similarities[x_bin, y_bin] = np.mean(
+                        similarities[idx][:, idx]
+                    )
+                elif bin.ndim == 2:
+                    x_bin, y_bin, z_bin = bin
+                    binned_similarities[x_bin, y_bin, z_bin] = np.mean(
+                        similarities[idx][:, idx]
+                    )
+                else:
+                    raise ValueError("Bin dimensions not supported.")
+
+            title = "Similarity Inside Binned Features"
+            title += f" Embedded" if use_embedding or model is not None else ""
+            xticks = xticks
+            xlabel = xlabel
+            ylabel = ylabel
+            to_show_similarities = binned_similarities
+        else:
+            to_show_similarities = (
+                similarities[:show_frames, :show_frames]
+                if isinstance(show_frames, int)
+                else similarities
+            )
+            title = title or f"Neural {method} Similarity {self.metadata['task_id']}"
+            xticks = xticks
+            xticks_pos = xticks_pos
+            xlabel = xlabel or "Frames"
+            ylabel = ylabel or "Frames"
+
+        if plot:
+            title += f" {self.metadata['task_id']}"
+            Vizualizer.plot_heatmap(
+                to_show_similarities,
+                figsize=figsize,
+                title=title,
+                xticks=xticks,
+                xticks_pos=xticks_pos,
+                xlabel=xlabel,
+                ylabel=ylabel,
+            )
+        return similarities
 
 
 class Data_Position(BehaviorDataset):

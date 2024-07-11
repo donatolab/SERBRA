@@ -201,9 +201,10 @@ class Animal:
 
         for keys_list, model in traverse_dicts(deepcopy(models)):
             if model.data["test"]["neural"].shape[0] < 10:
-                #print(f"Skipping {keys_list}. Not enough frames to use for decoding.")
+                # print(f"Skipping {keys_list}. Not enough frames to use for decoding.")
                 delete_nested_key(models, keys_list)
             else:
+                model = dict_value_keylist(models, keys_list)
                 if model.decoding_statistics is None:
                     model.decoding_statistics = decode(model=model)
         return models
@@ -787,6 +788,7 @@ class Task:
         behavior_data_types: List[str] = None,  # ["position"],
         manifolds_pipeline: str = "cebra",
         model_settings: dict = None,
+        create_embeddings: bool = True,
     ):
         """
         available model_types are: time, behavior, hybrid
@@ -869,9 +871,33 @@ class Task:
             )
             print(f"{self.id}: {model.name} model already trained. Skipping.")
 
+        if create_embeddings:
+            if neural_data_train.shape[0] < 10:
+                train_embedding = self.create_embeddings(
+                    models={model.name: model},
+                    to_transform_data=neural_data_train,
+                )[model.name]
+            else:
+                train_embedding = None
+            if neural_data_test.shape[0] > 10:
+                test_embedding = self.create_embeddings(
+                    models={model.name: model},
+                    to_transform_data=neural_data_test,
+                )[model.name]
+            else:
+                test_embedding = None
+
         model.data = {
-            "train": {"neural": neural_data_train, "behavior": behavior_data_train},
-            "test": {"neural": neural_data_test, "behavior": behavior_data_test},
+            "train": {
+                "neural": neural_data_train,
+                "behavior": behavior_data_train,
+                "embedding": train_embedding,
+            },
+            "test": {
+                "neural": neural_data_test,
+                "behavior": behavior_data_test,
+                "embedding": test_embedding,
+            },
         }
         return model
 
@@ -1529,3 +1555,36 @@ class Task:
         )
 
         return zscore, si_rate, si_content
+
+    # Feature Similarity
+    def plot_behavior_feature_similarity(
+        self,
+        models=None,
+        to_transform_data=None,
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        manifolds_pipeline="cebra",
+    ):
+        embeddings = self.create_embeddings(
+            model_naming_filter_include=["moving", "spatial_zone"],
+            model_naming_filter_exclude=["hybrid"],
+            manifolds_pipeline="cebra",
+        )
+        # example name behavior_spatial_zone_moving_iter-12800
+        embedding_name = list(embeddings.keys())[0]
+        embedding = embeddings[embedding_name]
+        if len(embeddings) > 1:
+            print(
+                f"More than one embedding found. Using the first one: {embedding_name}"
+            )
+
+        # get behavior data
+        moving_frames = self.behavior.moving.data
+        neural_data = self.neural.photon.data
+        stimulus_data = self.behavior.stimulus.data
+        binned_stimuluss = self.behavior.stimulus.binned_data
+        embedding_moving = Dataset.filter_by_idx(embedding, moving_frames)
+        neural_data_moving = Dataset.filter_by_idx(neural_data, moving_frames)
+        stimulus_data_moving = Dataset.filter_by_idx(stimulus_data, moving_frames)
+        binned_stimuluss_moving = Dataset.filter_by_idx(binned_stimuluss, moving_frames)
+        # ................. continue here

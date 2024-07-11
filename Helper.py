@@ -1237,6 +1237,12 @@ def add_to_list_in_dict(dict, key, value):
     dict[key].append(value)
 
 
+def dict_value_keylist(dict, keylist):
+    for key in keylist:
+        dict = dict[key]
+    return dict
+
+
 def filter_dict_by_properties(
     dictionary,
     include_properties: List[List[str]] = None,  # or [str] or str
