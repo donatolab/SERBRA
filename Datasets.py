@@ -343,7 +343,7 @@ class BehaviorDataset(Dataset):
         if "max_bin" not in self.__dict__.keys():
             self.max_bin = None
 
-        occupancy = group_by_binned_data(
+        occupancy, _ = group_by_binned_data(
             binned_data=filtered_data,
             group_by="count",
             max_bin=self.max_bin,
@@ -439,11 +439,12 @@ class NeuralDataset(Dataset):
 
     def similarity(
         self,
-        method: str = "cosine",
+        metric: str = "cosine",
         model=None,
         use_embedding: bool = False,
         binned_features: np.ndarray = None,
         inside_bin_similarity: bool = False,
+        remove_outliers: bool = True,
         max_bin: List[int] = None,
         show_frames: int = None,
         idx_to_keep: np.ndarray = None,
@@ -456,33 +457,30 @@ class NeuralDataset(Dataset):
         figsize=(6, 5),
     ):
         """
-        Parameters:
-            - method (str): The method used to calculate the similarity.
-            - binned_features (np.ndarray): If the behavior data used to bin the neural data.
-            - show_frames (int): Number of frames to show in the heatmap.
-            - figsize (Tuple): Size of the heatmap.
-            - idx_to_keep (np.ndarray): The indices to keep.
-            - plot (bool): If the heatmap should be plotted.
+        metrics: euclidean, wasserstein, kolmogorov-smirnov, chi2, kullback-leibler, jensen-shannon, energy, mahalanobis, cosine
+        the compare_distributions is also removing outliers on default
         """
         if use_embedding:
             if model is None and self.embedding is None:
                 raise (f"Embedding was not generated. Model needed for embedding.")
         elif model:
             if self.embedding is not None:
-                print(f"Embedding will be recalculated. Based on given model")
+                print(f"Recalculated Embedding based on given model")
             self.embedd_data(model)
 
         data = self.embedding if use_embedding or model is not None else self.data
 
         filtered_neural_data = self.filter_by_idx(data, idx_to_keep=idx_to_keep)
         if binned_features is not None:
-            filtered_binned_features = self.filter_by_idx(binned_features, idx_to_keep=idx_to_keep)
+            filtered_binned_features = self.filter_by_idx(
+                binned_features, idx_to_keep=idx_to_keep
+            )
 
         if binned_features is not None:
             if inside_bin_similarity:
-                similarities = correlate_vectors(filtered_neural_data, method=method)
+                similarities = correlate_vectors(filtered_neural_data, metric=metric)
                 # Calculate similarity inside binned features
-                binned_similarities = group_by_binned_data(
+                binned_similarities, _ = group_by_binned_data(
                     data=similarities,
                     binned_data=filtered_binned_features,
                     group_by="mean_symmetric_matrix",
@@ -497,17 +495,49 @@ class NeuralDataset(Dataset):
                 ylabel = ylabel
                 to_show_similarities = binned_similarities
             else:
-                binned_similarities = group_by_binned_data(
+                group_vectors, bins = group_by_binned_data(
                     data=filtered_neural_data,
                     binned_data=filtered_binned_features,
                     group_by="raw",
                     max_bin=max_bin,
-                    as_array=True,
+                    as_array=False,
                 )
-                .... working on group distribution compare integration ....
+                max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
+                similarities = {}
+                for group_i, (group_name, group1) in enumerate(group_vectors.items()):
+                    max_bin = max_bin.astype(int)
+                    similarities_to_groupi = np.zeros(max_bin)
+
+                    for group_j, (group_name2, group2) in enumerate(
+                        group_vectors.items()
+                    ):
+                        dist = compare_distributions(
+                            group1,
+                            group2,
+                            metric=metric,
+                            filter_outliers=remove_outliers,
+                        )
+                        group_position = (
+                            group_j if isinstance(group_name2, str) else group_name2
+                        )
+                        similarities_to_groupi[group_position] = dist
+
+                    similarities[group_name] = similarities_to_groupi
+
+                plot_bins = xticks or bins
+                if not xticks:
+                    ticks = []
+                    tick_steps = []
+                    for dim in range(bins.ndim):
+                        ticks.append(np.unique(bins[:, dim]))
+                        tick_steps.append(int(len(ticks[-1]) / 3))
+                    xticks = ticks[0]
+                    yticks = ticks[1] if len(ticks) > 1 else None
+                else:
+                    xticks = bins
                 additional_title = f" from and to each Bin {self.metadata['task_id']}"
         else:
-            similarities = correlate_vectors(filtered_neural_data, method=method)
+            similarities = correlate_vectors(filtered_neural_data, metric=metric)
             inside_bin_similarity = True
             to_show_similarities = (
                 similarities[:show_frames, :show_frames]
@@ -534,9 +564,15 @@ class NeuralDataset(Dataset):
                 )
             else:
                 Vizualizer.plot_group_distr_similarities(
-                    similarities, 
-                    additional_title=additional_title, 
-                    bins=bins)
+                    {metric: similarities},
+                    additional_title=additional_title,
+                    bins=plot_bins,
+                    colorbar=True,
+                    xticks=xticks,
+                    yticks=yticks,
+                    tick_steps=tick_steps,
+                    colorbar_label=metric,
+                )
         return similarities
 
 

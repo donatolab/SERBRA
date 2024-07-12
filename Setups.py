@@ -1571,7 +1571,7 @@ class Environment(Behavior_Processing):
                 in_shape_at_frame[at_corners] = shapes["corner"]
                 in_shape_at_frame[at_boarder] = shapes["boarder"]
 
-                # at_corner_or_boarder = at_corners | at_boarder
+                 # at_corner_or_boarder = at_corners | at_boarder
                 # in_shape_at_frame[at_corner_or_boarder] = 3
             else:
                 print(

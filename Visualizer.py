@@ -707,18 +707,35 @@ class Vizualizer:
         return ax
 
     def add_1d_colormap_legend(
-        ax, labels, label_name="labels", ticks=None, cmap="rainbow"
+        labels,
+        fig=None,
+        ax=None,
+        label_name="labels",
+        label_size=10,
+        ticks=None,
+        cmap="rainbow",
+        move_right=1,
     ):
+        if fig is None and ax is None:
+            raise ValueError("Plotting Issue: Either fig or ax must be provided.")
         # Create a ScalarMappable object using the specified colormap
         sm = plt.cm.ScalarMappable(cmap=cmap)
         unique_labels = np.unique(labels)
         unique_labels.sort()
         sm.set_array(unique_labels)  # Set the range of values for the colorbar
 
-        # Manually create colorbar
-        cbar = plt.colorbar(sm, ax=ax)
+        if fig is None:
+            # Manually create colorbar
+            cbar = plt.colorbar(sm, ax=ax)
+        else:
+            # add 1D colorbar to the right of the plot
+            cax = fig.add_axes([move_right, 0.1, 0.02, 0.8])
+            cbar = fig.colorbar(sm, cax=cax)
+
         # Adjust colorbar ticks if specified
-        cbar.set_label(label_name)  # Set the label for the colorbar
+        cbar.set_label(
+            label_name, fontsize=label_size
+        )  # Set the label for the colorbar
         if ticks is not None:
             cbar.ax.yaxis.set_major_locator(
                 MaxNLocator(integer=True)
@@ -726,7 +743,7 @@ class Vizualizer:
             cbar.set_ticks(
                 np.linspace(cbar.vmin, cbar.vmax, len(ticks))
             )  # Set custom ticks
-            cbar.set_ticklabels(ticks)
+            cbar.set_ticklabels(ticks, fontsize=label_size)  # Set custom tick labels
 
     def add_2d_colormap_legend(
         fig, move_right=1, xticks=None, yticks=None, additional_title=""
@@ -2354,12 +2371,11 @@ class Vizualizer:
         vmax=None,
         ylim=None,
         xlim=None,
+        tick_size=None,
         xticks=None,
         xticks_pos=None,
-        xtick_size=10,
         yticks=None,
         yticks_pos=None,
-        ytick_size=10,
         rotation=0,
     ):
         if sort:
@@ -2368,6 +2384,8 @@ class Vizualizer:
             correlations_df = pd.DataFrame(matrix)
             # sort the correlation matrix
             matrix = correlations_df.sort_values(by=0, axis=1, ascending=False)
+
+        tick_size = tick_size or max(matrix.shape) * 2
 
         # Creating a heatmap with sort correlations
         ax.set_title(title, fontsize=title_size)
@@ -2380,17 +2398,17 @@ class Vizualizer:
             ax.set_xlim(xlim)
 
         if xticks is not None:
-            ax.set_xticklabels(xticks, rotation=rotation)
             if xticks_pos is not None:
                 ax.set_xticks(xticks_pos)
+            ax.set_xticklabels(xticks, rotation=rotation)
         if yticks is not None:
-            ax.set_yticklabels(yticks)
             if yticks_pos is not None:
                 ax.set_yticks(yticks_pos)
+            ax.set_yticklabels(yticks)
 
         # Set tick sizes
-        ax.tick_params(axis="x", which="major", labelsize=xtick_size)
-        ax.tick_params(axis="y", which="major", labelsize=ytick_size)
+        ax.tick_params(axis="x", which="major", labelsize=tick_size)
+        ax.tick_params(axis="y", which="major", labelsize=tick_size)
 
         matrix = np.atleast_2d(matrix)
         cax = ax.imshow(
@@ -2434,6 +2452,7 @@ class Vizualizer:
             xticks_pos=xticks_pos,
             yticks=yticks,
             yticks_pos=yticks_pos,
+            tick_size=figsize[0],
             rotation=rotation,
             cmap=cmap,
             ax=ax,
@@ -2455,11 +2474,14 @@ class Vizualizer:
         skip=[],
         supxlabel="Bin X",
         supylabel="Bin Y",
+        xticks=None,
+        yticks=None,
         figsize=(4, 3),
         tick_steps=3,
         additional_title="",
         colorbar=False,
-        cmap="GnBu",
+        colorbar_label="",
+        cmap="viridis",
     ):
         if np.array(bins).ndim == 1:
             ticks = bins
@@ -2468,6 +2490,10 @@ class Vizualizer:
             ticks = [f"{x}, {y}" for x, y in bins]
             max_bins = np.max(bins, axis=0) + 1
         tick_positions = np.arange(len(bins))
+
+        tick_steps = make_list_ifnot(tick_steps)
+        if len(tick_steps) != len(max_bins):
+            tick_steps = [tick_steps[0]] * len(max_bins)
 
         max_value = {}
         for name, group_similarities in similarities.items():
@@ -2543,27 +2569,39 @@ class Vizualizer:
                 subplot_xticks_pos = []
                 subplot_yticks = []
                 subplot_yticks_pos = []
+                if xticks is None:
+                    xticks = ticks
+                xtick_positions = np.arange(len(xticks))
+                if yticks is None:
+                    yticks = ticks
+                ytick_positions = np.arange(len(yticks))
                 if isinstance(group_name, str) or np.array(group_name).ndim == 0:
                     i = group_i
                     ax = axes[i]
-                    subplot_title_size = max_bins * 1.7
+                    maximal_bin = max_bins
                     if i == max_bins - 1:
-                        subplot_xticks = ticks[::tick_steps]
-                        subplot_xticks_pos = tick_positions[::tick_steps]
+                        subplot_xticks = xticks[:: tick_steps[0]]
+                        subplot_xticks_pos = xtick_positions[:: tick_steps[0]]
                 elif np.array(group_name).ndim == 1:
                     i, j = group_name
                     ax = axes[i, j]
-                    subplot_title_size = max_bins[0] * 1.7
+                    maximal_bin = max_bins[0]
                     if i == max_bins[0] - 1:
-                        subplot_xticks = ticks[::tick_steps]
-                        subplot_xticks_pos = tick_positions[::tick_steps]
+                        subplot_xticks = xticks[:: tick_steps[0]]
+                        subplot_xticks_pos = xtick_positions[:: tick_steps[0]]
                     if j == 0:
-                        subplot_yticks = ticks[::tick_steps]
-                        subplot_yticks_pos = tick_positions[::tick_steps]
+                        subplot_yticks = yticks[:: tick_steps[1]]
+                        subplot_yticks_pos = ytick_positions[:: tick_steps[1]]
+
+                subplot_title_size = maximal_bin * 1.7
+                if isinstance(group_name, tuple) or not is_integer(group_name):
+                    subtitle = f"{group_name}"
+                else:
+                    subtitle = f"{bins[group_name]}"
 
                 cax = Vizualizer.heatmap_subplot(
                     dists,
-                    title=f"{group_name}",
+                    title=subtitle,
                     title_size=subplot_title_size,
                     xlabel="",
                     ylabel="",
@@ -2571,16 +2609,22 @@ class Vizualizer:
                     vmax=vmax,
                     xticks=subplot_xticks,
                     xticks_pos=subplot_xticks_pos,
-                    yticks=subplot_yticks[::tick_steps],
-                    yticks_pos=subplot_yticks_pos[::tick_steps],
+                    yticks=subplot_yticks,
+                    yticks_pos=subplot_yticks_pos,
                     ax=ax,
                     cmap=cmap,
                     interpolation="none",
                 )
 
-                if colorbar:
-                    # set colorbar range
-                    fig.colorbar(cax, ax=ax)
+            if colorbar:
+                Vizualizer.add_1d_colormap_legend(
+                    fig=fig,
+                    labels=np.linspace(vmin, vmax, 5),
+                    label_name=colorbar_label,
+                    label_size=max(max_bins) * 2,
+                    cmap=cmap,
+                    move_right=1,
+                )
             plt.show()
 
     def plot_1d_iter_group_distr_similarities(
@@ -2679,7 +2723,6 @@ class Vizualizer:
                 xplot_num = len(similarities) - 1 - iter_num
                 ax = axes[group_num, xplot_num]
                 subplot_title_size = 20
-                tick_size = 20
                 if True:  # group_num == len(metric_similarities) - 1:
                     subplot_xticks = ticks[::tick_steps]
                     subplot_xticks_pos = tick_positions[::tick_steps]
@@ -2697,10 +2740,8 @@ class Vizualizer:
                     vmax=vmax,
                     xticks=subplot_xticks,
                     xticks_pos=subplot_xticks_pos,
-                    xtick_size=tick_size,
                     yticks=subplot_yticks,
                     yticks_pos=subplot_yticks_pos,
-                    ytick_size=tick_size,
                     ax=ax,
                     cmap=cmap,
                     interpolation="none",

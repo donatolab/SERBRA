@@ -607,7 +607,7 @@ def compare_distributions(
         return cosine_similarity(mean1, mean2)
 
     elif "overlap" in metric:
-        if "2d" in metric:
+        if True:  # "2d" in metric:
             # 1. Convert surface of 3D sphere to 2D plane
             points1 = sphere_to_plane(points1)
             points2 = sphere_to_plane(points2)
@@ -883,7 +883,7 @@ def in_hull(point, hull):
     return all((np.dot(eq[:-1], point) + eq[-1] <= 0) for eq in hull.equations)
 
 
-def correlate_vectors(vectors: np.ndarray, method="pearson"):
+def correlate_vectors(vectors: np.ndarray, metric="pearson"):
     """
     Matrix Multiplikation is used to calculate the correlation matrix.
 
@@ -903,14 +903,14 @@ def correlate_vectors(vectors: np.ndarray, method="pearson"):
         correlation_matrix = correlation_matrix(vectors)
         print(correlation_matrix)
     """
-    if method == "pearson":
+    if metric == "pearson":
         correlation_matrix = np.corrcoef(vectors)
-    elif method == "cosine":
+    elif metric == "cosine":
         # normalized_vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
         # correlation_matrix = normalized_vectors @ normalized_vectors.T
         correlation_matrix = sklearn.metrics.pairwise.cosine_similarity(vectors)
     else:
-        raise ValueError("Method must be 'pearson' or 'cosine'.")
+        raise ValueError("metric must be 'pearson' or 'cosine'.")
 
     return correlation_matrix
 
@@ -1282,8 +1282,9 @@ def group_by_binned_data(
         groups_array = np.zeros(max_bin.astype(int))
         for coordinates, values in groups.items():
             groups_array[coordinates] = values
-        return groups_array
-    return groups
+        return groups_array, bins
+    return groups, bins
+
 
 def filter_dict_by_properties(
     dictionary,
