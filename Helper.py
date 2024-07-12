@@ -1021,10 +1021,10 @@ def is_floating(array: np.ndarray) -> bool:
 
 def force_1_dim_larger(data: np.ndarray):
     if len(data.shape) == 1 or data.shape[0] < data.shape[1]:
-        global_logger.warning(
-            f"Data is probably transposed. Needed Shape [Time, cells] Transposing..."
-        )
-        print("Data is probably transposed. Needed Shape [Time, cells] Transposing...")
+        # global_logger.warning(
+        #    f"Data is probably transposed. Needed Shape [Time, cells] Transposing..."
+        # )
+        # print("Data is probably transposed. Needed Shape [Time, cells] Transposing...")
         return data.T  # Transpose the array if the condition is met
     else:
         return data  # Return the original array if the condition is not met
@@ -1242,6 +1242,48 @@ def dict_value_keylist(dict, keylist):
         dict = dict[key]
     return dict
 
+
+def group_by_binned_data(
+    binned_data, data=None, as_array=False, group_by="raw", max_bin=None
+):
+    if data is None and group_by != "count":
+        raise ValueError("Data needed for grouping.")
+
+    if group_by != "count":
+        data, binned_data = force_equal_dimensions(data, binned_data)
+    # Define bins and counts
+    bins, bin_counts = np.unique(binned_data, axis=0, return_counts=True)
+    bins = bins.astype(int)
+    max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
+
+    # create groups
+    groups = {}
+    for bin in bins:
+        idx = np.sum(force_1_dim_larger(np.atleast_2d(binned_data == bin)), axis=1) == (
+            bin.ndim + 1
+        )
+        # calculation is for cells x cells matrix if symmetric_matrix
+        if group_by == "count":
+            values_at_bin = np.sum(idx) / len(binned_data)
+        else:
+            filtered_data = (
+                data[idx][:, idx] if "symmetric_matrix" in group_by else data[idx]
+            )
+            if "raw" in group_by:
+                values_at_bin = filtered_data
+            elif "mean" in group_by:
+                values_at_bin = np.mean(filtered_data)
+
+        if bin.ndim != 0:
+            bin = tuple(bin)
+        groups[bin] = values_at_bin
+
+    if as_array:
+        groups_array = np.zeros(max_bin.astype(int))
+        for coordinates, values in groups.items():
+            groups_array[coordinates] = values
+        return groups_array
+    return groups
 
 def filter_dict_by_properties(
     dictionary,

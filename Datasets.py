@@ -327,6 +327,7 @@ class BehaviorDataset(Dataset):
         )
         # default binning size is 1cm
         self.binning_size = None
+        self.max_bin = None
 
     def occupancy_by_binned_feature(
         self,
@@ -338,31 +339,16 @@ class BehaviorDataset(Dataset):
         yticks=None,
         ylabel="",
     ):
-        # Define bins and counts
-        bins, bin_counts = np.unique(self.binned_data, axis=0, return_counts=True)
-        bins = bins.astype(int)
-        max_bins = np.max(bins, axis=0) + 1
-        num_bins = len(bins)
-
         filtered_data = self.filter_by_idx(self.binned_data, idx_to_keep)
+        if "max_bin" not in self.__dict__.keys():
+            self.max_bin = None
 
-        occupancy = np.zeros(max_bins)
-        # Calculate similarity between each pair of bins
-        for i, bin in enumerate(bins):
-            idx = (
-                np.sum(force_1_dim_larger(np.atleast_2d(filtered_data == bin)), axis=1)
-                != 0
-            )
-            bin_occupancy_count = np.sum(idx)
-            if bin.ndim == 0:
-                occupancy[bin] = bin_occupancy_count
-            elif bin.ndim == 1:
-                x_bin, y_bin = bin
-                occupancy[x_bin, y_bin] = bin_occupancy_count
-            else:
-                raise ValueError("Bin dimensions not supported.")
-
-        occupancy /= sum(occupancy)
+        occupancy = group_by_binned_data(
+            binned_data=filtered_data,
+            group_by="count",
+            max_bin=self.max_bin,
+            as_array=True,
+        )
 
         if plot:
             if self.key == "stimulus":
@@ -457,6 +443,8 @@ class NeuralDataset(Dataset):
         model=None,
         use_embedding: bool = False,
         binned_features: np.ndarray = None,
+        inside_bin_similarity: bool = False,
+        max_bin: List[int] = None,
         show_frames: int = None,
         idx_to_keep: np.ndarray = None,
         xticks=None,
@@ -487,49 +475,40 @@ class NeuralDataset(Dataset):
         data = self.embedding if use_embedding or model is not None else self.data
 
         filtered_neural_data = self.filter_by_idx(data, idx_to_keep=idx_to_keep)
-
-        similarities = correlate_vectors(filtered_neural_data, method=method)
         if binned_features is not None:
-            # Define bins and counts
-            bins, bin_counts = np.unique(binned_features, axis=0, return_counts=True)
-            bins = bins.astype(int)
-            max_bins = np.max(bins, axis=0) + 1
-            num_bins = len(bins)
+            filtered_binned_features = self.filter_by_idx(binned_features, idx_to_keep=idx_to_keep)
 
-            filtered_binned_features = self.filter_by_idx(binned_features, idx_to_keep)
-            binned_similarities = np.zeros(max_bins)
-            for i, bin in enumerate(bins):
-                idx = (
-                    np.sum(
-                        force_1_dim_larger(
-                            np.atleast_2d(filtered_binned_features == bin)
-                        ),
-                        axis=1,
-                    )
-                    != 0
+        if binned_features is not None:
+            if inside_bin_similarity:
+                similarities = correlate_vectors(filtered_neural_data, method=method)
+                # Calculate similarity inside binned features
+                binned_similarities = group_by_binned_data(
+                    data=similarities,
+                    binned_data=filtered_binned_features,
+                    group_by="mean_symmetric_matrix",
+                    max_bin=max_bin,
+                    as_array=True,
                 )
-                if bin.ndim == 0:
-                    binned_similarities[bin] = np.mean(similarities[idx][:, idx])
-                elif bin.ndim == 1:
-                    x_bin, y_bin = bin
-                    binned_similarities[x_bin, y_bin] = np.mean(
-                        similarities[idx][:, idx]
-                    )
-                elif bin.ndim == 2:
-                    x_bin, y_bin, z_bin = bin
-                    binned_similarities[x_bin, y_bin, z_bin] = np.mean(
-                        similarities[idx][:, idx]
-                    )
-                else:
-                    raise ValueError("Bin dimensions not supported.")
 
-            title = "Similarity Inside Binned Features"
-            title += f" Embedded" if use_embedding or model is not None else ""
-            xticks = xticks
-            xlabel = xlabel
-            ylabel = ylabel
-            to_show_similarities = binned_similarities
+                title = "Similarity Inside Binned Features"
+                title += f" Embedded" if use_embedding or model is not None else ""
+                xticks = xticks
+                xlabel = xlabel
+                ylabel = ylabel
+                to_show_similarities = binned_similarities
+            else:
+                binned_similarities = group_by_binned_data(
+                    data=filtered_neural_data,
+                    binned_data=filtered_binned_features,
+                    group_by="raw",
+                    max_bin=max_bin,
+                    as_array=True,
+                )
+                .... working on group distribution compare integration ....
+                additional_title = f" from and to each Bin {self.metadata['task_id']}"
         else:
+            similarities = correlate_vectors(filtered_neural_data, method=method)
+            inside_bin_similarity = True
             to_show_similarities = (
                 similarities[:show_frames, :show_frames]
                 if isinstance(show_frames, int)
@@ -542,16 +521,22 @@ class NeuralDataset(Dataset):
             ylabel = ylabel or "Frames"
 
         if plot:
-            title += f" {self.metadata['task_id']}"
-            Vizualizer.plot_heatmap(
-                to_show_similarities,
-                figsize=figsize,
-                title=title,
-                xticks=xticks,
-                xticks_pos=xticks_pos,
-                xlabel=xlabel,
-                ylabel=ylabel,
-            )
+            if inside_bin_similarity:
+                title += f" {self.metadata['task_id']}"
+                Vizualizer.plot_heatmap(
+                    to_show_similarities,
+                    figsize=figsize,
+                    title=title,
+                    xticks=xticks,
+                    xticks_pos=xticks_pos,
+                    xlabel=xlabel,
+                    ylabel=ylabel,
+                )
+            else:
+                Vizualizer.plot_group_distr_similarities(
+                    similarities, 
+                    additional_title=additional_title, 
+                    bins=bins)
         return similarities
 
 
@@ -641,7 +626,7 @@ class Data_Position(BehaviorDataset):
         binned_data = bin_array(
             data, bin_size=bin_size, min_bin=min_bins, max_bin=max_bins
         )
-        self.max_bin = np.array(dimensions) / np.array(bin_size)
+        self.max_bin = np.array(np.array(dimensions) / np.array(bin_size), dtype=int)
         return binned_data
 
     def create_dataset(self, raw_data_object=None, save=True):
