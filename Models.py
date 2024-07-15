@@ -801,8 +801,8 @@ def decode(
         neural_data_test_to_embedd or model.data["test"]["neural"]
     )
     embedding_test = (
-        embedding_test
-        or model.data["test"]["embedding"]
+        embedding_test is not None
+        or model.data["test"]["embedding"] is not None
         or model.transform(neural_data_test_to_embedd)
     )
     labels_test = labels_test or model.data["test"]["behavior"]

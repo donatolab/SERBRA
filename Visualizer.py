@@ -1627,6 +1627,7 @@ class Vizualizer:
         classes = ["center", "corner", "boarder"]
         max_iter_count = len(list(decodings.keys()))
 
+        .................... continue here
         for i, (animal_id, task_data) in enumerate(decodings.items()):
             task_num = len(task_data)
             fig, axes = plt.subplots(
