@@ -1562,38 +1562,4 @@ class Task:
             additional_title=additional_title,
             color=colors,
         )
-
         return zscore, si_rate, si_content
-
-    # Feature Similarity
-    def plot_behavior_feature_similarity(
-        self,
-        models=None,
-        to_transform_data=None,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
-        manifolds_pipeline="cebra",
-    ):
-        embeddings = self.create_embeddings(
-            model_naming_filter_include=["moving", "spatial_zone"],
-            model_naming_filter_exclude=["hybrid"],
-            manifolds_pipeline="cebra",
-        )
-        # example name behavior_spatial_zone_moving_iter-12800
-        embedding_name = list(embeddings.keys())[0]
-        embedding = embeddings[embedding_name]
-        if len(embeddings) > 1:
-            print(
-                f"More than one embedding found. Using the first one: {embedding_name}"
-            )
-
-        # get behavior data
-        moving_frames = self.behavior.moving.data
-        neural_data = self.neural.photon.data
-        stimulus_data = self.behavior.stimulus.data
-        binned_stimuluss = self.behavior.stimulus.binned_data
-        embedding_moving = Dataset.filter_by_idx(embedding, moving_frames)
-        neural_data_moving = Dataset.filter_by_idx(neural_data, moving_frames)
-        stimulus_data_moving = Dataset.filter_by_idx(stimulus_data, moving_frames)
-        binned_stimuluss_moving = Dataset.filter_by_idx(binned_stimuluss, moving_frames)
-        # ................. continue here

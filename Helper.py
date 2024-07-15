@@ -699,6 +699,50 @@ def mahalanobis_distance(x, mean, inv_cov):
 
 
 @jit(nopython=True)
+def get_outlier_mask_numba(points, contamination=0.2):
+    n, d = points.shape
+
+    # Remove any rows with NaN or inf
+    mask_valid = np.zeros(n, dtype=np.bool_)
+    for i in range(n):
+        mask_valid[i] = all_finite(points[i])
+    valid_points = points[mask_valid]
+
+    if len(valid_points) < d + 1:
+        # Not enough valid points to compute covariance
+        return np.ones(len(valid_points), dtype=np.bool_)
+
+    # Compute mean and covariance
+    mean, cov = compute_mean_and_cov(valid_points)
+
+    # Check if covariance matrix is positive definite
+    if not is_positive_definite(cov):
+        # If not, add a small value to the diagonal
+        cov += np.eye(d) * 1e-6
+
+    try:
+        inv_cov = np.linalg.inv(cov)
+    except:
+        # If inversion fails, return valid points
+        return np.ones(len(valid_points), dtype=np.bool_)
+
+    # Compute Mahalanobis distances
+    distances = np.zeros(len(valid_points))
+    for i in range(len(valid_points)):
+        distances[i] = mahalanobis_distance(valid_points[i], mean, inv_cov)
+
+    # Determine threshold based on contamination
+    threshold = np.percentile(distances, 100 * (1 - contamination))
+
+    # Create mask for non-outlier points
+    mask_inliers = np.zeros(len(valid_points), dtype=np.bool_)
+    for i in range(len(valid_points)):
+        mask_inliers[i] = distances[i] <= threshold
+
+    return mask_inliers
+
+
+@jit(nopython=True)
 def filter_outlier_numba(points, contamination=0.2):
     """
     Filter out outliers from a set of points using a simplified Elliptic Envelope method.
@@ -718,46 +762,7 @@ def filter_outlier_numba(points, contamination=0.2):
       for all datasets.
     - The first run will include compilation time; subsequent runs will be much faster.
     """
-    n, d = points.shape
-
-    # Remove any rows with NaN or inf
-    mask_valid = np.zeros(n, dtype=np.bool_)
-    for i in range(n):
-        mask_valid[i] = all_finite(points[i])
-    valid_points = points[mask_valid]
-
-    if len(valid_points) < d + 1:
-        # Not enough valid points to compute covariance
-        return valid_points
-
-    # Compute mean and covariance
-    mean, cov = compute_mean_and_cov(valid_points)
-
-    # Check if covariance matrix is positive definite
-    if not is_positive_definite(cov):
-        # If not, add a small value to the diagonal
-        cov += np.eye(d) * 1e-6
-
-    try:
-        inv_cov = np.linalg.inv(cov)
-    except:
-        # If inversion fails, return valid points
-        return valid_points
-
-    # Compute Mahalanobis distances
-    distances = np.zeros(len(valid_points))
-    for i in range(len(valid_points)):
-        distances[i] = mahalanobis_distance(valid_points[i], mean, inv_cov)
-
-    # Determine threshold based on contamination
-    threshold = np.percentile(distances, 100 * (1 - contamination))
-
-    # Create mask for non-outlier points
-    mask_inliers = np.zeros(len(valid_points), dtype=np.bool_)
-    for i in range(len(valid_points)):
-        mask_inliers[i] = distances[i] <= threshold
-
-    # Return filtered points
+    mask_inliers = get_outlier_mask_numba(points, contamination)
     return valid_points[mask_inliers]
 
 
@@ -1028,9 +1033,7 @@ def is_single_rgba(val):
 
 
 def values_to_groups(
-    values,
-    points,
-    filter_outliers=True,
+    values, points, filter_outliers=True, contamination=0.2, parallel=True
 ):
     """
     Group points based on corresponding values, with optional outlier filtering.
@@ -1039,14 +1042,14 @@ def values_to_groups(
     -----------
     values : array-like
         An array of values used for grouping the points. Each value corresponds to a point.
-    
+
     points : array-like
         An array of points to be grouped. Each point corresponds to a value.
-    
+
     filter_outliers : bool, optional, default=True
         If True, outliers in the points will be filtered out before grouping.
         Outliers are determined using the `filter_outlier` function.
-    
+
     Returns:
     --------
     groups : dict
@@ -1055,17 +1058,28 @@ def values_to_groups(
     """
     if len(values) != len(points):
         raise ValueError("Values and points must have the same length.")
-    filter_mask = filter_outlier(points, only_mask=True) if filter_outliers else None
-    filtered_points = points[filter_mask] if filter_mask is not None else points
-    filtered_values = values[filter_mask] if filter_mask is not None else values
-    if points is None:
-        raise ValueError("Either points or groups must be provided.")
+
+    if filter_outliers:
+        filter_mask = (
+            get_outlier_mask_numba(points, contamination)
+            if parallel
+            else filter_outlier(points, contamination=contamination, only_mask=True)
+        )
+    else:
+        filter_mask = None
+    if filter_mask is not None:
+        filtered_points = points[filter_mask]
+        filtered_values = values[filter_mask]
+    else:
+        filtered_points = points
+        filtered_values = values
 
     groups = {}
     unique_labels = np.unique(filtered_values, axis=0)
     for label in unique_labels:
         matching_values = np.all(filtered_values == label, axis=1)
         groups[tuple(label)] = filtered_points[matching_values]
+
     return groups
 
 

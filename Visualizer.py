@@ -4,6 +4,9 @@ import matplotlib.colors as mcolors
 from matplotlib.ticker import MaxNLocator
 from matplotlib.collections import LineCollection
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.patches import Polygon
+
+
 import seaborn as sns
 import plotly
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -528,18 +531,29 @@ class Vizualizer:
         )
 
         if show_hulls:
-            raise NotImplementedError("Hulls not implemented for 2D embeddings.")
-            color_groups = values_to_groups(values=embedding_labels, points=embedding)
+            print("WARNING: show hulls not implemented properly for 2D")
+            color_groups = values_to_groups(
+                values=embedding_labels,
+                points=embedding,
+                filter_outliers=True,
+                contamination=0.2,
+            )
             for color, points in color_groups.items():
                 Vizualizer.add_hull(
-                    points, ax, hull_alpha=0.2, facecolor=color, edgecolor="r"
+                    points,
+                    ax,
+                    hull_alpha=0.6,
+                    facecolor=color,
+                    edgecolor="r",
                 )
 
         ax.grid(False)
         ax.set_title(title, y=1.0, pad=-10)
 
         if plot_legend:
-            Vizualizer.add_2d_colormap_legend(fig, move_right=1)
+            Vizualizer.add_2d_colormap_legend(
+                fig, discrete_values=embedding_labels, move_right=1
+            )
 
         return ax
 
@@ -660,31 +674,64 @@ class Vizualizer:
             cbar.set_ticklabels(ticks, fontsize=label_size)  # Set custom tick labels
 
     def add_2d_colormap_legend(
-        fig, move_right=1, xticks=None, yticks=None, additional_title=""
+        fig,
+        discret_n_colors=None,
+        move_right=1,
+        xticks=None,
+        yticks=None,
+        additional_title="",
     ):
-        # plt.subplots_adjust(left=0.1, right=0.65, top=0.85)
+        if xticks is None:
+            xticks = []
+        if yticks is None:
+            yticks = []
         cax = fig.add_axes([move_right, 0.55, 0.3, 0.3])
+        cax.set_xlabel("X")
+        cax.set_ylabel("Y")
+
         cp1 = np.linspace(0, 1)
         cp2 = np.linspace(0, 1)
         Cp1, Cp2 = np.meshgrid(cp1, cp2)
         C0 = np.zeros_like(Cp1) + 0.5
         # make RGB image, p1 to red channel, p2 to blue channel
         Legend = np.dstack((Cp1, C0, Cp2))
+
+        cmap = None
+        norm = None
+
+        if discret_n_colors is not None:
+            # create discrete colormap by splitting colormap into n colors
+            colors = plt.cm.viridis(
+                np.linspace(0, 1, discret_n_colors)
+            )  # Using viridis colormap
+            cmap = mcolors.ListedColormap(colors)
+            bounds = np.linspace(0, 1, discret_n_colors + 1)
+            norm = mcolors.BoundaryNorm(bounds, cmap.N)
+
+            # Rescale Legend to have discrete values
+            Cp1_discrete = np.zeros_like(Cp1)
+            Cp2_discrete = np.zeros_like(Cp2)
+            for i in np.arange(0, 1, 1 / discret_n_colors):
+                Cp1_discrete[Cp1 >= i] = i
+                Cp2_discrete[Cp2 >= i] = i
+
+            normalized_cp1 = normalize_01(Cp1_discrete, axis=1)
+            normalized_cp2 = normalize_01(Cp2_discrete, axis=0)
+            Legend = np.dstack((normalized_cp1, C0, normalized_cp2))
+
         # parameters range between 0 and 1
-        cax.imshow(Legend, origin="lower", extent=[0, 1, 0, 1])
-        cax.set_xlabel("X")
-        cax.set_ylabel("Y")
-        if xticks is None:
-            xticks = []
-        if yticks is None:
-            yticks = []
-        title = f"2D colormap - {additional_title}"
-        cax.set_xticks(np.linspace(0, 1, len(xticks)))
-        cax.set_yticks(np.linspace(0, 1, len(yticks)))
         xlabels = [f"{x:.1f}" for x in xticks]
         ylabels = [f"{y:.1f}" for y in yticks]
+        cax.set_xticks(np.linspace(0, 1, len(xticks)))
+        cax.set_yticks(np.linspace(0, 1, len(yticks)))
+        cax.imshow(
+            Legend,
+            # origin="lower",
+            extent=[0, 1, 0, 1],
+        )
         cax.set_xticklabels(xlabels, rotation=45, ha="right")
         cax.set_yticklabels(ylabels)
+        title = f"2D colormap - {additional_title}"
         cax.set_title(title, fontsize=10)
 
     def plot_multiple_embeddings(
@@ -774,9 +821,13 @@ class Vizualizer:
                     cmap=cmap,
                 )
             else:
+                unique_rgba_colors = np.unique(labels["labels"], axis=0)
+                discrete_n_colors = int(np.ceil(np.sqrt(len(unique_rgba_colors))))
+
                 Vizualizer.add_2d_colormap_legend(
                     fig,
                     move_right=0.95,
+                    discret_n_colors=discrete_n_colors,
                     xticks=xticks_2d_colormap,
                     yticks=yticks_2d_colormap,
                     additional_title=labels["name"],
@@ -2690,27 +2741,43 @@ class Vizualizer:
 
     @staticmethod
     def add_hull(points, ax, hull_alpha=0.2, facecolor="b", edgecolor="r"):
-        if len(points) >= 4:
-            hull = ConvexHull(points)
-            vertices = hull.points[hull.vertices]
+        """
+        Adds a convex hull
+        """
+        if len(points) < 3:
+            print("Not enough points for a hull")
+            return
+
+        hull = ConvexHull(points)
+        vertices = hull.points[hull.vertices]
+        if points.shape[1] == 2:  # 2D case
+            polygon = Polygon(
+                vertices,
+                closed=True,
+                alpha=hull_alpha,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+            )
+            ax.add_patch(polygon)
+
+        elif points.shape[1] == 3:  # 3D case
             poly3d = []
             for s in hull.simplices:
-                available_vertices = []
-                for v in s:
-                    if len(vertices) <= v:
-                        bad = True
-                    else:
-                        available_vertices.append(vertices[v])
-                if np.array(available_vertices).shape[0] == 3:
-                    poly3d.append(np.array(available_vertices))
+                skip_simplices = False
+                for i in s:
+                    if i >= len(vertices):
+                        skip_simplices = True
 
-            poly3d = np.array(poly3d)
+                if skip_simplices:
+                    continue
+                poly3d.append(vertices[s])
+
             ax.add_collection3d(
                 Poly3DCollection(
                     poly3d,
                     facecolors=facecolor,
                     linewidths=0.01,
-                    edgecolors="r",
+                    edgecolors=edgecolor,
                     alpha=hull_alpha,
                 )
             )
