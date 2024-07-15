@@ -761,7 +761,7 @@ def filter_outlier_numba(points, contamination=0.2):
     return valid_points[mask_inliers]
 
 
-def filter_outlier(points, contamination=0.2):
+def filter_outlier(points, contamination=0.2, only_mask=False):
     """
     Filter out outliers from a 2D distribution using an Elliptic Envelope.
     The algorithm fits an ellipse to the data, trying to encompass the most concentrated 80% of the points (since we set contamination to 0.2).
@@ -777,6 +777,8 @@ def filter_outlier(points, contamination=0.2):
         if num_points > 2
         else np.ones(num_points, dtype=bool)
     )
+    if only_mask:
+        return mask
     return points[mask]
 
 
@@ -1011,6 +1013,62 @@ def check_correct_metadata(string_or_list, name_parts):
 
 
 # array
+def is_rgba(value):
+    if isinstance(value, list) or isinstance(value, np.ndarray):
+        return all(is_single_rgba(v) for v in value)
+    else:
+        return is_single_rgba(value)
+
+
+def is_single_rgba(val):
+    if isinstance(val, tuple) or isinstance(val, list) or isinstance(val, np.ndarray):
+        if len(val) == 4:
+            return all(isinstance(c, (int, float)) and 0 <= c <= 1 for c in val)
+    return False
+
+
+def values_to_groups(
+    values,
+    points,
+    filter_outliers=True,
+):
+    """
+    Group points based on corresponding values, with optional outlier filtering.
+
+    Parameters:
+    -----------
+    values : array-like
+        An array of values used for grouping the points. Each value corresponds to a point.
+    
+    points : array-like
+        An array of points to be grouped. Each point corresponds to a value.
+    
+    filter_outliers : bool, optional, default=True
+        If True, outliers in the points will be filtered out before grouping.
+        Outliers are determined using the `filter_outlier` function.
+    
+    Returns:
+    --------
+    groups : dict
+        A dictionary where keys are unique values from `values` and values are arrays of points
+        corresponding to each unique value.
+    """
+    if len(values) != len(points):
+        raise ValueError("Values and points must have the same length.")
+    filter_mask = filter_outlier(points, only_mask=True) if filter_outliers else None
+    filtered_points = points[filter_mask] if filter_mask is not None else points
+    filtered_values = values[filter_mask] if filter_mask is not None else values
+    if points is None:
+        raise ValueError("Either points or groups must be provided.")
+
+    groups = {}
+    unique_labels = np.unique(filtered_values, axis=0)
+    for label in unique_labels:
+        matching_values = np.all(filtered_values == label, axis=1)
+        groups[tuple(label)] = filtered_points[matching_values]
+    return groups
+
+
 def is_integer(array: np.ndarray) -> bool:
     return np.issubdtype(array.dtype, np.integer)
 
@@ -1259,9 +1317,7 @@ def group_by_binned_data(
     # create groups
     groups = {}
     for bin in bins:
-        idx = np.sum(force_1_dim_larger(np.atleast_2d(binned_data == bin)), axis=1) == (
-            bin.ndim + 1
-        )
+        idx = np.all(force_1_dim_larger(np.atleast_2d(binned_data == bin)))
         # calculation is for cells x cells matrix if symmetric_matrix
         if group_by == "count":
             values_at_bin = np.sum(idx) / len(binned_data)

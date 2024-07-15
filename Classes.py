@@ -905,6 +905,7 @@ class Task:
         self,
         models=None,
         to_transform_data=None,
+        to_2d=False,
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         manifolds_pipeline="cebra",
@@ -925,6 +926,8 @@ class Task:
             embedding_title = f"{model_name}"
             if model.fitted:
                 embedding = model.transform(to_transform_data)
+                if to_2d and embedding.shape[1] > 2:
+                    embedding = sphere_to_plane(embedding)
                 self.embeddings[embedding_title] = embedding
                 embeddings[embedding_title] = embedding
             else:
@@ -942,6 +945,8 @@ class Task:
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         embeddings: Optional[Dict[str, np.ndarray]] = None,
+        to_2d: bool = False,
+        show_hulls: bool = False,
         to_transform_data: Optional[np.ndarray] = None,
         colorbar_ticks: Optional[List] = None,
         embedding_labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
@@ -949,13 +954,14 @@ class Task:
         manifolds_pipeline: str = "cebra",
         set_title: Optional[str] = None,
         title_comment: Optional[str] = None,
-        markersize: float = 0.05,
-        alpha: float = 0.4,
+        markersize: float = None,
+        alpha: float = None,
         dpi: int = 300,
     ):
         if not embeddings:
             embeddings = self.create_embeddings(
                 to_transform_data=to_transform_data,
+                to_2d=to_2d,
                 model_naming_filter_include=model_naming_filter_include,
                 model_naming_filter_exclude=model_naming_filter_exclude,
                 manifolds_pipeline="cebra",
@@ -965,7 +971,7 @@ class Task:
         if not isinstance(embedding_labels, np.ndarray) and not isinstance(
             embedding_labels, dict
         ):
-            global_logger.error("No embedding labels given.")
+            # global_logger.error("No embedding labels given.")
             global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
             print(f"Using behavior_data_types: {behavior_data_types}")
 
@@ -1005,12 +1011,15 @@ class Task:
                     )
                     + f"{' '+str(title_comment) if title_comment else ''}"
                 )
+            projection = "2d" if to_2d else "3d"
             labels_dict = {"name": embedding_title, "labels": embedding_labels}
             viz.plot_multiple_embeddings(
                 embeddings,
                 labels=labels_dict,
                 ticks=colorbar_ticks,
                 title=title,
+                projection=projection,
+                show_hulls=show_hulls,
                 markersize=markersize,
                 alpha=alpha,
                 dpi=dpi,

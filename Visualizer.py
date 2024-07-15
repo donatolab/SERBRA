@@ -418,12 +418,13 @@ class Vizualizer:
         ax,
         embedding,
         embedding_labels: dict,
+        show_hulls=False,
         title="Embedding",
         cmap="rainbow",
         plot_legend=True,
         colorbar_ticks=None,
-        markersize=0.05,
-        alpha=0.4,
+        markersize=None,
+        alpha=None,
         figsize=(10, 10),
         dpi=300,
     ):
@@ -435,6 +436,7 @@ class Vizualizer:
                 axis=ax,
                 embedding=embedding,
                 embedding_labels=labels,
+                show_hulls=show_hulls,
                 markersize=markersize,
                 alpha=alpha,
                 cmap=cmap,
@@ -448,6 +450,7 @@ class Vizualizer:
                 axis=ax,
                 embedding=embedding,
                 embedding_labels=labels,
+                show_hulls=show_hulls,
                 markersize=markersize,
                 alpha=alpha,
                 cmap=cmap,
@@ -465,21 +468,23 @@ class Vizualizer:
     def plot_embedding_2d(
         embedding: Union[npt.NDArray, torch.Tensor],
         embedding_labels: Optional[Union[npt.NDArray, torch.Tensor, str]],
+        show_hulls: bool = False,
         idx_order: Optional[Tuple[int]] = None,
-        markersize: float = 0.05,
+        markersize: float = 0.5,
         alpha: float = 0.4,
         cmap: str = "cool",
         title: str = "2D Embedding",
         axis: Optional[matplotlib.axes.Axes] = None,
         figsize: tuple = (5, 5),
         dpi: float = 100,
-        grey_fig: bool = False,
         plot_legend: bool = True,
         **kwargs,
     ):
         """
         This function is based on the plot_embedding function from the cebra library.
         """
+        markersize = markersize or 2
+        alpha = alpha or 0.5
         # define the axis
         if axis is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -513,8 +518,8 @@ class Vizualizer:
             idx2,
         ) = idx_order
         ax.scatter(
-            xs=embedding[:, idx1],
-            ys=embedding[:, idx2],
+            x=embedding[:, idx1],
+            y=embedding[:, idx2],
             c=embedding_labels,
             cmap=cmap,
             alpha=alpha,
@@ -522,124 +527,26 @@ class Vizualizer:
             **kwargs,
         )
 
-        ax.grid(False)
-        ax.xaxis.pane.fill = False
-        ax.yaxis.pane.fill = False
-        ax.xaxis.pane.set_edgecolor("w")
-        ax.yaxis.pane.set_edgecolor("w")
-        ax.set_title(title, y=1.0, pad=-10)
+        if show_hulls:
+            raise NotImplementedError("Hulls not implemented for 2D embeddings.")
+            color_groups = values_to_groups(values=embedding_labels, points=embedding)
+            for color, points in color_groups.items():
+                Vizualizer.add_hull(
+                    points, ax, hull_alpha=0.2, facecolor=color, edgecolor="r"
+                )
 
-        if grey_fig:
-            ax.xaxis.pane.set_edgecolor("grey")
-            ax.yaxis.pane.set_edgecolor("grey")
+        ax.grid(False)
+        ax.set_title(title, y=1.0, pad=-10)
 
         if plot_legend:
             Vizualizer.add_2d_colormap_legend(fig, move_right=1)
 
         return ax
 
-    def plot_embedding_3d_by_groups(
-        groups: dict,
-        plot_hulls=False,
-        alpha=0.8,
-        hull_alpha=0.2,
-        legend=True,
-        title="3D Plot",
-        filter_outliers=True,
-    ):
-        """
-        Create 3D plot with convex hull surfaces for each group of points.
-        parameters:
-        - groups: dict
-            - keys: labels for each group (Only numeric labels are supported for now.)
-            - values: list of 3D points for each group
-        """
-        # Create a 3D plot
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection="3d")
-
-        np_labels = np.array(list(groups.keys()))
-        rgba_colors = Vizualizer.create_rgba_labels(np_labels, alpha=alpha)
-
-        # Plot the points
-        for rgba, (label, points) in zip(rgba_colors, groups.items()):
-            points = np.array(points)
-            colors = np.array([rgba for _ in range(len(points))])
-            ax.scatter(
-                points[:, 0],
-                points[:, 1],
-                points[:, 2],
-                c=colors,
-                s=1,
-                label=label,
-            )
-
-        # Plot the convex hull surfaces
-        if plot_hulls:
-            title += " with Convex Hulls"
-
-            hulls = {}
-            for label, points in groups.items():
-                points = np.array(points)
-                filtered_points = filter_outlier(points) if filter_outliers else points
-                if (
-                    len(filtered_points) >= 4
-                ):  # Minimum 4 filtered_points needed to form a 3D convex hull
-                    hull = ConvexHull(filtered_points)
-                    hulls[label] = hull
-
-            for rgba, (label, hull) in zip(rgba_colors, hulls.items()):
-                vertices = hull.points[hull.vertices]
-                poly3d = []
-                for s in hull.simplices:
-                    available_vertices = []
-                    for v in s:
-                        if len(vertices) <= v:
-                            bad = True
-                        else:
-                            available_vertices.append(vertices[v])
-                    if np.array(available_vertices).shape[0] == 3:
-                        poly3d.append(np.array(available_vertices))
-
-                poly3d = np.array(poly3d)
-                ax.add_collection3d(
-                    Poly3DCollection(
-                        poly3d,
-                        facecolors=rgba,
-                        linewidths=0.01,
-                        edgecolors="r",
-                        alpha=hull_alpha,
-                    )
-                )
-
-        ax.grid(False)
-        ax.xaxis.pane.fill = False
-        ax.yaxis.pane.fill = False
-        ax.zaxis.pane.fill = False
-
-        ax.xaxis.pane.set_edgecolor("w")
-        ax.yaxis.pane.set_edgecolor("w")
-        ax.zaxis.pane.set_edgecolor("w")
-        # Set axis labels
-        ax.set_xlabel("X")
-        ax.set_ylabel("Y")
-        ax.set_zlabel("Z")
-
-        # Set plot title
-        ax.set_title(title)
-
-        # Add legend
-        if legend:
-            ax.legend()
-
-        Vizualizer.add_2d_colormap_legend(fig, move_right=0.9)
-
-        # Show the plot
-        plt.show()
-
     def plot_embedding_3d(
         embedding: Union[npt.NDArray, torch.Tensor],
         embedding_labels: Optional[Union[npt.NDArray, torch.Tensor, str]],
+        show_hulls: bool = False,
         idx_order: Optional[Tuple[int]] = None,
         markersize: float = 0.05,
         alpha: float = 0.4,
@@ -655,7 +562,7 @@ class Vizualizer:
         """
         This function is based on the plot_embedding function from the cebra library.
         """
-
+        markersize = markersize or 0.05
         # define the axis
         if axis is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -679,6 +586,13 @@ class Vizualizer:
             s=markersize,
             **kwargs,
         )
+
+        if show_hulls:
+            color_groups = values_to_groups(values=embedding_labels, points=embedding)
+            for color, points in color_groups.items():
+                Vizualizer.add_hull(
+                    points, ax, hull_alpha=0.2, facecolor=color, edgecolor="r"
+                )
 
         ax.grid(False)
         ax.xaxis.pane.fill = False
@@ -781,10 +695,11 @@ class Vizualizer:
         title="Embeddings",
         cmap="rainbow",
         projection="3d",
+        show_hulls=False,
         figsize=(20, 4),
         plot_legend=True,
-        markersize=0.05,
-        alpha=0.4,
+        markersize=None,
+        alpha=None,
         max_plot_per_row=4,
         dpi=300,
     ):
@@ -802,13 +717,15 @@ class Vizualizer:
         figsize = (figsize_x, figsize_y * rows)
 
         fig = plt.figure(figsize=figsize)
+        subplot_kw_dict = {"projection": projection} if projection != "2d" else {}
         fig, axes = plt.subplots(
-            rows, cols, figsize=figsize, subplot_kw={"projection": projection}
+            rows, cols, figsize=figsize, subplot_kw=subplot_kw_dict
         )
 
         axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
         # create 2D RGBA labels to overwrite 1D cmap coloring
+        rgba_colors = None
         if labels["labels"].shape[1] == 2:
             min_vals = np.min(labels["labels"], axis=0)
             max_vals = np.max(labels["labels"], axis=0)
@@ -817,6 +734,19 @@ class Vizualizer:
             yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
 
             rgba_colors = Vizualizer.create_rgba_labels(labels["labels"])
+        elif is_rgba(labels["labels"]):
+            first_embedding = list(embeddings.values())[0]
+            if first_embedding.shape[1] == 2:
+                min_vals = np.min(first_embedding, axis=0)
+                max_vals = np.max(first_embedding, axis=0)
+                xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
+                yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
+            else:
+                xticks_2d_colormap = None
+                yticks_2d_colormap = None
+            rgba_colors = labels["labels"]
+
+        if rgba_colors is not None:
             labels["labels"] = rgba_colors
 
         for i, (subplot_title, embedding) in enumerate(embeddings.items()):
@@ -826,6 +756,7 @@ class Vizualizer:
                 embedding=embedding,
                 embedding_labels=labels,
                 title=subplot_title,
+                show_hulls=show_hulls,
                 cmap=cmap,
                 plot_legend=False,
                 markersize=markersize,
@@ -2756,3 +2687,30 @@ class Vizualizer:
 
         fig.tight_layout()
         plt.show()
+
+    @staticmethod
+    def add_hull(points, ax, hull_alpha=0.2, facecolor="b", edgecolor="r"):
+        if len(points) >= 4:
+            hull = ConvexHull(points)
+            vertices = hull.points[hull.vertices]
+            poly3d = []
+            for s in hull.simplices:
+                available_vertices = []
+                for v in s:
+                    if len(vertices) <= v:
+                        bad = True
+                    else:
+                        available_vertices.append(vertices[v])
+                if np.array(available_vertices).shape[0] == 3:
+                    poly3d.append(np.array(available_vertices))
+
+            poly3d = np.array(poly3d)
+            ax.add_collection3d(
+                Poly3DCollection(
+                    poly3d,
+                    facecolors=facecolor,
+                    linewidths=0.01,
+                    edgecolors="r",
+                    alpha=hull_alpha,
+                )
+            )
