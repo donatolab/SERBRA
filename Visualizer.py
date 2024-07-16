@@ -85,6 +85,49 @@ class Vizualizer:
             colors.append(rgb)
         return colors
 
+    @staticmethod
+    def add_hull(points, ax, hull_alpha=0.2, facecolor="b", edgecolor="r"):
+        """
+        Adds a convex hull
+        """
+        if len(points) < 3:
+            print("Not enough points for a hull")
+            return
+
+        hull = ConvexHull(points)
+        vertices = hull.points[hull.vertices]
+        if points.shape[1] == 2:  # 2D case
+            polygon = Polygon(
+                vertices,
+                closed=True,
+                alpha=hull_alpha,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+            )
+            ax.add_patch(polygon)
+
+        elif points.shape[1] == 3:  # 3D case
+            poly3d = []
+            for s in hull.simplices:
+                skip_simplices = False
+                for i in s:
+                    if i >= len(vertices):
+                        skip_simplices = True
+
+                if skip_simplices:
+                    continue
+                poly3d.append(vertices[s])
+
+            ax.add_collection3d(
+                Poly3DCollection(
+                    poly3d,
+                    facecolors=facecolor,
+                    linewidths=0.01,
+                    edgecolors=edgecolor,
+                    alpha=hull_alpha,
+                )
+            )
+
     #############################  Data Plots #################################################
     @staticmethod
     def default_plot_attributes():
@@ -1432,6 +1475,7 @@ class Vizualizer:
         models,
         by="task",
         additional_title: Optional[str] = None,
+        labels: Optional[List[str]] = None,
         markersize: float = 0.05,
         alpha: float = 0.4,
         dpi: int = 300,
@@ -1445,7 +1489,7 @@ class Vizualizer:
             - models are sorted by time
         """
         continuouse_stats = ["mse", "rmse", "r2"]
-        discrete_stats = ["accuracy", "precision", "recall", "f1-score"]
+        discrete_stats = ["accuracy", "precision", "recall", "f1-score", "roc_auc"]
 
         summary_decodings_by_iterations = {}
         for session_date, session_dict in models.items():
@@ -1481,7 +1525,7 @@ class Vizualizer:
         else:
             raise ValueError("Invalid performance measure type.")
 
-        if by == "task":
+        if by == "bar":
             summary_decodings_by_task_array = {}
             task_names = list(summary_decodings_by_iterations.keys())
             for task_num, (task_name, iteration_datas) in enumerate(
@@ -1504,11 +1548,11 @@ class Vizualizer:
                                 )
 
             if performance_measure_type == "discrete":
-                Vizualizer.plot_discrete_decoding_statistics_by_task(
+                Vizualizer.plot_discrete_decoding_statistics_bar(
                     summary_decodings_by_task_array, xticks=task_names
                 )
             elif performance_measure_type == "continuouse":
-                Vizualizer.plot_continuous_decoding_statistics_by_task(
+                Vizualizer.plot_continuous_decoding_statistics_bar(
                     summary_decodings_by_task_array,
                     xticks=task_names,
                     additional_title=additional_title,
@@ -1540,29 +1584,39 @@ class Vizualizer:
 
             if performance_measure_type == "discrete":
                 Vizualizer.plot_discrete_decoding_statistics_by_training_iterations(
-                    summary_decodings_by_iterations_array, xticks=iteration_values
+                    summary_decodings_by_iterations_array,
+                    iterations=iteration_values,
+                    labels=labels,
+                    additional_title=additional_title,
                 )
             elif performance_measure_type == "continuouse":
                 Vizualizer.plot_continuous_decoding_statistics_by_training_iterations(
                     summary_decodings_by_iterations_array,
-                    xticks=iteration_values,
+                    iterations=iteration_values,
                     additional_title=additional_title,
                 )
 
     @staticmethod
-    def plot_discrete_decoding_statistics_by_task(
+    def plot_discrete_decoding_statistics_bar(
         decodings, xticks=None, min_max_roc_auc=(0, 1)
     ):
-        raise NotImplementedError
+        raise NotImplementedError(
+            f"This function can be used, but is not suiteable for the data structure used in this project. Only a single line is used for each task."
+        )
+        # TODO: change this funciton to plotting bars based on model??????
 
     @staticmethod
-    def plot_continuous_decoding_statistics_by_task(
+    def plot_continuous_decoding_statistics_bar(
         decodings,
         xticks=None,
         # min_max_r2=(-1, 1),
         # min_max_rmse=(0, 1),
         additional_title="",
     ):
+        raise NotImplementedError(
+            f"This function can be used, but is not suiteable for the data structure used in this project. Only a single line is used for each task."
+        )
+        # TODO: change this funciton to plotting bars based on model?????? may use function plot_decoding_statistics for this?
         # Plot decodings
         c_dec = len(decodings)
         # discrete colormap (nipy_spectral) and discrete
@@ -1571,7 +1625,6 @@ class Vizualizer:
         fig.suptitle(
             f"Decoding statistics for different tasks {additional_title}", fontsize=20
         )
-        # ........... improve this function
         for dec_num, (iter, task_data) in enumerate(decodings.items()):
             for i, (eval_name, eval_stat) in enumerate(task_data.items()):
                 if "values" in eval_stat.keys():
@@ -1622,60 +1675,114 @@ class Vizualizer:
         plt.show()
 
     @staticmethod
-    def plot_discrete_decoding_statistics_by_training_iterations(decodings):
+    def plot_discrete_decoding_statistics_by_training_iterations(
+        decodings,
+        iterations=None,
+        additional_title="",
+        labels="",
+        cmap="tab10",
+        figsize=(15, 8),
+        to_plot=[
+            "accuracy",
+            "f1-score",
+            "roc_auc",
+        ],  # ["accuracy", "precision", "recall", "f1-score", "roc_auc"],
+    ):
         # plot accuracy, precision, recall, f1-score
-        classes = ["center", "corner", "boarder"]
-        max_iter_count = len(list(decodings.keys()))
+        colormap = plt.get_cmap(cmap)
+        max_iter_count = 0
+        for task_iterations in iterations:
+            num_iterations = len(task_iterations)
+            if num_iterations > max_iter_count:
+                max_iter_count = num_iterations
+        num_tasks = len(decodings)
 
-        .................... continue here
-        for i, (animal_id, task_data) in enumerate(decodings.items()):
-            task_num = len(task_data)
+        fig, axes = plt.subplots(1, 1, figsize=figsize)
+        # create list without roc_auc
+        decoding_measures = [
+            decoding_measure
+            for decoding_measure in to_plot
+            if decoding_measure != "roc_auc"
+        ]
+        num_measures = len(decoding_measures)
+        for measure_num, decoding_measure in enumerate(decoding_measures):
+            for task_num, (task_name, decoding_data) in enumerate(decodings.items()):
+                colors = Vizualizer.generate_similar_colors(
+                    colormap(task_num), num_measures
+                )
+                eval_stat = decoding_data[decoding_measure]
+
+                axes.plot(
+                    iterations[task_num],
+                    eval_stat,
+                    label=f"{task_name} {decoding_measure}",
+                    color=colors[measure_num],
+                )
+
+                axes.set_title(f"Performance Measures {additional_title}")
+                axes.set_ylabel("")
+                axes.legend()
+                axes.set_xlabel("Iterations")
+                axes.set_xticks(
+                    iterations[task_num],
+                    iterations[task_num],
+                    rotation=45,
+                    fontsize=8,
+                )
+        plt.tight_layout()
+        plt.show()
+
+        if "roc_auc" in to_plot:
+            suptitle = f"ROC curves for spatial zones for different tasks with different iterations {additional_title}"
             fig, axes = plt.subplots(
-                task_num, max_iter_count, figsize=(5 * max_iter_count, 5 * task_num)
+                num_tasks,
+                max_iter_count,
+                figsize=(5 * max_iter_count, 5 * num_tasks),
             )
             fig.suptitle(
-                f"ROC curves for spatial zones for different tasks with different iterations for {animal_id}",
+                suptitle,
                 fontsize=40,
             )
-            for task_num, (task_name, eval_stat) in enumerate(task_data.items()):
+            for task_num, (task_name, decoding_data) in enumerate(decodings.items()):
                 eval_stat = decoding_data["roc_auc"]
                 for iter_eval_num, roc_auc_dict in enumerate(eval_stat):
+                    max_iter_value = iterations[task_num][iter_eval_num]
+                    max_iter_pos = max_iter_count - iter_eval_num - 1
+                    ax = axes[task_num, max_iter_pos]
+
                     for class_num, values in roc_auc_dict.items():
-                        max_iter_value = list(decodings.keys())[iter_eval_num]
-                        max_iter_pos = max_iter_count - iter_eval_num - 1
-                        ax = axes[task_num, max_iter_pos]
                         fpr, tpr, auc = values.values()
                         ax.plot(
                             fpr,
                             tpr,
-                            label=f"{classes[class_num].capitalize()} AUC {auc:.2f}",
+                            label=f"{labels[class_num].capitalize()} AUC {auc:.2f}",
                         )
-
                         ax.set_title(
                             f"{task_name}: iter. {max_iter_value}", fontsize=20
                         )
-                        if iter_eval_num == 0:
-                            ax.set_ylabel("TPR")
-                        if task_num == len(task_data) - 1:
-                            ax.set_xlabel("FPR")
-                        ax.legend(loc="lower right")
 
-        plt.tight_layout()
-        plt.show()
+                    if iter_eval_num == 0:
+                        ax.set_ylabel("TPR")
+                    if task_num == num_tasks - 1:
+                        ax.set_xlabel("FPR")
+                    ax.legend(loc="lower right")
+
+            plt.tight_layout()
+            plt.show()
 
     @staticmethod
     def plot_continuous_decoding_statistics_by_training_iterations(
         decodings,
-        xticks=None,
+        iterations=None,
         additional_title="",
         cmap="tab10",
         figsize=(15, 8),
     ):
         # Create a color map for tasks
         colormap = plt.get_cmap(cmap)
-        xticks = np.array(xticks)
-        if xticks.ndim < 2:
-            xticks = np.array([xticks] * len(decodings))
+        iterations = np.array(iterations)
+        if iterations.ndim < 2:
+            iterations = np.array([iterations] * len(decodings))
         fig, axes = plt.subplots(2, 1, figsize=figsize)
         for task_num, (task_name, decoding_data) in enumerate(decodings.items()):
             for i, (eval_name, eval_stat) in enumerate(decoding_data.items()):
@@ -1690,12 +1797,22 @@ class Vizualizer:
                 elif "variance" in eval_stat.keys():
                     var = eval_stat["variance"]
 
+                # Vizualizer.plot_line(ax=axes[i],
+                #                     values=values,
+                #                     label=task_name,
+                #                     xlabel="Iterations",
+                #                     ylabel=eval_name,
+                #                     var=var)
+
                 axes[i].plot(
-                    xticks[i], values, label=f"{task_name}", color=colormap(task_num)
+                    iterations[i],
+                    values,
+                    label=f"{task_name}",
+                    color=colormap(task_num),
                 )
                 if var:
                     axes[i].errorbar(
-                        xticks[i],
+                        iterations[i],
                         values,
                         yerr=var,
                         capsize=5,
@@ -1710,8 +1827,9 @@ class Vizualizer:
                 axes[i].set_ylabel(eval_name)
                 axes[i].legend()
                 axes[i].set_xlabel("Iterations")
-                axes[i].set_xticks(xticks[i], xticks[i], rotation=45, fontsize=8)
-
+                axes[i].set_xticks(
+                    iterations[i], iterations[i], rotation=45, fontsize=8
+                )
         plt.tight_layout()
         plt.show()
 
@@ -2739,46 +2857,3 @@ class Vizualizer:
 
         fig.tight_layout()
         plt.show()
-
-    @staticmethod
-    def add_hull(points, ax, hull_alpha=0.2, facecolor="b", edgecolor="r"):
-        """
-        Adds a convex hull
-        """
-        if len(points) < 3:
-            print("Not enough points for a hull")
-            return
-
-        hull = ConvexHull(points)
-        vertices = hull.points[hull.vertices]
-        if points.shape[1] == 2:  # 2D case
-            polygon = Polygon(
-                vertices,
-                closed=True,
-                alpha=hull_alpha,
-                facecolor=facecolor,
-                edgecolor=edgecolor,
-            )
-            ax.add_patch(polygon)
-
-        elif points.shape[1] == 3:  # 3D case
-            poly3d = []
-            for s in hull.simplices:
-                skip_simplices = False
-                for i in s:
-                    if i >= len(vertices):
-                        skip_simplices = True
-
-                if skip_simplices:
-                    continue
-                poly3d.append(vertices[s])
-
-            ax.add_collection3d(
-                Poly3DCollection(
-                    poly3d,
-                    facecolors=facecolor,
-                    linewidths=0.01,
-                    edgecolors=edgecolor,
-                    alpha=hull_alpha,
-                )
-            )

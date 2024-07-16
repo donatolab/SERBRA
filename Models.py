@@ -788,24 +788,28 @@ def decode(
         print(
             "WARNING: Not all data is provided. Using model data. Make sure correct data is provided."
         )
-    neural_data_train_to_embedd = (
-        neural_data_train_to_embedd or model.data["train"]["neural"]
-    )
-    embedding_train = (
-        embedding_train
-        or model.data["train"]["embedding"]
-        or model.transform(neural_data_train_to_embedd)
-    )
-    labels_train = labels_train or model.data["train"]["behavior"]
-    neural_data_test_to_embedd = (
-        neural_data_test_to_embedd or model.data["test"]["neural"]
-    )
-    embedding_test = (
-        embedding_test is not None
-        or model.data["test"]["embedding"] is not None
-        or model.transform(neural_data_test_to_embedd)
-    )
-    labels_test = labels_test or model.data["test"]["behavior"]
+
+    if neural_data_train_to_embedd is None:
+        neural_data_train_to_embedd = model.data["train"]["neural"]
+
+    if embedding_train is None:
+        embedding_train = model.data["train"]["embedding"]
+        if embedding_train is None:
+            embedding_train = model.transform(neural_data_train_to_embedd)
+
+    if labels_train is None:
+        labels_train = model.data["train"]["behavior"]
+
+    if neural_data_test_to_embedd is None:
+        neural_data_test_to_embedd = model.data["test"]["neural"]
+
+    if embedding_test is None:
+        embedding_test = model.data["test"]["embedding"]
+        if embedding_test is None:
+            embedding_test = model.transform(neural_data_test_to_embedd)
+
+    if labels_test is None:
+        labels_test = model.data["test"]["behavior"]
 
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
     if is_floating(labels_train):
@@ -829,7 +833,9 @@ def decode(
         embedding_train, labels_train
     )
 
-    knn.fit(embedding_train, labels_train)
+    if labels_train.shape[1] == 1:
+        fit_labels_train = labels_train.ravel()
+    knn.fit(embedding_train, fit_labels_train)
 
     # Predict the targets for data ``X``
     labels_pred = knn.predict(embedding_test)
@@ -915,7 +921,7 @@ def decode(
                 "accuracy": accuracies,
                 "precision": precisions,
                 "recall": recalls,
-                "f1": f1s,
+                "f1-score": f1s,
                 "roc_auc": class_roc_auc_scores,
             }
     else:
