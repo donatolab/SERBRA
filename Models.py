@@ -833,8 +833,9 @@ def decode(
         embedding_train, labels_train
     )
 
-    if labels_train.shape[1] == 1:
-        fit_labels_train = labels_train.ravel()
+    fit_labels_train = (
+        labels_train.ravel() if labels_train.shape[1] == 1 else labels_train
+    )
     knn.fit(embedding_train, fit_labels_train)
 
     # Predict the targets for data ``X``

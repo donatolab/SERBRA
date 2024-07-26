@@ -252,14 +252,23 @@ class Vizualizer:
 
     @staticmethod
     def default_plot_ending(
-        plot_attributes=None, regenerate_plot=False, save_path=None, show=False, dpi=300
+        plot_attributes=None,
+        regenerate_plot=False,
+        save_path=None,
+        show=False,
+        dpi=300,
+        as_pdf=False,
     ):
         if plot_attributes is None:
             plot_attributes = Vizualizer.default_plot_attributes()
         plot_attributes["save_path"] = plot_attributes["save_path"] or save_path
 
         if regenerate_plot:
-            plt.savefig(plot_attributes["save_path"], dpi=dpi)
+            format = "pdf" if as_pdf else "png"
+            plot_attributes["save_path"] = Path(
+                plot_attributes["save_path"]
+            ).with_suffix(f".{format}")
+            plt.savefig(plot_attributes["save_path"], dpi=dpi, format=format)
 
         if show:
             plt.show()
@@ -365,6 +374,7 @@ class Vizualizer:
                     tick_pos = np.range(0, 1, len(tick_label))
             scatter_alpha = 0.8
             dot_size = 3
+
         # Create the plot
         scatter = plt.scatter(
             x_coords,
@@ -393,18 +403,29 @@ class Vizualizer:
             max(coordinates[:, 1] + y_data_range * 0.03),
         )
 
+        # define x and y ticks
+        # ylimits_rounded = (round(ylimits[0]), round(ylimits[1]))
+        # xlimits_rounded = (round(xlimits[0]), round(xlimits[1]))
+        # y_ticks = np.arange(
+        #    ylimits_rounded[0], ylimits_rounded[1], np.diff(ylimits_rounded) / 10
+        # )
+        # x_ticks = np.arange(
+        #    xlimits_rounded[0], xlimits_rounded[1], np.diff(xlimits_rounded) / 10
+        # )
+        # plt.yticks(y_ticks)
+        # plt.xticks(x_ticks)
+
         plt.xlabel("X position (cm)")
         plt.ylabel("Y position (cm)")
         plt.xlim(xlimits)
         plt.ylim(ylimits)
+        # plt.grid(True, alpha=0.2)
 
         # Add a colorbar to show the time mapping
         cbar = plt.colorbar(scatter, label=color_map_label)
         if tick_label is not None and tick_pos is not None:
             cbar.set_ticks(tick_pos)
             cbar.set_ticklabels(tick_label)
-
-        plt.grid(True, alpha=0.5)
 
     @staticmethod
     def define_xticks(
@@ -589,14 +610,17 @@ class Vizualizer:
                     facecolor=color,
                     edgecolor="r",
                 )
-
+        # Remove all spines
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        # ax.spines['bottom'].set_visible(False)
+        # ax.spines['left'].set_visible(False)
+        ax.set_xlim(embedding[:, idx1].min(), embedding[:, idx1].max())
         ax.grid(False)
         ax.set_title(title, y=1.0, pad=-10)
 
         if plot_legend:
-            Vizualizer.add_2d_colormap_legend(
-                fig, discrete_values=embedding_labels, move_right=1
-            )
+            Vizualizer.add_2d_colormap_legend(fig, discret_n_colors=embedding_labels)
 
         return ax
 
@@ -619,7 +643,8 @@ class Vizualizer:
         """
         This function is based on the plot_embedding function from the cebra library.
         """
-        markersize = markersize or 0.05
+        markersize = markersize or 2
+        alpha = alpha or 0.4
         # define the axis
         if axis is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -719,7 +744,6 @@ class Vizualizer:
     def add_2d_colormap_legend(
         fig,
         discret_n_colors=None,
-        move_right=1,
         xticks=None,
         yticks=None,
         additional_title="",
@@ -728,7 +752,14 @@ class Vizualizer:
             xticks = []
         if yticks is None:
             yticks = []
-        cax = fig.add_axes([move_right, 0.55, 0.3, 0.3])
+        # Get the current axes (main plot)
+        main_ax = fig.gca()
+        # Get the position of the main plot
+        main_pos = main_ax.get_position()
+        # Calculate the position of the legend
+        legend_left = main_pos.x1 + main_pos.x1 / 10
+
+        cax = fig.add_axes([legend_left, 0.55, 0.3, 0.3])
         cax.set_xlabel("X")
         cax.set_ylabel("Y")
 
@@ -749,7 +780,6 @@ class Vizualizer:
             )  # Using viridis colormap
             cmap = mcolors.ListedColormap(colors)
             bounds = np.linspace(0, 1, discret_n_colors + 1)
-            norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
             # Rescale Legend to have discrete values
             Cp1_discrete = np.zeros_like(Cp1)
@@ -774,6 +804,8 @@ class Vizualizer:
         )
         cax.set_xticklabels(xlabels, rotation=45, ha="right")
         cax.set_yticklabels(ylabels)
+        cax.yaxis.tick_right()  # Enable y-ticks on the right side
+        cax.yaxis.set_label_position("right")  # Set the y-label on the right side
         title = f"2D colormap - {additional_title}"
         cax.set_title(title, fontsize=10)
 
@@ -786,14 +818,16 @@ class Vizualizer:
         cmap="rainbow",
         projection="3d",
         show_hulls=False,
-        figsize=(20, 4),
+        figsize=(5, 4),
         plot_legend=True,
         markersize=None,
         alpha=None,
         max_plot_per_row=4,
         dpi=300,
+        as_pdf=False,
     ):
-        figsize_y = 4
+
+        preset_figsize_x, preset_figsize_y = figsize
         # Compute the number of subplots
         num_subplots = len(embeddings)
         rows = 1
@@ -801,13 +835,14 @@ class Vizualizer:
         if num_subplots > max_plot_per_row:
             rows = int(num_subplots**0.5)
             cols = (num_subplots + rows - 1) // rows
-            figsize_x = 5 * max_plot_per_row
+            figsize_x = preset_figsize_x * max_plot_per_row
         else:
-            figsize_x = 5 * num_subplots
-        figsize = (figsize_x, figsize_y * rows)
+            figsize_x = preset_figsize_x * num_subplots
+        figsize = (figsize_x, preset_figsize_y * rows)
 
         fig = plt.figure(figsize=figsize)
         subplot_kw_dict = {"projection": projection} if projection != "2d" else {}
+        cols = max(1, cols)
         fig, axes = plt.subplots(
             rows, cols, figsize=figsize, subplot_kw=subplot_kw_dict
         )
@@ -854,11 +889,11 @@ class Vizualizer:
                 dpi=dpi,
             )
 
-        if plot_legend:
+        if plot_legend and len(embeddings) > 0:
             if labels["labels"].shape[1] == 1:
                 Vizualizer.add_1d_colormap_legend(
-                    ax,
-                    labels["labels"],
+                    labels=labels["labels"],
+                    ax=ax,
                     label_name=labels["name"],
                     ticks=ticks,
                     cmap=cmap,
@@ -866,10 +901,8 @@ class Vizualizer:
             else:
                 unique_rgba_colors = np.unique(labels["labels"], axis=0)
                 discrete_n_colors = int(np.ceil(np.sqrt(len(unique_rgba_colors))))
-
                 Vizualizer.add_2d_colormap_legend(
                     fig,
-                    move_right=0.95,
                     discret_n_colors=discrete_n_colors,
                     xticks=xticks_2d_colormap,
                     yticks=yticks_2d_colormap,
@@ -878,8 +911,8 @@ class Vizualizer:
 
         for ax in axes[num_subplots:]:
             ax.remove()  # Remove any excess subplot axes
-
-        self.plot_ending(title)
+        fig.tight_layout()
+        self.plot_ending(title, title_size=preset_figsize_x * cols, as_pdf=as_pdf)
 
     def create_rgba_labels(values, alpha=0.8):
         """c : array-like or list of colors or color, optional
@@ -1361,16 +1394,17 @@ class Vizualizer:
         Vizualizer.heatmap_subplot(correlation2, title2, ax4, sort=sort)
         self.plot_ending(title, save=True)
 
-    def plot_ending(self, title, title_size=20, save=True):
+    def plot_ending(self, title, title_size=20, save=True, as_pdf=False):
         plt.suptitle(title, fontsize=title_size)
         plt.tight_layout()  # Ensure subplots fit within figure area
+        format = "pdf" if as_pdf else "png"
         plot_save_path = (
-            str(self.save_dir.joinpath(title + ".png"))
+            str(self.save_dir.joinpath(title + "." + format))
             .replace(">", "bigger")
             .replace("<", "smaller")
         )
         if save:
-            plt.savefig(plot_save_path, dpi=300)
+            plt.savefig(plot_save_path, dpi=300, format=format)
         plt.show()
         plt.close()
 
@@ -1475,7 +1509,13 @@ class Vizualizer:
         models,
         by="task",
         additional_title: Optional[str] = None,
+        xlim: Optional[Tuple[int, int]] = None,
         labels: Optional[List[str]] = None,
+        cmap: str = "tab20",
+        figsize: Tuple[int, int] = None,
+        show_variance: bool = True,
+        save_dir: str = None,
+        as_pdf: bool = False,
         markersize: float = 0.05,
         alpha: float = 0.4,
         dpi: int = 300,
@@ -1586,14 +1626,24 @@ class Vizualizer:
                 Vizualizer.plot_discrete_decoding_statistics_by_training_iterations(
                     summary_decodings_by_iterations_array,
                     iterations=iteration_values,
+                    cmap=cmap,
                     labels=labels,
                     additional_title=additional_title,
+                    figsize=figsize,
+                    save_dir=save_dir,
+                    as_pdf=as_pdf,
                 )
             elif performance_measure_type == "continuouse":
                 Vizualizer.plot_continuous_decoding_statistics_by_training_iterations(
                     summary_decodings_by_iterations_array,
+                    cmap=cmap,
                     iterations=iteration_values,
                     additional_title=additional_title,
+                    show_variance=show_variance,
+                    xlim=xlim,
+                    figsize=figsize,
+                    save_dir=save_dir,
+                    as_pdf=as_pdf,
                 )
 
     @staticmethod
@@ -1687,7 +1737,10 @@ class Vizualizer:
             "f1-score",
             "roc_auc",
         ],  # ["accuracy", "precision", "recall", "f1-score", "roc_auc"],
+        save_dir=None,
+        as_pdf=False,
     ):
+        figsize = figsize or (15, 8)
         # plot accuracy, precision, recall, f1-score
         colormap = plt.get_cmap(cmap)
         max_iter_count = 0
@@ -1730,6 +1783,13 @@ class Vizualizer:
                     fontsize=8,
                 )
         plt.tight_layout()
+        if save_dir:
+            format = "pdf" if as_pdf else "png"
+            plt.savefig(
+                save_dir.joinpath(f"Performance Measures {additional_title}.{format}"),
+                dpi=300,
+                format=format,
+            )
         plt.show()
 
         if "roc_auc" in to_plot:
@@ -1768,6 +1828,13 @@ class Vizualizer:
                     ax.legend(loc="lower right")
 
             plt.tight_layout()
+            if save_dir:
+                format = "pdf" if as_pdf else "png"
+                plt.savefig(
+                    save_dir.joinpath(f"ROC curves {additional_title}.{format}"),
+                    dpi=300,
+                    format=format,
+                )
             plt.show()
 
     @staticmethod
@@ -1777,7 +1844,12 @@ class Vizualizer:
         additional_title="",
         cmap="tab10",
         figsize=(15, 8),
+        show_variance=True,
+        xlim=None,
+        save_dir=None,
+        as_pdf=False,
     ):
+        figsize = figsize or (15, 8)
         # Create a color map for tasks
         colormap = plt.get_cmap(cmap)
         iterations = np.array(iterations)
@@ -1792,10 +1864,11 @@ class Vizualizer:
                     values = eval_stat["mean"]
 
                 var = None
-                if "var" in eval_stat.keys():
-                    var = eval_stat["var"]
-                elif "variance" in eval_stat.keys():
-                    var = eval_stat["variance"]
+                if show_variance:
+                    if "var" in eval_stat.keys():
+                        var = eval_stat["var"]
+                    elif "variance" in eval_stat.keys():
+                        var = eval_stat["variance"]
 
                 # Vizualizer.plot_line(ax=axes[i],
                 #                     values=values,
@@ -1827,10 +1900,20 @@ class Vizualizer:
                 axes[i].set_ylabel(eval_name)
                 axes[i].legend()
                 axes[i].set_xlabel("Iterations")
-                axes[i].set_xticks(
-                    iterations[i], iterations[i], rotation=45, fontsize=8
-                )
+                # axes[i].set_xticks(
+                #    iterations[i], iterations[i], rotation=45, fontsize=8
+                # )
+                if xlim:
+                    axes[i].set_xlim(xlim)
+        title = f"Decoding statistics for different tasks {additional_title}"
         plt.tight_layout()
+        if save_dir:
+            format = "pdf" if as_pdf else "png"
+            plt.savefig(
+                os.path.join(save_dir, f"{title}.{format}"),
+                dpi=300,
+                format=format,
+            )
         plt.show()
 
     @staticmethod
@@ -2583,6 +2666,8 @@ class Vizualizer:
         colorbar=False,
         colorbar_label="",
         cmap="viridis",
+        save_dir=None,
+        as_pdf=False,
     ):
         if np.array(bins).ndim == 1:
             ticks = bins
@@ -2624,8 +2709,8 @@ class Vizualizer:
                 fig.supylabel(supylabel, fontsize=max_bins * max_bins, x=-0.02, y=0.5)
             elif max_bins.ndim == 1:
                 fig, axes = plt.subplots(
-                    max_bins[0],
-                    max_bins[1],
+                    int(max_bins[0]),
+                    int(max_bins[1]),
                     figsize=(max_bins[0] * figsize[0], max_bins[1] * figsize[1]),
                 )
                 fig.suptitle(title, fontsize=max_bins[0] * max_bins[1] / 2, y=1.01)
@@ -2726,6 +2811,10 @@ class Vizualizer:
                     cmap=cmap,
                     move_right=1,
                 )
+            if save_dir:
+                format = "pdf" if as_pdf else "png"
+                save_path = os.path.join(save_dir, f"{title}_heatmap.{format}")
+                plt.savefig(save_path, dpi=300, bbox_inches="tight", format=format)
             plt.show()
 
     def plot_1d_iter_group_distr_similarities(

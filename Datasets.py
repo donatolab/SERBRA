@@ -11,6 +11,8 @@ from Visualizer import Vizualizer
 # calculations
 import numpy as np
 from scipy.signal import butter, filtfilt  # , lfilter, freqz
+from sklearn.preprocessing import OneHotEncoder
+
 
 # load data
 import cebra
@@ -57,6 +59,7 @@ class Dataset:
         check_needed_keys(metadata, ["setup"])
         self.setup = self.get_setup(self.metadata["setup"])
         self.plot_attributes = Vizualizer.default_plot_attributes()
+        self.category_map = None
 
     def get_setup(self, setup_name, preprocessing_name, method_name):
         raise NotImplementedError(
@@ -207,6 +210,7 @@ class Dataset:
         regenerate_plot=None,
         show=False,
         dpi=300,
+        as_pdf=False,
     ):
         self.refine_plot_attributes(
             title=title, ylable=ylable, xlimits=xlimits, save_path=save_path
@@ -231,6 +235,7 @@ class Dataset:
                 regenerate_plot=regenerate_plot,
                 show=show,
                 dpi=dpi,
+                as_pdf=as_pdf,
             )
         else:
             Vizualizer.plot_image(
@@ -544,7 +549,7 @@ class NeuralDataset(Dataset):
                 if isinstance(show_frames, int)
                 else similarities
             )
-            title = title or f"Neural {method} Similarity {self.metadata['task_id']}"
+            title = title or f"Neural {metric} Similarity {self.metadata['task_id']}"
             xticks = xticks
             xticks_pos = xticks_pos
             xlabel = xlabel or "Frames"
@@ -656,8 +661,8 @@ class Data_Position(BehaviorDataset):
             min_bins = 0
             max_bins = dimensions
         elif len(dimensions) == 2:
-            boarders = Environment.define_boarder_by_pos(data)
-            min_bins = boarders[:, 0]
+            borders = Environment.define_border_by_pos(data)
+            min_bins = borders[:, 0]
             max_bins = min_bins + dimensions
         binned_data = bin_array(
             data, bin_size=bin_size, min_bin=min_bins, max_bin=max_bins
@@ -805,10 +810,20 @@ class Data_Distance(BehaviorDataset):
             plot_attributes=self.plot_attributes,
         )
 
-    def bin_data(self, data, bin_size=None):
+    def bin_data(self, data, bin_size=None, return_category_map=False):
         bin_size = bin_size or self.binning_size
         binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
-        return binned_data
+        # encode multi-dimensional binned_data (e.g individual x, y) to single vector combined X,Y Bin
+        if len(self.metadata["environment_dimensions"]) > 1:
+            encoded_data, self.category_map = encode_categorical(
+                binned_data, return_category_map=True
+            )
+            if return_category_map:
+                return encoded_data, self.category_map
+            else:
+                return encoded_data
+        else:
+            return binned_data
 
     def process_raw_data(self, save=True):
         track_positions = self.raw_data_object.data
@@ -836,10 +851,20 @@ class Data_Velocity(BehaviorDataset):
         if len(self.metadata["environment_dimensions"]) == 2:
             self.plot_attributes["figsize"] = (10, 10)
 
-    def bin_data(self, data, bin_size=None):
+    def bin_data(self, data, bin_size=None, return_category_map=False):
         bin_size = bin_size or self.binning_size
         binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
-        return binned_data
+        # encode multi-dimensional binned_data (e.g individual x, y) to single vector combined X,Y Bin
+        if len(self.metadata["environment_dimensions"]) > 1:
+            encoded_data, self.category_map = encode_categorical(
+                binned_data, return_category_map=True
+            )
+            if return_category_map:
+                return encoded_data, self.category_map
+            else:
+                return encoded_data
+        else:
+            return binned_data
 
     def process_raw_data(self, save=True):
         """
@@ -897,10 +922,20 @@ class Data_Acceleration(BehaviorDataset):
         if len(self.metadata["environment_dimensions"]) == 2:
             self.plot_attributes["figsize"] = (10, 10)
 
-    def bin_data(self, data, bin_size=None):
+    def bin_data(self, data, bin_size=None, return_category_map=False):
         bin_size = bin_size or self.binning_size
         binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
-        return binned_data
+        # encode multi-dimensional binned_data (e.g individual x, y) to single vector combined X,Y Bin
+        if len(self.metadata["environment_dimensions"]) > 1:
+            encoded_data, self.category_map = encode_categorical(
+                binned_data, return_category_map=True
+            )
+            if return_category_map:
+                return encoded_data, self.category_map
+            else:
+                return encoded_data
+        else:
+            return binned_data
 
     def process_raw_data(self, save=True):
         """
@@ -960,6 +995,8 @@ class Data_Moving(BehaviorDataset):
 
     def process_raw_data(self, save=True):
         velocities = self.raw_data_object.data
+        if velocities is None:
+            velocities = self.raw_data_object.process_raw_data(save=False)
         velocities_abs = np.linalg.norm(np.abs(velocities), axis=1)
         moving_frames = velocities_abs > self.velocity_threshold
         self.data = self.fit_moving_to_brainarea(moving_frames, self.metadata["area"])

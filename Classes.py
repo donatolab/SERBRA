@@ -198,15 +198,24 @@ class Animal:
             model_naming_filter_exclude=model_naming_filter_exclude,
             manifolds_pipeline=manifolds_pipeline,
         )
+        to_delete_models_key_list = []
+        for keys_list, model in traverse_dicts(models):
+            remove_model = False
 
-        for keys_list, model in traverse_dicts(deepcopy(models)):
-            if model.data["test"]["neural"].shape[0] < 10:
-                # print(f"Skipping {keys_list}. Not enough frames to use for decoding.")
-                delete_nested_key(models, keys_list)
+            if model.data is None:
+                remove_model = True
+            elif model.data["test"]["neural"].shape[0] < 10:
+                remove_model = True
+
+            if remove_model:
+                to_delete_models_key_list.append(keys_list)
             else:
                 model = dict_value_keylist(models, keys_list)
                 if model.decoding_statistics is None:
                     model.decoding_statistics = decode(model=model)
+
+        for keys_list in to_delete_models_key_list:
+            delete_nested_key(models, keys_list)
         return models
 
     def plot_consistency_scores(
@@ -862,6 +871,7 @@ class Task:
                     neural_data_train, behavior_data_train = force_equal_dimensions(
                         neural_data_train, behavior_data_train
                     )
+                    # FIXME: behavior_data_train can only be 1D if it is a discrete variable, look into bin_array function, probably need to encode into one variable
                     model.fit(neural_data_train, behavior_data_train)
                 model.fitted = models_class.is_fitted(model)
                 model.save(model.save_path)
@@ -956,7 +966,9 @@ class Task:
         title_comment: Optional[str] = None,
         markersize: float = None,
         alpha: float = None,
+        figsize: Tuple[int, int] = (10, 4),
         dpi: int = 300,
+        as_pdf: bool = False,
     ):
         if not embeddings:
             embeddings = self.create_embeddings(
@@ -1021,8 +1033,10 @@ class Task:
                 projection=projection,
                 show_hulls=show_hulls,
                 markersize=markersize,
+                figsize=figsize,
                 alpha=alpha,
                 dpi=dpi,
+                as_pdf=as_pdf,
             )
         return embeddings
 

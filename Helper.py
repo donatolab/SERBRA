@@ -762,6 +762,12 @@ def filter_outlier_numba(points, contamination=0.2):
       for all datasets.
     - The first run will include compilation time; subsequent runs will be much faster.
     """
+    n, d = points.shape
+    mask_valid = np.zeros(n, dtype=np.bool_)
+    for i in range(n):
+        mask_valid[i] = all_finite(points[i])
+    valid_points = points[mask_valid]
+
     mask_inliers = get_outlier_mask_numba(points, contamination)
     return valid_points[mask_inliers]
 
@@ -1018,6 +1024,32 @@ def check_correct_metadata(string_or_list, name_parts):
 
 
 # array
+def encode_categorical(data, categories=None, return_category_map=False):
+    """
+    Encode categorical data into numerical values.
+
+    Parameters:
+    -----------
+    data : array-like
+        The input data to encode. If the data is 1D, it will be treated as a single category.
+    categories : list, optional, default=None
+        The list of categories to encode. If None, the unique values in the data will be used.
+
+    Returns:
+    --------
+    encoded_data : array-like
+        The encoded data.
+    """
+    if categories is None:
+        categories = np.unique(data)
+    category_map = {category: i for i, category in enumerate(categories)}
+    encoded_data = np.array([category_map[category] for category in data])
+    if return_category_map:
+        return encoded_data, category_map
+    else:
+        return encoded_data
+
+
 def is_rgba(value):
     if isinstance(value, list) or isinstance(value, np.ndarray):
         return all(is_single_rgba(v) for v in value)
@@ -1209,7 +1241,7 @@ def bin_array(
         np_arr = np_arr.T
 
     # Bin each dimension of the array
-    binned_array = np.zeros_like(np_arr)
+    binned_array = np.zeros_like(np_arr, dtype=int)
     for i in range(np_arr.shape[1]):
         binned_array[:, i] = bin_array_1d(
             np_arr[:, i], bin_size[i], min_bin[i], max_bin[i]
@@ -1331,7 +1363,7 @@ def group_by_binned_data(
     # create groups
     groups = {}
     for bin in bins:
-        idx = np.all(force_1_dim_larger(np.atleast_2d(binned_data == bin)))
+        idx = np.all(force_1_dim_larger(np.atleast_2d(binned_data == bin)), axis=1)
         # calculation is for cells x cells matrix if symmetric_matrix
         if group_by == "count":
             values_at_bin = np.sum(idx) / len(binned_data)
