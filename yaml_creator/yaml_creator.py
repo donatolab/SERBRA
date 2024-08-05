@@ -93,27 +93,27 @@ def get_animal_dict_from_spreadsheet(fname, sheet_title=None):
         underground = [sheet.cell(row=row, column=metadata_columns["treadmill"]).value]
         pockel_cell_bias = sheet.cell(row=row, column=metadata_columns["PC bias"]).value
         n_channel = sheet.cell(row=row, column=metadata_columns["n Ch."]).value
-        fucntional_channel = sheet.cell(row=row, column=metadata_columns["fct. channel"]).value
-        #fucntional_channel = sheet.cell(row=row, column=metadata_columns["fucntional_channel"]).value
+        functional_channel = sheet.cell(row=row, column=metadata_columns["fct. channel"]).value
+        #functional_channel = sheet.cell(row=row, column=metadata_columns["functional_channel"]).value
         ug_gain = sheet.cell(row=row, column=metadata_columns["UG gain"]).value
         ur_gain = sheet.cell(row=row, column=metadata_columns["UR gain"]).value
-        pixels = sheet.cell(row=row, column=metadata_columns["pixels"]).value
-        n_planes = sheet.cell(row=row, column=metadata_columns["n planes"]).value
         session = [sheet.cell(row=row, column=metadata_columns["session"]).value]
         weight = sheet.cell(row=row, column=metadata_columns["weight [g]"]).value
         comment = sheet.cell(row=row, column=metadata_columns["comment"]).value
         expt_pipeline = sheet.cell(row=row, column=metadata_columns["paradigm"]).value
-        if "lens" in metadata_columns.keys():
-            lens = sheet.cell(row=row, column=metadata_columns["lens"]).value
+        
+        lens = sheet.cell(row=row, column=metadata_columns["lens"]).value if "lens" in metadata_columns.keys() else None
+        pixels = sheet.cell(row=row, column=metadata_columns["pixels"]).value if "pixels" in metadata_columns.keys() else None
+        n_planes = sheet.cell(row=row, column=metadata_columns["n planes"]).value if "n planes" in metadata_columns.keys() else None
 
-        convert_to_int = [n_channel, fucntional_channel, n_planes]
+        convert_to_int = [n_channel, functional_channel, n_planes]
         for i, value in enumerate(convert_to_int):
             if value:
                 if value == "n/a" or value == "" or value == "?":
                     convert_to_int[i] = None
                 else:
                     convert_to_int[i] = int(value)
-        n_channel, fucntional_channel, n_planes = convert_to_int
+        n_channel, functional_channel, n_planes = convert_to_int
 
         animal_exists = False
         session_exists = False
@@ -155,7 +155,7 @@ def get_animal_dict_from_spreadsheet(fname, sheet_title=None):
                 laser_power=laser_power,
                 pockel_cell_bias=pockel_cell_bias,
                 n_channel=n_channel,
-                fucntional_channel=fucntional_channel,
+                functional_channel=functional_channel,
                 ug_gain=ug_gain,
                 ur_gain=ur_gain,
                 lens=lens,
