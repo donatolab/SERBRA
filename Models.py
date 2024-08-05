@@ -829,10 +829,6 @@ def decode(
     labels_test = Dataset.force_2d(labels_test)
     # labels_test = force_1_dim_larger(labels_test)
 
-    embedding_train, labels_train = force_equal_dimensions(
-        embedding_train, labels_train
-    )
-
     fit_labels_train = (
         labels_train.ravel() if labels_train.shape[1] == 1 else labels_train
     )
@@ -840,7 +836,7 @@ def decode(
 
     # Predict the targets for data ``X``
     labels_pred = knn.predict(embedding_test)
-
+    labels_pred = Dataset.force_2d(labels_pred)
     labels_pred, labels_test = force_equal_dimensions(labels_pred, labels_test)
 
     if is_floating(labels_test):
@@ -856,6 +852,7 @@ def decode(
         rmse_dict = {"mean": rmse, "variance": error_var}
         r2_dict = {"mean": r2}
         results = {"rmse": rmse_dict, "r2": r2_dict}
+
     elif is_integer(labels_test):
         accuracies = []
         precisions = []
@@ -891,13 +888,14 @@ def decode(
             f1s.append(f1)
 
             # ROC and AUC for each output
+            # only for converting mutliclass to binary
             y_test_bin = label_binarize(
                 labels_test[:, i],
                 classes=np.unique(labels_test[:, i]),
             )
             y_pred_bin = label_binarize(
                 labels_pred[:, i],
-                classes=np.unique(labels_pred[:, i]),
+                classes=np.unique(labels_test[:, i]),
             )
             n_classes = y_test_bin.shape[1]
 

@@ -1041,9 +1041,9 @@ def encode_categorical(data, categories=None, return_category_map=False):
         The encoded data.
     """
     if categories is None:
-        categories = np.unique(data)
-    category_map = {category: i for i, category in enumerate(categories)}
-    encoded_data = np.array([category_map[category] for category in data])
+        categories = np.unique(data, axis=0)
+    category_map = {tuple(category): i for i, category in enumerate(categories)}
+    encoded_data = np.array([category_map[tuple(category)] for category in data])
     if return_category_map:
         return encoded_data, category_map
     else:
@@ -1348,22 +1348,42 @@ def dict_value_keylist(dict, keylist):
 
 
 def group_by_binned_data(
-    binned_data, data=None, as_array=False, group_by="raw", max_bin=None
+    binned_data: np.ndarray,
+    category_map: dict = None,
+    data: np.ndarray = None,
+    as_array: bool = False,
+    group_by: str = "raw",
+    max_bin=None,
 ):
+    """
+    Group data based on binned data.
+    If category_map is provided, the binned data will be used as keys to group the data. Mostly used to map 1D discrete labels to multi dimensional position data.
+
+    Args:
+        - binned_data: The binned data used for grouping.
+        - category_map: A dictionary mapping binned data to categories.
+    """
     if data is None and group_by != "count":
         raise ValueError("Data needed for grouping.")
 
     if group_by != "count":
         data, binned_data = force_equal_dimensions(data, binned_data)
     # Define bins and counts
-    bins, bin_counts = np.unique(binned_data, axis=0, return_counts=True)
-    bins = bins.astype(int)
+    if category_map is None:
+        bins = categories_ids = np.unique(binned_data, axis=0, return_counts=False)
+    else:
+        reversed_category_map = {v: k for k, v in category_map.items()}
+        categories_ids = list(reversed_category_map.keys())
+        bins = list(category_map.keys())
+
     max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
 
     # create groups
     groups = {}
-    for bin in bins:
-        idx = np.all(force_1_dim_larger(np.atleast_2d(binned_data == bin)), axis=1)
+    for category_id in categories_ids:
+        idx = np.all(
+            force_1_dim_larger(np.atleast_2d(binned_data == category_id)), axis=1
+        )
         # calculation is for cells x cells matrix if symmetric_matrix
         if group_by == "count":
             values_at_bin = np.sum(idx) / len(binned_data)
@@ -1376,9 +1396,8 @@ def group_by_binned_data(
             elif "mean" in group_by:
                 values_at_bin = np.mean(filtered_data)
 
-        if bin.ndim != 0:
-            bin = tuple(bin)
-        groups[bin] = values_at_bin
+        location = reversed_category_map[category_id] if category_map else category_id
+        groups[location] = values_at_bin
 
     if as_array:
         groups_array = np.zeros(max_bin.astype(int))

@@ -643,7 +643,7 @@ class Vizualizer:
         """
         This function is based on the plot_embedding function from the cebra library.
         """
-        markersize = markersize or 2
+        markersize = markersize or 0.5
         alpha = alpha or 0.4
         # define the axis
         if axis is None:
@@ -743,7 +743,9 @@ class Vizualizer:
 
     def add_2d_colormap_legend(
         fig,
+        Legend=None,
         discret_n_colors=None,
+        colors=None,
         xticks=None,
         yticks=None,
         additional_title="",
@@ -763,34 +765,34 @@ class Vizualizer:
         cax.set_xlabel("X")
         cax.set_ylabel("Y")
 
-        cp1 = np.linspace(0, 1)
-        cp2 = np.linspace(0, 1)
-        Cp1, Cp2 = np.meshgrid(cp1, cp2)
-        C0 = np.zeros_like(Cp1) + 0.5
-        # make RGB image, p1 to red channel, p2 to blue channel
-        Legend = np.dstack((Cp1, C0, Cp2))
-
         cmap = None
         norm = None
+        if Legend is None:
+            # make RGB image, p1 to red channel, p2 to blue channel
+            cp1 = np.linspace(0, 1)
+            cp2 = np.linspace(0, 1)
+            Cp1, Cp2 = np.meshgrid(cp1, cp2)
+            C0 = np.zeros_like(Cp1) + 0.5
+            Legend = np.dstack((Cp1, C0, Cp2))
 
-        if discret_n_colors is not None:
-            # create discrete colormap by splitting colormap into n colors
-            colors = plt.cm.viridis(
-                np.linspace(0, 1, discret_n_colors)
-            )  # Using viridis colormap
-            cmap = mcolors.ListedColormap(colors)
-            bounds = np.linspace(0, 1, discret_n_colors + 1)
+            if discret_n_colors is not None:
+                # create discrete colormap by splitting colormap into n colors
+                colors = plt.cm.viridis(
+                    np.linspace(0, 1, discret_n_colors)
+                )  # Using viridis colormap
+                cmap = mcolors.ListedColormap(colors)
+                bounds = np.linspace(0, 1, discret_n_colors + 1)
 
-            # Rescale Legend to have discrete values
-            Cp1_discrete = np.zeros_like(Cp1)
-            Cp2_discrete = np.zeros_like(Cp2)
-            for i in np.arange(0, 1, 1 / discret_n_colors):
-                Cp1_discrete[Cp1 >= i] = i
-                Cp2_discrete[Cp2 >= i] = i
+                # Rescale Legend to have discrete values
+                Cp1_discrete = np.zeros_like(Cp1)
+                Cp2_discrete = np.zeros_like(Cp2)
+                for i in np.arange(0, 1, 1 / discret_n_colors):
+                    Cp1_discrete[Cp1 >= i] = i
+                    Cp2_discrete[Cp2 >= i] = i
 
-            normalized_cp1 = normalize_01(Cp1_discrete, axis=1)
-            normalized_cp2 = normalize_01(Cp2_discrete, axis=0)
-            Legend = np.dstack((normalized_cp1, C0, normalized_cp2))
+                normalized_cp1 = normalize_01(Cp1_discrete, axis=1)
+                normalized_cp2 = normalize_01(Cp2_discrete, axis=0)
+                Legend = np.dstack((normalized_cp1, C0, normalized_cp2))
 
         # parameters range between 0 and 1
         xlabels = [f"{x:.1f}" for x in xticks]
@@ -816,6 +818,7 @@ class Vizualizer:
         ticks=None,
         title="Embeddings",
         cmap="rainbow",
+        legend_cmap=None,
         projection="3d",
         show_hulls=False,
         figsize=(5, 4),
@@ -826,7 +829,7 @@ class Vizualizer:
         dpi=300,
         as_pdf=False,
     ):
-
+        figsize = figsize or (5, 4)
         preset_figsize_x, preset_figsize_y = figsize
         # Compute the number of subplots
         num_subplots = len(embeddings)
@@ -900,9 +903,14 @@ class Vizualizer:
                 )
             else:
                 unique_rgba_colors = np.unique(labels["labels"], axis=0)
-                discrete_n_colors = int(np.ceil(np.sqrt(len(unique_rgba_colors))))
+                discrete_n_colors = (
+                    int(np.ceil(np.sqrt(len(unique_rgba_colors))))
+                    if legend_cmap is None
+                    else None
+                )
                 Vizualizer.add_2d_colormap_legend(
                     fig,
+                    Legend=legend_cmap,
                     discret_n_colors=discrete_n_colors,
                     xticks=xticks_2d_colormap,
                     yticks=yticks_2d_colormap,
@@ -940,12 +948,14 @@ class Vizualizer:
         by the next color of the ``Axes``' current "shape and fill" color
         cycle. This cycle defaults to :rc:`axes.prop_cycle`."""
 
-        cmap = lambda x, y: (x, 0.5, y, alpha)
         normalized_values = normalize_01(values, axis=0)
         values = np.array(values)
         if values.ndim == 1:
-            raise ValueError("1D values not supported yet.")
+            # rainbow colormap
+            cmap = plt.cm.rainbow
+            rgba_colors = np.array([cmap(x) for x in normalized_values])
         elif values.ndim == 2:
+            cmap = lambda x, y: (x, 0.5, y, alpha)
             # Create a 2D array of RGBA values
             rgba_colors = np.array([cmap(x, y) for x, y in normalized_values])
         elif values.ndim == 3:
@@ -1532,6 +1542,7 @@ class Vizualizer:
         discrete_stats = ["accuracy", "precision", "recall", "f1-score", "roc_auc"]
 
         summary_decodings_by_iterations = {}
+        stat_name = None
         for session_date, session_dict in models.items():
             for task_name, models_dict in session_dict.items():
                 # Assuming task names are unique
@@ -1557,8 +1568,9 @@ class Vizualizer:
                     for stat_name, stat in model.decoding_statistics.items():
                         init_dict_in_dict(current_dict, stat_name)
                         current_dict[stat_name] = stat
-
-        if stat_name in discrete_stats:
+        if stat_name is None:
+            raise ValueError("No decoding statistics found. In models.")
+        elif stat_name in discrete_stats:
             performance_measure_type = "discrete"
         elif stat_name in continuouse_stats:
             performance_measure_type = "continuouse"
@@ -1760,6 +1772,8 @@ class Vizualizer:
         num_measures = len(decoding_measures)
         for measure_num, decoding_measure in enumerate(decoding_measures):
             for task_num, (task_name, decoding_data) in enumerate(decodings.items()):
+                if len(decoding_data) == 0:
+                    continue
                 colors = Vizualizer.generate_similar_colors(
                     colormap(task_num), num_measures
                 )
@@ -1804,6 +1818,8 @@ class Vizualizer:
                 fontsize=40,
             )
             for task_num, (task_name, decoding_data) in enumerate(decodings.items()):
+                if len(decoding_data) == 0:
+                    continue
                 eval_stat = decoding_data["roc_auc"]
                 for iter_eval_num, roc_auc_dict in enumerate(eval_stat):
                     max_iter_value = iterations[task_num][iter_eval_num]
@@ -1815,7 +1831,7 @@ class Vizualizer:
                         ax.plot(
                             fpr,
                             tpr,
-                            label=f"{labels[class_num].capitalize()} AUC {auc:.2f}",
+                            # label=f"{labels[class_num].capitalize()} AUC {auc:.2f}" if labels else "",
                         )
                         ax.set_title(
                             f"{task_name}: iter. {max_iter_value}", fontsize=20

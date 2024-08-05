@@ -212,6 +212,7 @@ class Animal:
             else:
                 model = dict_value_keylist(models, keys_list)
                 if model.decoding_statistics is None:
+                    # if True:
                     model.decoding_statistics = decode(model=model)
 
         for keys_list in to_delete_models_key_list:
@@ -811,7 +812,6 @@ class Task:
             model_settings,
         )
 
-        # TODO: add other manifolds pipelines
         if manifolds_pipeline == "cebra":
             models_class = self.models.cebras
         else:
@@ -871,7 +871,6 @@ class Task:
                     neural_data_train, behavior_data_train = force_equal_dimensions(
                         neural_data_train, behavior_data_train
                     )
-                    # FIXME: behavior_data_train can only be 1D if it is a discrete variable, look into bin_array function, probably need to encode into one variable
                     model.fit(neural_data_train, behavior_data_train)
                 model.fitted = models_class.is_fitted(model)
                 model.save(model.save_path)
@@ -889,7 +888,7 @@ class Task:
                 )[model.name]
             else:
                 train_embedding = None
-            if neural_data_test.shape[0] > 10:
+            if neural_data_test.shape[0] > 0:
                 test_embedding = self.create_embeddings(
                     models={model.name: model},
                     to_transform_data=neural_data_test,
@@ -966,7 +965,7 @@ class Task:
         title_comment: Optional[str] = None,
         markersize: float = None,
         alpha: float = None,
-        figsize: Tuple[int, int] = (10, 4),
+        figsize: Tuple[int, int] = None,
         dpi: int = 300,
         as_pdf: bool = False,
     ):

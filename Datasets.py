@@ -147,6 +147,16 @@ class Dataset:
         """
         return data
 
+    def create_1d_discrete_labels(self, binned_data):
+        # encode multi-dimensional binned_data (e.g individual x, y) to single vector combined X,Y Bin
+        if len(self.metadata["environment_dimensions"]) != 1:
+            encoded_data, self.category_map = encode_categorical(
+                binned_data, return_category_map=True
+            )
+            return encoded_data
+        else:
+            return binned_data
+
     def refine_plot_attributes(
         self,
         title=None,
@@ -347,9 +357,9 @@ class BehaviorDataset(Dataset):
         filtered_data = self.filter_by_idx(self.binned_data, idx_to_keep)
         if "max_bin" not in self.__dict__.keys():
             self.max_bin = None
-
         occupancy, _ = group_by_binned_data(
             binned_data=filtered_data,
+            category_map=self.category_map,
             group_by="count",
             max_bin=self.max_bin,
             as_array=True,
@@ -448,6 +458,7 @@ class NeuralDataset(Dataset):
         model=None,
         use_embedding: bool = False,
         binned_features: np.ndarray = None,
+        category_map: Dict = None,
         inside_bin_similarity: bool = False,
         remove_outliers: bool = True,
         max_bin: List[int] = None,
@@ -464,6 +475,9 @@ class NeuralDataset(Dataset):
         """
         metrics: euclidean, wasserstein, kolmogorov-smirnov, chi2, kullback-leibler, jensen-shannon, energy, mahalanobis, cosine
         the compare_distributions is also removing outliers on default
+
+        Args:
+            category map: maps discrete labels to multi dimensional position vectors
         """
         if use_embedding:
             if model is None and self.embedding is None:
@@ -487,6 +501,7 @@ class NeuralDataset(Dataset):
                 # Calculate similarity inside binned features
                 binned_similarities, _ = group_by_binned_data(
                     data=similarities,
+                    category_map=category_map,
                     binned_data=filtered_binned_features,
                     group_by="mean_symmetric_matrix",
                     max_bin=max_bin,
@@ -502,6 +517,7 @@ class NeuralDataset(Dataset):
             else:
                 group_vectors, bins = group_by_binned_data(
                     data=filtered_neural_data,
+                    category_map=category_map,
                     binned_data=filtered_binned_features,
                     group_by="raw",
                     max_bin=max_bin,
@@ -529,6 +545,7 @@ class NeuralDataset(Dataset):
 
                     similarities[group_name] = similarities_to_groupi
 
+                bins = np.array(bins)
                 plot_bins = xticks or bins
                 if not xticks:
                     ticks = []
@@ -642,7 +659,7 @@ class Data_Position(BehaviorDataset):
                 color_by="time",
             )
 
-    def bin_data(self, data=None, bin_size=None):
+    def bin_data(self, data=None, bin_size=None, return_category_map=False):
         """
         Bin the position data into 1cm bins in 1D and 5cm^2 bins for 2D environments.
         Args:
@@ -668,7 +685,10 @@ class Data_Position(BehaviorDataset):
             data, bin_size=bin_size, min_bin=min_bins, max_bin=max_bins
         )
         self.max_bin = np.array(np.array(dimensions) / np.array(bin_size), dtype=int)
-        return binned_data
+        encoded_data = self.create_1d_discrete_labels(binned_data)
+        if return_category_map:
+            return encoded_data, self.category_map
+        return encoded_data
 
     def create_dataset(self, raw_data_object=None, save=True):
         data = self.process_raw_data(save=save)
@@ -813,17 +833,10 @@ class Data_Distance(BehaviorDataset):
     def bin_data(self, data, bin_size=None, return_category_map=False):
         bin_size = bin_size or self.binning_size
         binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
-        # encode multi-dimensional binned_data (e.g individual x, y) to single vector combined X,Y Bin
-        if len(self.metadata["environment_dimensions"]) > 1:
-            encoded_data, self.category_map = encode_categorical(
-                binned_data, return_category_map=True
-            )
-            if return_category_map:
-                return encoded_data, self.category_map
-            else:
-                return encoded_data
-        else:
-            return binned_data
+        encoded_data = self.create_1d_discrete_labels(binned_data)
+        if return_category_map:
+            return encoded_data, self.category_map
+        return encoded_data
 
     def process_raw_data(self, save=True):
         track_positions = self.raw_data_object.data
@@ -854,17 +867,10 @@ class Data_Velocity(BehaviorDataset):
     def bin_data(self, data, bin_size=None, return_category_map=False):
         bin_size = bin_size or self.binning_size
         binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
-        # encode multi-dimensional binned_data (e.g individual x, y) to single vector combined X,Y Bin
-        if len(self.metadata["environment_dimensions"]) > 1:
-            encoded_data, self.category_map = encode_categorical(
-                binned_data, return_category_map=True
-            )
-            if return_category_map:
-                return encoded_data, self.category_map
-            else:
-                return encoded_data
-        else:
-            return binned_data
+        encoded_data = self.create_1d_discrete_labels(binned_data)
+        if return_category_map:
+            return encoded_data, self.category_map
+        return encoded_data
 
     def process_raw_data(self, save=True):
         """
@@ -925,17 +931,10 @@ class Data_Acceleration(BehaviorDataset):
     def bin_data(self, data, bin_size=None, return_category_map=False):
         bin_size = bin_size or self.binning_size
         binned_data = bin_array(data, bin_size=bin_size, min_bin=0)
-        # encode multi-dimensional binned_data (e.g individual x, y) to single vector combined X,Y Bin
-        if len(self.metadata["environment_dimensions"]) > 1:
-            encoded_data, self.category_map = encode_categorical(
-                binned_data, return_category_map=True
-            )
-            if return_category_map:
-                return encoded_data, self.category_map
-            else:
-                return encoded_data
-        else:
-            return binned_data
+        encoded_data = self.create_1d_discrete_labels(binned_data)
+        if return_category_map:
+            return encoded_data, self.category_map
+        return encoded_data
 
     def process_raw_data(self, save=True):
         """
