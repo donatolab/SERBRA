@@ -42,7 +42,131 @@ def define_metadata_columns(sheet):
             metadata_columns[cell.value] = column
     return metadata_columns
 
-def get_animal_dict_from_spreadsheet(fname, sheet_title=None):
+def create_stimulus_dict(sheet, metadata_columns, row, definition=None):
+    # Stimulus Metadata
+    stim_type = sheet.cell(row=row, column=metadata_columns["treadmill"]).value
+    if definition is None:
+        definition = {
+            stim_type: {
+                "sequence": None,
+                "dimensions": None,
+                "by": None,
+            }
+        }
+    sequence = definition[stim_type]["sequence"] if "sequence" in definition[stim_type].keys() else None
+    dimensions = definition[stim_type]["dimensions"] if "dimensions" in definition[stim_type].keys() else None
+    by = definition[stim_type]["by"] if "by" in definition[stim_type].keys() else None
+    metadata = create_dict(type=stim_type, sequence=sequence, dimensions=dimensions, by=by)
+    return metadata
+
+
+def create_behavior_dict(sheet, metadata_columns, row, stimulus_definition=None):
+    # Behavior Metadata
+    cam_data = sheet.cell(row=row, column=metadata_columns["cam"]).value
+    cam_data = True if cam_data == "yes" else False
+    movement_data = sheet.cell(row=row, column=metadata_columns["behaviour"]).value
+    movement_data = True if movement_data == "yes" else False
+    stimulus = create_stimulus_dict(sheet, metadata_columns, row, stimulus_definition)
+    behavior_metadata = create_dict(
+        cam_data=cam_data,
+        movement_data=movement_data,
+        stimulus=stimulus
+    )
+    return behavior_metadata
+
+def create_neural_dict(sheet, metadata_columns, row):
+    ## Neural Metadata
+    method = "2P"
+    setup = sheet.cell(row=row, column=metadata_columns["setup"]).value
+    wavelength = sheet.cell(row=row, column=metadata_columns["[nm]"]).value
+    laser_power = sheet.cell(row=row, column=metadata_columns["laser / LED power"]).value
+    pockel_cell_bias = sheet.cell(row=row, column=metadata_columns["PC bias"]).value
+    n_channel = sheet.cell(row=row, column=metadata_columns["n Ch."]).value
+    functional_channel = sheet.cell(row=row, column=metadata_columns["fct. channel"]).value
+    ug_gain = sheet.cell(row=row, column=metadata_columns["UG gain"]).value
+    ur_gain = sheet.cell(row=row, column=metadata_columns["UR gain"]).value
+    lens = sheet.cell(row=row, column=metadata_columns["lens"]).value if "lens" in metadata_columns.keys() else None
+    pixels = sheet.cell(row=row, column=metadata_columns["pixels"]).value if "pixels" in metadata_columns.keys() else None
+    n_planes = sheet.cell(row=row, column=metadata_columns["n planes"]).value if "n planes" in metadata_columns.keys() else None
+
+    convert_to_int = [n_channel, functional_channel, n_planes]
+    for i, value in enumerate(convert_to_int):
+        if value:
+            if value == "n/a" or value == "" or value == "?":
+                convert_to_int[i] = None
+            else:
+                convert_to_int[i] = int(value)
+    n_channel, functional_channel, n_planes = convert_to_int
+
+    neural_metadata = create_dict(
+        method=method,
+        setup=setup,
+        wavelength=wavelength,
+        laser_power=laser_power,
+        pockel_cell_bias=pockel_cell_bias,
+        n_channel=n_channel,
+        functional_channel=functional_channel,
+        ug_gain=ug_gain,
+        ur_gain=ur_gain,
+        lens=lens,
+        pixels=pixels,
+        n_planes=n_planes,
+    )
+    return neural_metadata
+
+def create_task_dict(sheet, metadata_columns, row, stimulus_definition=None):
+    # Task Metadata
+    duration = sheet.cell(row=row, column=metadata_columns["duration [min]"]).value
+    duration = None if duration == "n/a" or duration == "" or duration == "?" else duration
+    expt_pipeline = sheet.cell(row=row, column=metadata_columns["paradigm"]).value
+    comment = sheet.cell(row=row, column=metadata_columns["comment"]).value
+    task_metadata = create_dict(expt_pipeline=expt_pipeline, comment=comment, duration=duration)
+    neural_metadata = create_neural_dict(sheet, metadata_columns, row)
+    behavior_metadata = create_behavior_dict(sheet, metadata_columns, row, stimulus_definition)
+    task_metadata["neural_metadata"] = neural_metadata
+    task_metadata["behavior_metadata"] = behavior_metadata
+    return task_metadata
+
+def create_session_dict(sheet, metadata_columns, row, stimulus_definition=None):
+    # Session Metadata
+    date = sheet.cell(row=row, column=metadata_columns["date"]).value
+    date = "20" + str(int(date)) if date else None
+    weight = sheet.cell(row=row, column=metadata_columns["weight [g]"]).value
+    session_metadata = create_dict(date=date, weight=weight)
+    task_metadata = create_task_dict(sheet, metadata_columns, row, stimulus_definition)
+    task = sheet.cell(row=row, column=metadata_columns["session"]).value
+    session_metadata["tasks_infos"] = {task: task_metadata}
+    return session_metadata
+
+def create_animal_dict(sheet, metadata_columns, row, stimulus_definition=None):
+    animal_id = sheet.cell(row=row, column=metadata_columns["mouse ID"]).value
+    if not animal_id:
+        return None
+    else:
+        animal_id = (
+            "DON-00" + animal_id[3:]
+            if len(animal_id) == 7
+            else "DON-0" + animal_id[3:]
+        )
+    sex = sheet.cell(row=row, column=metadata_columns["sex"]).value
+    sex = "male" if sex == "m" else "female" if sex else None
+
+    dob = sheet.cell(row=row, column=metadata_columns["DOB"]).value
+    dob = "20" + str(int(dob)) if dob else None
+    # dob_date = num_to_date(dob)
+    # cohort_year = dob_date.year
+
+    injected = sheet.cell(row=row, column=metadata_columns["injected"]).value
+    injected = "20" + str(int(injected)) if injected else None
+    implanted = sheet.cell(row=row, column=metadata_columns["implanted"]).value
+    implanted = "20" + str(int(implanted)) if implanted else None
+    
+    animal_metadata = create_dict(animal_id=animal_id, sex=sex, dob=dob, injected=injected, implanted=implanted)
+    session_metadata = create_session_dict(sheet, metadata_columns, row, stimulus_definition)
+    animal_metadata["sessions"] = {session_metadata["date"]: session_metadata}
+    return animal_metadata
+
+def get_animal_dict_from_spreadsheet(fname, sheet_title=None, stimulus_definition=None, remove_none=True):
     """
     read animal_id, dob, sex from spreadsheet
     """
@@ -51,160 +175,78 @@ def get_animal_dict_from_spreadsheet(fname, sheet_title=None):
     if sheet_title not in org_exp_workbook.sheetnames:
         raise ValueError(f"sheet_title {sheet_title} not in sheetnames in {fname}")
     sheet = org_exp_workbook[sheet_title]
-    print(f"Warning cohort_year if defined by dob year.")
-    print(f"Warning dob year 2020 is changed to 2021.")
     metadata_columns = define_metadata_columns(sheet)
     animals = {}
     for row in range(2, sheet.max_row):
-        # cell_obj = sheet.cell(row=row, column=j)
-        date = sheet.cell(row=row, column=metadata_columns["date"]).value
-        date = "20" + str(int(date)) if date else None
-        animal_id = sheet.cell(row=row, column=metadata_columns["mouse ID"]).value
-        if not animal_id:
+        row_animal_metadata = create_animal_dict(sheet, metadata_columns, row, stimulus_definition)
+        if row_animal_metadata is None:
             continue
-        else:
-            animal_id = (
-                "DON-00" + animal_id[3:]
-                if len(animal_id) == 7
-                else "DON-0" + animal_id[3:]
-            )
-        sex = sheet.cell(row=row, column=metadata_columns["sex"]).value
-        dob = sheet.cell(row=row, column=metadata_columns["DOB"]).value
-        injected = sheet.cell(row=row, column=metadata_columns["injected"]).value
-        injected = "20" + str(int(injected)) if injected else None
-        implanted = sheet.cell(row=row, column=metadata_columns["implanted"]).value
-        implanted = "20" + str(int(implanted)) if implanted else None
-        duration = [sheet.cell(row=row, column=metadata_columns["duration [min]"]).value]
-        duration = [
-            (
-                None
-                if duration == "n/a" or duration == "" or duration == "?"
-                else duration[0]
-            )
-        ]
-        method = "2P"
-        setup = sheet.cell(row=row, column=metadata_columns["setup"]).value
-        cam_data = sheet.cell(row=row, column=metadata_columns["cam"]).value
-        cam_data = [True if cam_data == "yes" else False]
-        movement_data = sheet.cell(row=row, column=metadata_columns["behaviour"]).value
-        movement_data = [True if movement_data == "yes" else False]
-        light = sheet.cell(row=row, column=metadata_columns["[nm]"]).value
-        laser_power = sheet.cell(row=row, column=metadata_columns["laser / LED power"]).value
-        underground = [sheet.cell(row=row, column=metadata_columns["treadmill"]).value]
-        pockel_cell_bias = sheet.cell(row=row, column=metadata_columns["PC bias"]).value
-        n_channel = sheet.cell(row=row, column=metadata_columns["n Ch."]).value
-        functional_channel = sheet.cell(row=row, column=metadata_columns["fct. channel"]).value
-        #functional_channel = sheet.cell(row=row, column=metadata_columns["functional_channel"]).value
-        ug_gain = sheet.cell(row=row, column=metadata_columns["UG gain"]).value
-        ur_gain = sheet.cell(row=row, column=metadata_columns["UR gain"]).value
-        session = [sheet.cell(row=row, column=metadata_columns["session"]).value]
-        weight = sheet.cell(row=row, column=metadata_columns["weight [g]"]).value
-        comment = sheet.cell(row=row, column=metadata_columns["comment"]).value
-        expt_pipeline = sheet.cell(row=row, column=metadata_columns["paradigm"]).value
+
+        #session_metadata = create_dict(sheet, metadata_columns, row)
+        #task_metadata = create_task_dict(sheet, metadata_columns, row)
+        #neural_metadata = create_neural_dict(sheet, metadata_columns, row)
+        #behavior_metadata = create_behavior_dict(sheet, metadata_columns, row, stimulus_definition)
+
+        animal_id = row_animal_metadata["animal_id"]
+        session_date = row_animal_metadata["sessions"][list(row_animal_metadata["sessions"].keys())[0]]["date"]
         
-        lens = sheet.cell(row=row, column=metadata_columns["lens"]).value if "lens" in metadata_columns.keys() else None
-        pixels = sheet.cell(row=row, column=metadata_columns["pixels"]).value if "pixels" in metadata_columns.keys() else None
-        n_planes = sheet.cell(row=row, column=metadata_columns["n planes"]).value if "n planes" in metadata_columns.keys() else None
-
-        convert_to_int = [n_channel, functional_channel, n_planes]
-        for i, value in enumerate(convert_to_int):
-            if value:
-                if value == "n/a" or value == "" or value == "?":
-                    convert_to_int[i] = None
-                else:
-                    convert_to_int[i] = int(value)
-        n_channel, functional_channel, n_planes = convert_to_int
-
-        animal_exists = False
-        session_exists = False
         if len(animals.keys()) > 0:
             if animal_id in animals:
+                animal = animals[animal_id]
                 animal_exists = True
-                session_exists = (
-                    True if date in animals[animal_id]["sessions"] else False
-                )
-
-        if not animal_exists:
-            animals[animal_id] = create_animal_dict(
-                animal_id=animal_id,
-                sex=sex,
-                dob=dob,
-                injected=injected,
-                implanted=implanted,
-            )
-
-        if session_exists:
-            animals[animal_id]["sessions"][date]["duration"].append(duration[0])
-            animals[animal_id]["sessions"][date]["underground"].append(underground[0])
-            animals[animal_id]["sessions"][date]["cam_data"].append(cam_data[0])
-            animals[animal_id]["sessions"][date]["movement_data"].append(
-                movement_data[0]
-            )
-            animals[animal_id]["sessions"][date]["session_parts"].append(session[0])
+                if session_date in animal["sessions"]:
+                    session = animal["sessions"][session_date]
+                    session["tasks_infos"].update(row_animal_metadata["sessions"][session_date]["tasks_infos"])
+                else:
+                    animal["sessions"].update(row_animal_metadata["sessions"])
+            else:
+                animals[animal_id] = row_animal_metadata
         else:
-            animals[animal_id]["sessions"][date] = create_session_dict(
-                date=date,
-                duration=duration,
-                method=method,
-                setup=setup,
-                expt_pipeline=expt_pipeline,
-                underground=underground,
-                cam_data=cam_data,
-                movement_data=movement_data,
-                light=light,
-                laser_power=laser_power,
-                pockel_cell_bias=pockel_cell_bias,
-                n_channel=n_channel,
-                functional_channel=functional_channel,
-                ug_gain=ug_gain,
-                ur_gain=ur_gain,
-                lens=lens,
-                pixels=pixels,
-                n_planes=n_planes,
-                session_parts=session,
-                weight=weight,
-                comment=comment,
-            )
+            animals[animal_id] = row_animal_metadata
+
+    if remove_none:
+        animals = remove_none_from_dict(animals, recursive=True)
     return animals
 
 
-def init_animal_dict(animal_id, cohort_year=None, dob=None, sex=None):
-    animal_dict = {
-        "cohort_year": cohort_year,
-        "dob": dob,
-        "name": animal_id,
-        "pdays": [],
-        "session_dates": [],
-        "session_names": [],
-        "sex": sex,
-    }
-    return animal_dict
-
-
-def create_session_dict(**kwargs):
+def create_dict(**kwargs):
     session_dict = kwargs
     for key, var in session_dict.items():
         session_dict[key] = None if var == "n/a" or var == "" or var == "?" else var
     # WARNING dob_date.year could be wrong for other
     return session_dict
 
+def search_update_dict(dictionary, update_dict):
+    for key, value in update_dict.items():
+        if key in dictionary.keys():
+            dictionary_value = dictionary[key]
+            if isinstance(dictionary_value, dict):
+                dictionary_value.update(value)
+            
+        else:
+            for dict_key, dict_value in dictionary.items():
+                if isinstance(dict_value, dict):
+                    search_update_dict(dict_value, update_dict)
+    return dictionary
 
-def create_animal_dict(**kwargs):
-    animal_dict = kwargs
-    for key, var in animal_dict.items():
-        animal_dict[key] = None if var == "n/a" or var == "" or var == "?" else var
-
-    sex = animal_dict["sex"]
-    animal_dict["sex"] = "male" if sex == "m" else "female" if sex else None
-    dob = animal_dict["dob"]
-    dob = "20" + str(int(dob))
-    animal_dict["dob"] = dob
-    dob_date = num_to_date(dob)
-    cohort_year = dob_date.year if dob_date.year != 2020 else 2021
-    animal_dict["cohort_year"] = cohort_year
-    animal_dict["sessions"] = {}
-    # WARNING dob_date.year could be wrong for other
-    return animal_dict
+def remove_none_from_dict(dictionary, recursive=False):
+    """
+    removes all None values from a dictionary
+    parameters:
+        dictionary (dict): dictionary to remove None values from
+        recursive (bool): if True, also removes None values from nested dictionaries
+    """
+    if not recursive:
+        new_dict = {key: value for key, value in dictionary.items() if value is not None}
+    else:
+        new_dict = {}
+        for key, value in dictionary.items():
+            if value is not None:
+                if isinstance(value, dict):
+                    new_dict[key] = remove_none_from_dict(value, recursive)
+                else:
+                    new_dict[key] = value
+    return new_dict
 
 
 def return_loaded_yaml_if_newer(used_path, may_newer_info_path):
@@ -262,7 +304,7 @@ def combine_spreadsheet_and_old_animal_summary_yaml(animals_spreadsheet, animals
 
             if date not in animals_spreadsheet[yanimal_id]["sessions"].keys():
 
-                animals_spreadsheet[yanimal_id]["sessions"][date] = create_session_dict(
+                animals_spreadsheet[yanimal_id]["sessions"][date] = create_dict(
                     date=date, method="2P", setup="femtonics"
                 )
 
@@ -386,12 +428,28 @@ def move_mesc_to_session_folder(directory=None):
         animal_id = splitted_fname[0]
         session_id = splitted_fname[1].split(".")[0]
         session_path = create_folder(
-            str(animal_id), str(session_id), directory=directory
+            [str(animal_id), str(session_id)], directory=directory
         )
         # move_file
         fpath = os.path.join(directory, fname)
         shutil.move(fpath, session_path)
 
+def create_folders_for_animals(animals, directory=None, save_yamls=True):
+    directory = None if directory == "" else directory
+    for animal_id, animal_metadata in animals.items():
+        animal_path = create_folder(animal_id, directory=directory)
+        for session_date, session_metadata in animal_metadata["sessions"].items():
+            session_path = create_folder(session_date, directory=animal_path)
+            if save_yamls:
+                fpath = os.path.join(session_path, f"{session_date}.yaml")
+                with open(fpath, "w") as file:
+                    yaml.dump(session_metadata, file)
+        if save_yamls:
+            fpath = os.path.join(animal_path, f"{animal_id}.yaml")
+            only_animal_metadata = copy.deepcopy(animal_metadata)
+            only_animal_metadata.pop("sessions")
+            with open(fpath, "w") as file:
+                yaml.dump(only_animal_metadata, file)
 
 def dir_exist_create(directory):
     """
@@ -409,43 +467,13 @@ def dir_exist_create(directory):
         os.makedirs(directory)
 
 
-def create_folder(animal_id, session_id, directory=None):
+def create_folder(folder_names, directory=None):
+    folder_names = make_list_ifnot(folder_names)
     folder_dir = directory if directory else ""
-    folder_names = [animal_id, session_id, "002P-F"]
     for folder_name in folder_names:
         folder_dir = os.path.join(folder_dir, folder_name)
         dir_exist_create(folder_dir)
     return folder_dir
-
-
-def add_yaml_to_folders(animals, directory):
-    # saving session yaml files
-    for aid, animal in animals.items():
-        for sid, sess in animal["sessions"].items():
-            yaml_fname = f"{sid}.yaml"
-            yaml_path = os.path.join(directory, aid, sid)
-            if not os.path.exists(yaml_path):
-                print(f"No path found. Skipping: {yaml_path}")
-                continue
-            save_path = os.path.join(yaml_path, yaml_fname)
-            with open(save_path, "w") as file:
-                yaml.dump(sess, file)
-            print(save_path)
-
-    # saving animal yaml files
-    for aid, animal in animals.items():
-        yaml_fname = f"{aid}.yaml"
-        yaml_path = os.path.join(directory, aid)
-        if not os.path.exists(yaml_path):
-            print(f"No path found. Skipping: {yaml_path}")
-            continue
-        save_path = os.path.join(yaml_path, yaml_fname)
-        animal_copy = copy.deepcopy(animal)
-        del animal_copy["sessions"]
-        with open(save_path, "w") as file:
-            yaml.dump(animal_copy, file)
-        print(save_path)
-
 
 def update_excel_by_yaml(excel_animals, yaml_animals):
     pass
