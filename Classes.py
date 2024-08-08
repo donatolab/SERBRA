@@ -6,7 +6,7 @@ from Setups import *
 from Helper import *
 from Visualizer import *
 from Models import Models, PlaceCellDetectors, decode
-from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
+from Datasets import Datasets_Neural, Datasets_Behavior, Datasets, Dataset
 
 # type hints
 from typing import List, Union, Dict, Any, Tuple, Optional
@@ -211,9 +211,12 @@ class Animal:
                 to_delete_models_key_list.append(keys_list)
             else:
                 model = dict_value_keylist(models, keys_list)
-                if model.decoding_statistics is None:
-                    # if True:
+                #if model.decoding_statistics is None:
+                if True:
                     model.decoding_statistics = decode(model=model)
+
+        # check model labels and data
+
 
         for keys_list in to_delete_models_key_list:
             delete_nested_key(models, keys_list)
@@ -705,8 +708,8 @@ class Task:
     # Cebra
     def get_multi_data(
         self,
-        datasets_object,
-        data_types,
+        datasets_object: Datasets,
+        data_types=None,
         data=None,
         binned=False,
         movement_state="all",
@@ -717,9 +720,11 @@ class Task:
 
         # get data
         if not isinstance(data, np.ndarray):
+            if data_types is None:
+                raise ValueError("No data and not data types given for get_multi_data.")
             data, _ = datasets_object.get_multi_data(
                 data_types,
-                idx_to_keep=idx_to_keep,
+                #idx_to_keep=idx_to_keep,
                 binned=binned,
                 # shuffle=shuffled,
                 # split_ratio=split_ratio
@@ -881,14 +886,14 @@ class Task:
             print(f"{self.id}: {model.name} model already trained. Skipping.")
 
         if create_embeddings:
-            if neural_data_train.shape[0] < 10:
+            if neural_data_train.shape[0] > 10:
                 train_embedding = self.create_embeddings(
                     models={model.name: model},
                     to_transform_data=neural_data_train,
                 )[model.name]
             else:
                 train_embedding = None
-            if neural_data_test.shape[0] > 0:
+            if neural_data_test.shape[0] > 10:
                 test_embedding = self.create_embeddings(
                     models={model.name: model},
                     to_transform_data=neural_data_test,

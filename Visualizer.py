@@ -1640,6 +1640,7 @@ class Vizualizer:
                     iterations=iteration_values,
                     cmap=cmap,
                     labels=labels,
+                    xlim=xlim,
                     additional_title=additional_title,
                     figsize=figsize,
                     save_dir=save_dir,
@@ -1742,6 +1743,7 @@ class Vizualizer:
         iterations=None,
         additional_title="",
         labels="",
+        xlim=None,
         cmap="tab10",
         figsize=(15, 8),
         to_plot=[
@@ -1796,6 +1798,8 @@ class Vizualizer:
                     rotation=45,
                     fontsize=8,
                 )
+                if xlim:
+                    axes.set_xlim(xlim)
         plt.tight_layout()
         if save_dir:
             format = "pdf" if as_pdf else "png"
@@ -1931,6 +1935,10 @@ class Vizualizer:
                 format=format,
             )
         plt.show()
+
+    @staticmethod
+    def plot_decoding_accuracy_at():
+        pass
 
     @staticmethod
     def plot_cell_activites_heatmap(

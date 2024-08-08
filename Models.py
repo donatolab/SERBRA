@@ -763,6 +763,7 @@ def decode(
     labels_test=None,
     n_neighbors=36,
     metric="cosine",
+    detailed_accuracy=False,
 ):
     if model is None:
         if (
@@ -830,14 +831,13 @@ def decode(
     # labels_test = force_1_dim_larger(labels_test)
 
     fit_labels_train = (
-        labels_train.ravel() if labels_train.shape[1] == 1 else labels_train
+        labels_train.flatten() if labels_train.shape[1] == 1 else labels_train
     )
     knn.fit(embedding_train, fit_labels_train)
 
     # Predict the targets for data ``X``
     labels_pred = knn.predict(embedding_test)
     labels_pred = Dataset.force_2d(labels_pred)
-    labels_pred, labels_test = force_equal_dimensions(labels_pred, labels_test)
 
     if is_floating(labels_test):
         # Use regression metrics
@@ -865,7 +865,17 @@ def decode(
                 labels_pred = labels_pred.reshape(-1, 1)
 
             # Classification metrics for each output
-            accuracy = accuracy_score(labels_test[:, i], labels_pred[:, i])
+            if detailed_accuracy:
+                classes = np.unique(labels_test[:, i])
+                accuracy = {}
+                for class_ in classes:
+                    label_test_class_idx = labels_test[:, i] == class_
+                    labels_test_class = labels_test[label_test_class_idx, i]
+                    labels_pred_class = labels_pred[label_test_class_idx, i]
+                    accuracy[class_] = accuracy_score(labels_test_class, labels_pred_class)
+            else:
+                accuracy = accuracy_score(labels_test[:, i], labels_pred[:, i])
+            
             precision = precision_score(
                 labels_test[:, i],
                 labels_pred[:, i],
@@ -916,13 +926,16 @@ def decode(
             # print(f"Average Recall: {np.mean(recalls)}")
             # print(f"Average F1 Score: {np.mean(f1s)}")
 
-            results = {
-                "accuracy": accuracies,
-                "precision": precisions,
-                "recall": recalls,
-                "f1-score": f1s,
-                "roc_auc": class_roc_auc_scores,
-            }
+            if detailed_accuracy:
+                results = accuracy
+            else:
+                results = {
+                    "accuracy": accuracies,
+                    "precision": precisions,
+                    "recall": recalls,
+                    "f1-score": f1s,
+                    "roc_auc": class_roc_auc_scores,
+                }
     else:
         raise NotImplementedError(
             f"Invalid label_test type: targets must be either floats or integers, got label_test:{labels_test.dtype}."
