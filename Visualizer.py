@@ -264,11 +264,9 @@ class Vizualizer:
         plot_attributes["save_path"] = plot_attributes["save_path"] or save_path
 
         if regenerate_plot:
-            format = "pdf" if as_pdf else "png"
-            plot_attributes["save_path"] = Path(
-                plot_attributes["save_path"]
-            ).with_suffix(f".{format}")
-            plt.savefig(plot_attributes["save_path"], dpi=dpi, format=format)
+            title = Path(plot_attributes["save_path"]).stem
+            save_dir = Path(plot_attributes["save_path"]).parent
+            Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
 
         if show:
             plt.show()
@@ -1407,14 +1405,17 @@ class Vizualizer:
     def plot_ending(self, title, title_size=20, save=True, as_pdf=False):
         plt.suptitle(title, fontsize=title_size)
         plt.tight_layout()  # Ensure subplots fit within figure area
-        format = "pdf" if as_pdf else "png"
-        plot_save_path = (
-            str(self.save_dir.joinpath(title + "." + format))
-            .replace(">", "bigger")
-            .replace("<", "smaller")
-        )
+        
         if save:
-            plt.savefig(plot_save_path, dpi=300, format=format)
+            plot_save_path = (
+                str(self.save_dir.joinpath(title + ".png"))
+                .replace(">", "bigger")
+                .replace("<", "smaller")
+            )
+            title = Path(plot_save_path).stem
+            save_dir = Path(plot_save_path).parent
+            Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
+
         plt.show()
         plt.close()
 
@@ -1801,13 +1802,8 @@ class Vizualizer:
                 if xlim:
                     axes.set_xlim(xlim)
         plt.tight_layout()
-        if save_dir:
-            format = "pdf" if as_pdf else "png"
-            plt.savefig(
-                save_dir.joinpath(f"Performance Measures {additional_title}.{format}"),
-                dpi=300,
-                format=format,
-            )
+        title = f"Performance Measures {additional_title}"
+        Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
         plt.show()
 
         if "roc_auc" in to_plot:
@@ -1848,13 +1844,8 @@ class Vizualizer:
                     ax.legend(loc="lower right")
 
             plt.tight_layout()
-            if save_dir:
-                format = "pdf" if as_pdf else "png"
-                plt.savefig(
-                    save_dir.joinpath(f"ROC curves {additional_title}.{format}"),
-                    dpi=300,
-                    format=format,
-                )
+            title = f"ROC curves {additional_title}"
+            Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
             plt.show()
 
     @staticmethod
@@ -1927,18 +1918,49 @@ class Vizualizer:
                     axes[i].set_xlim(xlim)
         title = f"Decoding statistics for different tasks {additional_title}"
         plt.tight_layout()
-        if save_dir:
-            format = "pdf" if as_pdf else "png"
-            plt.savefig(
-                os.path.join(save_dir, f"{title}.{format}"),
-                dpi=300,
-                format=format,
-            )
+        Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
         plt.show()
 
     @staticmethod
-    def plot_decoding_accuracy_at():
-        pass
+    def plot_decoding_accuracy_at(accuracy:dict, # accuracy for every class
+                                  category_map:dict, # one hot encoding for every class
+                                  additional_title=None,
+                                  figsize=(12, 10),
+                                  save_dir=None,
+                                  as_pdf=False,
+                                  ):
+        # check if category map is 2D
+        category_map_np = np.array(list(category_map.keys()))
+        category_map_dimensions = category_map_np.shape[1]
+        if category_map_dimensions != 2:
+            raise NotImplementedError("Only 2D category maps are supported. For detailed accuracy plots, use the confusion matrix.")
+        
+        num_dim_bins = np.zeros(category_map_dimensions, dtype=int)
+        for dim in range(category_map_dimensions):
+            num_dim_bins[dim] = len(np.unique(category_map_np[:, dim]))
+        accuracy_array = np.zeros(num_dim_bins)
+        
+        category_map_reverse = {v: k for k, v in category_map.items()}
+        for category, acc in accuracy.items():
+            bin_pos = category_map_reverse[category]
+            accuracy_array[bin_pos] = acc
+
+        fig, ax = plt.subplots(1, 1, figsize=figsize)        
+        
+        title = f"Accuracy for every class {additional_title}"
+        Vizualizer.heatmap_subplot(accuracy_array, 
+                                   ax=ax,
+                                   title=title,
+                                   title_size=figsize[0]*2,
+                                   xlabel="X Bin",
+                                   ylabel="Y Bin",
+                                   colorbar=True,
+                                   )
+        # add colorbar
+        plt.tight_layout()
+        Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
+        plt.show()
+
 
     @staticmethod
     def plot_cell_activites_heatmap(
@@ -2569,7 +2591,7 @@ class Vizualizer:
         matrix,
         title,
         ax,
-        title_size=10,
+        title_size=None,
         sort=False,
         cmap="viridis",
         interpolation="none",
@@ -2585,6 +2607,7 @@ class Vizualizer:
         yticks=None,
         yticks_pos=None,
         rotation=0,
+        colorbar=False,
     ):
         if sort:
             # Assuming correlations is your correlation matrix as a NumPy array
@@ -2593,12 +2616,14 @@ class Vizualizer:
             # sort the correlation matrix
             matrix = correlations_df.sort_values(by=0, axis=1, ascending=False)
 
-        tick_size = tick_size or max(matrix.shape) * 2
+        tick_size = tick_size or max(matrix.shape) * 1.2
+        label_size = tick_size * 1.5
+        title_size = title_size or label_size * 1.5
 
         # Creating a heatmap with sort correlations
         ax.set_title(title, fontsize=title_size)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
+        ax.set_xlabel(xlabel, fontsize=label_size)
+        ax.set_ylabel(ylabel, fontsize=label_size)
 
         if ylim is not None:
             ax.set_ylim(ylim)
@@ -2622,6 +2647,9 @@ class Vizualizer:
         cax = ax.imshow(
             matrix, cmap=cmap, vmin=vmin, vmax=vmax, interpolation=interpolation
         )
+        # add colorbar
+        if colorbar:
+            plt.colorbar(cax, ax=ax)
         return cax
 
     @staticmethod
@@ -2835,10 +2863,8 @@ class Vizualizer:
                     cmap=cmap,
                     move_right=1,
                 )
-            if save_dir:
-                format = "pdf" if as_pdf else "png"
-                save_path = os.path.join(save_dir, f"{title}_heatmap.{format}")
-                plt.savefig(save_path, dpi=300, bbox_inches="tight", format=format)
+            title = f"{title}_heatmap"
+            Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
             plt.show()
 
     def plot_1d_iter_group_distr_similarities(
@@ -2970,3 +2996,12 @@ class Vizualizer:
 
         fig.tight_layout()
         plt.show()
+
+    @staticmethod
+    def save_plot(save_dir=None, title="NONAME_DEFINED", format="pdf"):
+        if save_dir:
+            save_path = os.path.join(save_dir, f"{title}.{format}")
+            plt.savefig(save_path, 
+                        dpi=300, 
+                        bbox_inches="tight", 
+                        format=format)
