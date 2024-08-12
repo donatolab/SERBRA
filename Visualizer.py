@@ -1922,47 +1922,6 @@ class Vizualizer:
         plt.show()
 
     @staticmethod
-    def plot_decoding_accuracy_at(accuracy:dict, # accuracy for every class
-                                  category_map:dict, # one hot encoding for every class
-                                  additional_title=None,
-                                  figsize=(12, 10),
-                                  save_dir=None,
-                                  as_pdf=False,
-                                  ):
-        # check if category map is 2D
-        category_map_np = np.array(list(category_map.keys()))
-        category_map_dimensions = category_map_np.shape[1]
-        if category_map_dimensions != 2:
-            raise NotImplementedError("Only 2D category maps are supported. For detailed accuracy plots, use the confusion matrix.")
-        
-        num_dim_bins = np.zeros(category_map_dimensions, dtype=int)
-        for dim in range(category_map_dimensions):
-            num_dim_bins[dim] = len(np.unique(category_map_np[:, dim]))
-        accuracy_array = np.zeros(num_dim_bins)
-        
-        category_map_reverse = {v: k for k, v in category_map.items()}
-        for category, acc in accuracy.items():
-            bin_pos = category_map_reverse[category]
-            accuracy_array[bin_pos] = acc
-
-        fig, ax = plt.subplots(1, 1, figsize=figsize)        
-        
-        title = f"Accuracy for every class {additional_title}"
-        Vizualizer.heatmap_subplot(accuracy_array, 
-                                   ax=ax,
-                                   title=title,
-                                   title_size=figsize[0]*2,
-                                   xlabel="X Bin",
-                                   ylabel="Y Bin",
-                                   colorbar=True,
-                                   )
-        # add colorbar
-        plt.tight_layout()
-        Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
-        plt.show()
-
-
-    @staticmethod
     def plot_cell_activites_heatmap(
         rate_map,
         additional_title=None,
@@ -2616,8 +2575,8 @@ class Vizualizer:
             # sort the correlation matrix
             matrix = correlations_df.sort_values(by=0, axis=1, ascending=False)
 
-        tick_size = tick_size or max(matrix.shape) * 1.2
-        label_size = tick_size * 1.5
+        tick_size = tick_size or title_size * 1.2
+        label_size = tick_size * .9
         title_size = title_size or label_size * 1.5
 
         # Creating a heatmap with sort correlations
@@ -2638,7 +2597,7 @@ class Vizualizer:
             if yticks_pos is not None:
                 ax.set_yticks(yticks_pos)
             ax.set_yticklabels(yticks)
-
+            
         # Set tick sizes
         ax.tick_params(axis="x", which="major", labelsize=tick_size)
         ax.tick_params(axis="y", which="major", labelsize=tick_size)

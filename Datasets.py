@@ -346,26 +346,32 @@ class BehaviorDataset(Dataset):
 
     def occupancy_by_binned_feature(
         self,
+        data=None,
+        group_values="count_norm",
         idx_to_keep=None,
         plot=False,
+        additional_title="",
         figsize=(6, 5),
         xticks=None,
         xticks_pos=None,
         yticks=None,
         ylabel="",
     ):
-        filtered_data = self.filter_by_idx(self.binned_data, idx_to_keep)
+        
+        data = data if data is not None else self.binned_data
+        filtered_data = self.filter_by_idx(data, idx_to_keep)
         if "max_bin" not in self.__dict__.keys():
             self.max_bin = None
         occupancy, _ = group_by_binned_data(
             binned_data=filtered_data,
             category_map=self.category_map,
-            group_by="count",
+            group_values=group_values,
             max_bin=self.max_bin,
             as_array=True,
         )
-
+        occupancy[occupancy == 0] = np.nan
         if plot:
+            title = f"Occupancy Map {self.metadata['task_id']} {additional_title}"
             if self.key == "stimulus":
                 xticks = xticks or self.plot_attributes["yticks"][1]
                 xticks_pos = xticks_pos or self.plot_attributes["yticks"][0]
@@ -373,7 +379,7 @@ class BehaviorDataset(Dataset):
             Vizualizer.plot_heatmap(
                 occupancy,
                 figsize=figsize,
-                title=f"Occupancy Map {self.metadata['task_id']}",
+                title=title,
                 xticks=xticks,
                 xticks_pos=xticks_pos,
                 yticks=yticks,
@@ -507,7 +513,6 @@ class NeuralDataset(Dataset):
                     max_bin=max_bin,
                     as_array=True,
                 )
-
                 title = "Similarity Inside Binned Features"
                 title += f" Embedded" if use_embedding or model is not None else ""
                 xticks = xticks
@@ -671,8 +676,6 @@ class Data_Position(BehaviorDataset):
             data = self.data
         if bin_size is None:
             bin_size = self.binning_size
-        if self.binned_data is not None and bin_size == self.binning_size:
-            return self.binned_data
         dimensions = self.metadata["environment_dimensions"]
         if len(dimensions) == 1:
             min_bins = 0
@@ -715,6 +718,72 @@ class Data_Position(BehaviorDataset):
                 old_idx = index
         return np.array(start_indices)
 
+    def categorical_to_bin_position(self, 
+                                    values:Union[Dict[tuple, Any], np.ndarray], 
+                                    additional_title="", 
+                                    figsize=(7,5),
+                                    plot=True,
+                                    save_dir=None,
+                                    as_pdf=False):
+        """
+        parameters:
+            values: dict or np.ndarray
+                if dict: values are in dictionary with category as key
+                if np.ndarray: values are already in 2D
+        """
+        # check if category map is 2D
+        if self.category_map is None:
+            raise ValueError("No category map found. Please bin data first.")
+
+        values_array = np.full(self.max_bin, np.nan)
+
+        if isinstance(values, dict): # if values are in dictionary with category as key
+            key_example = list(values.keys())[0]
+            if isinstance(key_example, tuple) and len(key_example) == 2: # if key is already 2D positional coordinates
+                for bin_pos, value in values.items():
+                    values_array[bin_pos] = value
+            else:
+                category_map_np = np.array(list(self.category_map.keys()))
+                category_map_dimensions = category_map_np.shape[1]
+                if category_map_dimensions != 2:
+                    raise NotImplementedError("Only 2D category maps are supported. For plotting values in 2D")
+                
+                uncode_values = uncode_categories(values, self.category_map)
+                for bin_pos, value in uncode_values.items():
+                    values_array[bin_pos] = value
+
+        elif isinstance(values, np.ndarray): # if values are already in 2D
+            if values.ndim != 2:
+                raise ValueError("Values should be 2D array. For plotting values in 2D")
+            if values.shape != values_array.shape:
+                raise ValueError(f"Values shape {values.shape} should be equal to category map shape {values_array.shape}")
+            values_array = values      
+
+        if plot:
+            fig, ax = plt.subplots(1, 1, figsize=figsize)        
+            xticks_pos = list(range(self.max_bin[0]))
+            yticks_pos = list(range(self.max_bin[1]))
+            xticks = [i if i%2==0 else "" for i in xticks_pos]
+            yticks = [i if i%2==0 else "" for i in yticks_pos]
+            title = f"Accuracy for every class {additional_title} {self.task_id}"
+            Vizualizer.heatmap_subplot(values_array, 
+                                    ax=ax,
+                                    title=title,
+                                    title_size=figsize[0]*1.5,
+                                    xticks=xticks,
+                                    yticks=yticks,
+                                    xticks_pos = xticks_pos,
+                                    yticks_pos = yticks_pos,
+                                    xlabel="X Bin",
+                                    ylabel="Y Bin",
+                                    colorbar=True,
+                                    )
+            # add colorbar
+            plt.tight_layout()
+            Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
+            plt.show()
+
+        return values_array
 
 class Data_Stimulus(BehaviorDataset):
     def __init__(

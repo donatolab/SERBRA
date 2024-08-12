@@ -211,8 +211,8 @@ class Animal:
                 to_delete_models_key_list.append(keys_list)
             else:
                 model = dict_value_keylist(models, keys_list)
-                #if model.decoding_statistics is None:
-                if True:
+                #if True:
+                if model.decoding_statistics is None:
                     model.decoding_statistics = decode(model=model)
 
         # check model labels and data
@@ -724,7 +724,7 @@ class Task:
                 raise ValueError("No data and not data types given for get_multi_data.")
             data, _ = datasets_object.get_multi_data(
                 data_types,
-                #idx_to_keep=idx_to_keep,
+                # idx_to_keep=idx_to_keep,
                 binned=binned,
                 # shuffle=shuffled,
                 # split_ratio=split_ratio

@@ -1049,7 +1049,6 @@ def encode_categorical(data, categories=None, return_category_map=False):
     else:
         return encoded_data
 
-
 def is_rgba(value):
     if isinstance(value, list) or isinstance(value, np.ndarray):
         return all(is_single_rgba(v) for v in value)
@@ -1352,7 +1351,7 @@ def group_by_binned_data(
     category_map: dict = None,
     data: np.ndarray = None,
     as_array: bool = False,
-    group_by: str = "raw",
+    group_values: str = "raw",
     max_bin=None,
 ):
     """
@@ -1362,42 +1361,50 @@ def group_by_binned_data(
     Args:
         - binned_data: The binned data used for grouping.
         - category_map: A dictionary mapping binned data to categories.
+        - group_by: The method used for grouping the data.
+            - 'symmetric_matrix' is in the group by options. It is filtering in 2D dimensions
+            - 'raw': Return the raw data.
+            - 'mean': Return the mean of the grouped data.
+            - 'count': Return the count of the grouped data.
+
     """
-    if data is None and group_by != "count":
+    if data is None and group_values != "count":
         raise ValueError("Data needed for grouping.")
 
-    if group_by != "count":
+    if group_values != "count":
         data, binned_data = force_equal_dimensions(data, binned_data)
     # Define bins and counts
     if category_map is None:
-        bins = categories_ids = np.unique(binned_data, axis=0, return_counts=False)
+        bins = unique_locations = np.unique(binned_data, axis=0, return_counts=False)
     else:
-        reversed_category_map = {v: k for k, v in category_map.items()}
-        categories_ids = list(reversed_category_map.keys())
+        unique_locations = list(category_map.keys())
         bins = list(category_map.keys())
 
     max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
 
+    uncoded_binned_data = uncode_categories(binned_data, category_map)
+
     # create groups
     groups = {}
-    for category_id in categories_ids:
+    for unique_loc in unique_locations:
         idx = np.all(
-            force_1_dim_larger(np.atleast_2d(binned_data == category_id)), axis=1
+            force_1_dim_larger(np.atleast_2d(uncoded_binned_data == unique_loc)), axis=1
         )
         # calculation is for cells x cells matrix if symmetric_matrix
-        if group_by == "count":
-            values_at_bin = np.sum(idx) / len(binned_data)
+        if group_values == "count":
+            values_at_bin = np.sum(idx)
+        elif group_values == "count_norm":
+            values_at_bin = np.sum(idx) / len(uncoded_binned_data)
         else:
             filtered_data = (
-                data[idx][:, idx] if "symmetric_matrix" in group_by else data[idx]
+                data[idx][:, idx] if "symmetric_matrix" in group_values else data[idx]
             )
-            if "raw" in group_by:
+            if "raw" in group_values:
                 values_at_bin = filtered_data
-            elif "mean" in group_by:
+            elif "mean" in group_values:
                 values_at_bin = np.mean(filtered_data)
 
-        location = reversed_category_map[category_id] if category_map else category_id
-        groups[location] = values_at_bin
+        groups[unique_loc] = values_at_bin
 
     if as_array:
         groups_array = np.zeros(max_bin.astype(int))
@@ -1405,6 +1412,17 @@ def group_by_binned_data(
             groups_array[coordinates] = values
         return groups_array, bins
     return groups, bins
+ 
+def uncode_categories(data: Union[dict, np.ndarray, list], category_map: dict):
+    """
+    Converts a dictionary with categorical keys to a dictionary with tuple keys.
+    """
+    rev_category_map = {v: k for k, v in category_map.items()}        
+    if isinstance(data, dict):
+        uncoded = {rev_category_map[key] : value for key, value in data.items()}
+    elif isinstance(data, np.ndarray) or isinstance(data, list):
+        uncoded = np.array([rev_category_map[encoded_category] for encoded_category in data.flatten()])
+    return uncoded
 
 
 def filter_dict_by_properties(
