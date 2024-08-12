@@ -509,7 +509,7 @@ class NeuralDataset(Dataset):
                     data=similarities,
                     category_map=category_map,
                     binned_data=filtered_binned_features,
-                    group_by="mean_symmetric_matrix",
+                    group_values="mean_symmetric_matrix",
                     max_bin=max_bin,
                     as_array=True,
                 )
@@ -524,7 +524,7 @@ class NeuralDataset(Dataset):
                     data=filtered_neural_data,
                     category_map=category_map,
                     binned_data=filtered_binned_features,
-                    group_by="raw",
+                    group_values="raw",
                     max_bin=max_bin,
                     as_array=False,
                 )
@@ -764,7 +764,7 @@ class Data_Position(BehaviorDataset):
             xticks_pos = list(range(self.max_bin[0]))
             yticks_pos = list(range(self.max_bin[1]))
             xticks = [i if i%2==0 else "" for i in xticks_pos]
-            yticks = [i if i%2==0 else "" for i in yticks_pos]
+            yticks = [i if i%2==0 else "" for i in yticks]
             title = f"Accuracy for every class {additional_title} {self.task_id}"
             Vizualizer.heatmap_subplot(values_array, 
                                     ax=ax,

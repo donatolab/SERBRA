@@ -443,7 +443,7 @@ def same_distribution(points1, points2):
 
 
 def compare_distributions(
-    points1, points2, metric="wasserstein", filter_outliers=True, prallel=True
+    points1, points2, metric="wasserstein", filter_outliers=True, prallel=True, out_det_method="contamination"
 ):
     """
     Compare two distributions using the specified metric.
@@ -523,11 +523,11 @@ def compare_distributions(
     # Filter out outliers from the distributions
     if filter_outliers:
         if prallel:
-            points1 = filter_outlier_numba(points1)
-            points2 = filter_outlier_numba(points2)
+            points1 = filter_outlier_numba(points1, out_det_method=out_det_method)
+            points2 = filter_outlier_numba(points2, out_det_method=out_det_method)
         else:
-            points1 = filter_outlier(points1)
-            points2 = filter_outlier(points2)
+            points1 = filter_outlier(points1, out_det_method=out_det_method)
+            points2 = filter_outlier(points2, out_det_method=out_det_method)
 
     if metric == "wasserstein":
         distances = [
@@ -635,7 +635,7 @@ def sphere_to_plane(points: np.ndarray):
     return points1_2d
 
 
-@jit(nopython=True)
+@njit(nopython=True)
 def compute_mean_and_cov(X):
     """
     Compute the mean vector and covariance matrix of the input data.
@@ -662,7 +662,7 @@ def compute_mean_and_cov(X):
     return mean, cov
 
 
-@jit(nopython=True)
+@njit(nopython=True)
 def all_finite(arr):
     """Check if all elements in the array are finite."""
     for x in arr.flat:
@@ -671,7 +671,7 @@ def all_finite(arr):
     return True
 
 
-@jit(nopython=True)
+@njit(nopython=True)
 def is_positive_definite(A):
     """Check if a matrix is positive definite."""
     try:
@@ -681,7 +681,7 @@ def is_positive_definite(A):
         return False
 
 
-@jit(nopython=True)
+@njit(nopython=True)
 def mahalanobis_distance(x, mean, inv_cov):
     """
     Compute the Mahalanobis distance between a point and the distribution.
@@ -698,8 +698,8 @@ def mahalanobis_distance(x, mean, inv_cov):
     return np.sqrt(diff.dot(inv_cov).dot(diff))
 
 
-@jit(nopython=True)
-def get_outlier_mask_numba(points, contamination=0.2):
+@njit(nopython=True)
+def get_outlier_mask_numba(points, contamination=0.2, method="contamination"):
     n, d = points.shape
 
     # Remove any rows with NaN or inf
@@ -731,8 +731,14 @@ def get_outlier_mask_numba(points, contamination=0.2):
     for i in range(len(valid_points)):
         distances[i] = mahalanobis_distance(valid_points[i], mean, inv_cov)
 
-    # Determine threshold based on contamination
-    threshold = np.percentile(distances, 100 * (1 - contamination))
+    if method=="contamination":
+        # Determine threshold based on contamination (percentage of outliers)
+        threshold = np.percentile(distances, 100 * (1 - contamination))
+    elif method=="density":
+        # Determine threshold based on density estimation
+        raise NotImplementedError(f"Method 'density' not implemented for not parallel filter_outlier. Threshold calculation needs to be determined")
+        #threshold = ?
+    
 
     # Create mask for non-outlier points
     mask_inliers = np.zeros(len(valid_points), dtype=np.bool_)
@@ -742,8 +748,8 @@ def get_outlier_mask_numba(points, contamination=0.2):
     return mask_inliers
 
 
-@jit(nopython=True)
-def filter_outlier_numba(points, contamination=0.2):
+@njit(nopython=True)
+def filter_outlier_numba(points, contamination=0.2, out_det_method="contamination"):
     """
     Filter out outliers from a set of points using a simplified Elliptic Envelope method.
 
@@ -768,11 +774,10 @@ def filter_outlier_numba(points, contamination=0.2):
         mask_valid[i] = all_finite(points[i])
     valid_points = points[mask_valid]
 
-    mask_inliers = get_outlier_mask_numba(points, contamination)
+    mask_inliers = get_outlier_mask_numba(points, contamination, out_det_method)
     return valid_points[mask_inliers]
 
-
-def filter_outlier(points, contamination=0.2, only_mask=False):
+def filter_outlier(points, contamination=0.2, only_mask=False, method="density"):
     """
     Filter out outliers from a 2D distribution using an Elliptic Envelope.
     The algorithm fits an ellipse to the data, trying to encompass the most concentrated 80% of the points (since we set contamination to 0.2).
@@ -781,7 +786,12 @@ def filter_outlier(points, contamination=0.2, only_mask=False):
         - It computes the Mahalanobis distances of the points.
         - Points with a Mahalanobis distance above a certain threshold (determined by the contamination parameter) are considered outliers.
     """
-    outlier_detector = EllipticEnvelope(contamination=contamination, random_state=42)
+    if method == "density":
+        raise NotImplementedError(f"Method 'density' not implemented for not parallel filter_outlier")
+    elif method == "contamination":
+        outlier_detector = EllipticEnvelope(contamination=contamination, random_state=42)
+    else:
+        raise ValueError(f"Method {method} not supported")
     num_points = points.shape[0]
     mask = (
         outlier_detector.fit_predict(points) != -1
