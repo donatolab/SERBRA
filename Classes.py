@@ -75,6 +75,233 @@ def load_all_animals(
     animals_dict = sort_dict(animals_dict)
     return animals_dict
 
+class Multi:
+    def __init__(self, animals_dict, wanted_properties=None, model_settings=None, **kwargs):
+        self.wanted_properties = wanted_properties
+        self.animals: Animal = animals_dict
+        self.filtered_tasks = self.animals if not wanted_properties else self.filter()
+        self.model_settings = model_settings or kwargs
+        self.model_dir = self.animals[self.animals.keys()[0]].dir.parent.joinpath("models")
+        self.models = self.init_models(model_settings)
+
+    def filter(self, wanted_properties=None):
+        if not wanted_properties:
+            if self.wanted_properties:
+                wanted_properties = self.wanted_properties
+            else:
+                print("No wanted properties given. Returning all tasks")
+                wanted_properties = {}
+        else:
+            if self.wanted_properties == wanted_properties:
+                return self.filtered_tasks
+            else:
+                self.wanted_properties = wanted_properties
+
+        filtered_tasks = {}
+        for animal_id, animal in self.animals.items():
+            wanted = True
+            if "animal" in wanted_properties:
+                wanted = wanted_object(animal, wanted_properties["animal"])
+
+            if wanted:
+                filtered_animal_tasks = animal.filter_sessions(wanted_properties)
+                filtered_tasks.update(filtered_animal_tasks)
+        self.filtered_tasks = filtered_tasks
+        return self.filtered_tasks
+
+    def init_models(self, model_settings=None, **kwargs):
+        if not model_settings:
+            model_settings = kwargs
+        self.models = Models(
+            self.model_dir, model_id=self.name, model_settings=model_settings
+        )
+
+    def set_model_name(
+        self,
+        model_type,
+        model_name=None,
+        shuffled=False,
+        movement_state="all",
+        split_ratio=1,
+        model_settings=None,
+    ):
+        raise NotImplementedError("this is a copy from task class and needs to be implemented")
+        if model_name:
+            if model_type not in model_name:
+                model_name = f"{model_type}_{model_name}"
+            if shuffled and "shuffled" not in model_name:
+                model_name = f"{model_name}_shuffled"
+        else:
+            model_name = model_type
+            model_name = f"{model_name}_shuffled" if shuffled else model_name
+
+        if movement_state != "all":
+            model_name = f"{model_name}_{movement_state}"
+
+        if split_ratio != 1:
+            model_name = f"{model_name}_{split_ratio}"
+
+        if model_settings is not None:
+            max_iterations = model_settings["max_iterations"]
+            model_name = f"{model_name}_iter-{max_iterations}"
+        return model_name
+
+    def train_model(self, 
+                    model_type: str,  # types: time, behavior, hybrid
+                    tasks=None, 
+                    wanted_properties=None, 
+                    regenerate: bool = False,
+                    shuffled: bool = False,
+                    movement_state: str = "all",
+                    split_ratio: float = 1,
+                    model_name: str = None,
+                    neural_data: np.ndarray = None,
+                    behavior_data: np.ndarray = None,
+                    binned: bool = True,
+                    neural_data_types: List[str] = None,  # ["femtonics"],
+                    behavior_data_types: List[str] = None,  # ["position"],
+                    manifolds_pipeline: str = "cebra",
+                    model_settings: dict = None,
+                    create_embeddings: bool = True,
+                    ):
+        if not tasks:
+            tasks = self.filter(wanted_properties)
+
+        #################################### task training code ####################################  
+        raise NotImplementedError("this is a copy from task class and needs to be implemented")
+        model_name = self.set_model_name(
+            model_type,
+            model_name,
+            shuffled,
+            movement_state,
+            split_ratio,
+            model_settings,
+        )
+
+        if manifolds_pipeline == "cebra":
+            models_class = self.models.cebras
+        else:
+            raise ValueError(f"Manifolds pipeline {manifolds_pipeline} not supported.")
+
+        model = self.get_model(
+            models_class=models_class,
+            model_name=model_name,
+            model_type=model_type,
+            model_settings=model_settings,
+        )
+
+        # get neural data
+        neural_data_types = neural_data_types or self.neural_metadata["preprocessing"]
+        neural_data_train, neural_data_test = self.get_multi_data(
+            datasets_object=self.neural,
+            data_types=self.neural.imaging_type,
+            data=neural_data,
+            movement_state=movement_state,
+            shuffled=shuffled,
+            split_ratio=split_ratio,
+            binned=binned,
+        )
+
+        # get behavior data
+        if behavior_data_types:
+            behavior_data_train, behavior_data_test = self.get_multi_data(
+                datasets_object=self.behavior,
+                data_types=behavior_data_types,  # e.g. ["position", "cam"]
+                data=behavior_data,
+                movement_state=movement_state,
+                shuffled=shuffled,
+                split_ratio=split_ratio,
+                binned=binned,
+            )
+
+        if not model.fitted or regenerate:
+            # skip if no neural data available
+            if neural_data_train.shape[0] < 10:
+                global_logger.error(
+                    f"Not enough frames to use for {movement_state}. At least 10 are needed. Skipping {self.id}"
+                )
+                print(
+                    f"Skipping {self.id}: Not enough frames to use for {movement_state}. At least 10 are needed."
+                )
+            else:
+                # train model
+                global_logger.info(f"{self.id}: Training  {model.name} model.")
+                print(f"{self.id}: Training  {model.name} model.")
+                if model_type == "time":
+                    model.fit(neural_data_train)
+                else:
+                    if not behavior_data_types:
+                        raise ValueError(
+                            f"No behavior data types given for {model_type} model."
+                        )
+                    neural_data_train, behavior_data_train = force_equal_dimensions(
+                        neural_data_train, behavior_data_train
+                    )
+                    model.fit(neural_data_train, behavior_data_train)
+                model.fitted = models_class.is_fitted(model)
+                model.save(model.save_path)
+        else:
+            global_logger.info(
+                f"{self.id}: {model.name} model already trained. Skipping."
+            )
+            print(f"{self.id}: {model.name} model already trained. Skipping.")
+
+        if create_embeddings:
+            if neural_data_train.shape[0] > 10:
+                train_embedding = self.create_embeddings(
+                    models={model.name: model},
+                    to_transform_data=neural_data_train,
+                )[model.name]
+            else:
+                train_embedding = None
+            if neural_data_test.shape[0] > 10:
+                test_embedding = self.create_embeddings(
+                    models={model.name: model},
+                    to_transform_data=neural_data_test,
+                )[model.name]
+            else:
+                test_embedding = None
+
+        model.data = {
+            "train": {
+                "neural": neural_data_train,
+                "behavior": behavior_data_train,
+                "embedding": train_embedding,
+            },
+            "test": {
+                "neural": neural_data_test,
+                "behavior": behavior_data_test,
+                "embedding": test_embedding,
+            },
+        }
+
+        #################################### cebra example code ####################################
+        multi_embeddings = dict()
+        # Multisession training
+        multi_cebra_model = CEBRA(model_architecture='offset10-model',
+                            batch_size=512,
+                            learning_rate=3e-4,
+                            temperature=1,
+                            output_dimension=3,
+                            max_iterations=max_iterations,
+                            distance='cosine',
+                            conditional='time_delta',
+                            device='cuda_if_available',
+                            verbose=True,
+                            time_offsets=10)
+
+        # Provide a list of data, i.e. datas = [data_a, data_b, ...]
+        multi_cebra_model.fit(datas, labels)
+
+        # Transform each session with the right model, by providing the corresponding session ID
+        for i, (name, X) in enumerate(zip(names, datas)):
+            multi_embeddings[name] = multi_cebra_model.transform(X, session_id=i)
+
+        # Save embeddings in current folder
+        with open('multi_embeddings.pkl', 'wb') as f:
+            pickle.dump(multi_embeddings, f)
+
+
 
 class Animal:
     def __init__(
@@ -275,6 +502,21 @@ class Animal:
             )
             plt.show()
 
+    def filter_sessions(self, wanted_properties=None):
+        if not wanted_properties:
+            print("No wanted properties given. Returning tasks sessions")
+            wanted_properties = {}
+        filtered_tasks = {}
+        
+        for session_date, session in self.sessions.items():
+            wanted = True
+            if "session" in wanted_properties:
+                wanted = wanted_object(session, wanted_properties["session"])
+            
+            if wanted:
+                filtered_session_tasks = session.filter_tasks(wanted_properties)
+                filtered_tasks.update(filtered_session_tasks)
+        return filtered_tasks
 
 class Session:
     """Represents a session in the dataset."""
@@ -604,6 +846,25 @@ class Session:
                 for fig in figures:
                     pdf.savefig(fig)
 
+    def filter_tasks(self, wanted_properties=None):
+        if not wanted_properties:
+            print("No wanted properties given. Returning tasks sessions")
+            wanted_properties = {}
+
+        filtered_tasks = {}
+        for task_name, task in self.tasks.items():
+            # check if task has all wanted properties
+            wanted = True
+            if "task" in wanted_properties:
+                wanted = wanted_object(task, wanted_properties["task"])
+                for metadata_type in ["behavior_metadata", "neural_metadata"]:
+                    if not wanted:
+                        break
+                    if metadata_type in wanted_properties:
+                        wanted = wanted and wanted_object(getattr(task, metadata_type), wanted_properties[metadata_type])
+            if wanted:
+                filtered_tasks[task.id] = task
+        return filtered_tasks
 
 class Task:
     """Represents a task in the dataset."""

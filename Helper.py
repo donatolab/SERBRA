@@ -358,7 +358,7 @@ def may_butter_lowpass_filter(data, smooth=True, cutoff=2, fps=None, order=2):
                 )
     return data_smoothed
 
-
+@njit(nopython=True)
 def cosine_similarity(v1, v2):
     """
     A cosine similarity can be seen as the correlation between two vectors.
@@ -443,7 +443,7 @@ def same_distribution(points1, points2):
 
 
 def compare_distributions(
-    points1, points2, metric="wasserstein", filter_outliers=True, prallel=True, out_det_method="contamination"
+    points1, points2, metric="cosine", filter_outliers=True, prallel=True, out_det_method="contamination"
 ):
     """
     Compare two distributions using the specified metric.
@@ -579,16 +579,16 @@ def compare_distributions(
         # Compute the pairwise distances between points
         points1 = np.atleast_2d(points1)
         points2 = np.atleast_2d(points2)
-        d1 = cdist(points1, points1, "euclidean")
-        d2 = cdist(points2, points2, "euclidean")
-        d3 = cdist(points1, points2, "euclidean")
+        d1 = pairwise_euclidean_distance(points1, points1)
+        d2 = pairwise_euclidean_distance(points2, points2)
+        d3 = pairwise_euclidean_distance(points1, points2)
         return np.abs(np.mean(d1) + np.mean(d2) - 2 * np.mean(d3))
 
     elif metric == "mahalanobis":
         # Mahalanobis Distance
         # Compute the covariance matrix for each distribution (can be estimated from data)
-        cov_matrix1 = np.cov(points1, rowvar=False)
-        cov_matrix2 = np.cov(points2, rowvar=False)
+        cov_matrix1 = get_covariance_matrix(points1)
+        cov_matrix2 = get_covariance_matrix(points2)
         if cov_matrix1.ndim < 2 or cov_matrix2.ndim < 2:
             return np.inf
         # Compute the inverse of the covariance matrices
@@ -598,7 +598,7 @@ def compare_distributions(
         # Compute the Mahalanobis distance between the means of the dists
         mean1 = np.mean(points1, axis=0)
         mean2 = np.mean(points2, axis=0)
-        return mahalanobis(mean1, mean2, cov_inv1 + cov_inv2)
+        return mahalanobis_distance(mean1, mean2, cov_inv1 + cov_inv2)
 
     elif metric == "cosine":
         # Cosine Similarity
@@ -624,6 +624,12 @@ def compare_distributions(
     else:
         raise ValueError(f"Unsupported metric: {metric}")
 
+def get_covariance_matrix(data: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
+    cov = np.cov(data, rowvar=False)
+    return regularized_covariance(cov, epsilon=epsilon)
+
+def regularized_covariance(cov_matrix, epsilon=1e-6):
+    return cov_matrix + np.eye(cov_matrix.shape[0]) * epsilon
 
 def sphere_to_plane(points: np.ndarray):
     """
@@ -681,6 +687,28 @@ def is_positive_definite(A):
         return False
 
 
+
+@njit(nopython=True)
+def pairwise_euclidean_distance(points1, points2):
+    """
+    Compute the pairwise Euclidean distance between two sets of points.
+
+    Args:
+    points1 (np.ndarray): First set of points, shape (n_samples1, n_features)
+    points2 (np.ndarray): Second set of points, shape (n_samples2, n_features)
+
+    Returns:
+    np.ndarray: Pairwise Euclidean distance matrix, shape (n_samples1, n_samples2)
+    """
+    n1, d = points1.shape
+    n2 = points2.shape[0]
+    distances = np.zeros((n1, n2))
+    for i in range(n1):
+        for j in range(n2):
+            diff = points1[i] - points2[j]
+            distances[i, j] = np.sqrt(np.dot(diff, diff))
+    return distances
+
 @njit(nopython=True)
 def mahalanobis_distance(x, mean, inv_cov):
     """
@@ -698,7 +726,7 @@ def mahalanobis_distance(x, mean, inv_cov):
     return np.sqrt(diff.dot(inv_cov).dot(diff))
 
 
-@njit(nopython=True)
+@jit(nopython=True)
 def get_outlier_mask_numba(points, contamination=0.2, method="contamination"):
     n, d = points.shape
 
@@ -1440,6 +1468,9 @@ def filter_dict_by_properties(
     include_properties: List[List[str]] = None,  # or [str] or str
     exclude_properties: List[List[str]] = None,  # or [str] or str):
 ):
+    """
+    Filter a dictionary with descriptive keys based on given properties.
+    """
     dict_keys = dictionary.keys()
     if include_properties or exclude_properties:
         dict_keys = filter_strings_by_properties(
@@ -1450,6 +1481,29 @@ def filter_dict_by_properties(
     filtered_dict = {key: dictionary[key] for key in dict_keys}
     return filtered_dict
 
+def wanted_object(obj, wanted_keys_values):
+    """
+    Check if an object has the wanted keys and values.
+    """
+    if isinstance(obj, dict):
+        dictionary = obj 
+    else:
+        if hasattr(obj, "__dict__"):
+            dictionary = obj.__dict__
+        else:
+            raise ValueError("Object has no dictionary")
+        
+    for key, value in wanted_keys_values.items():
+        if key not in dictionary:
+            return False
+        else:
+            obj_val = dictionary[key]
+            if isinstance(value, list):
+                if obj_val not in value:
+                    return False
+            elif obj_val != value:
+                return False
+    return True
 
 def sort_dict(dictionary, reverse=False):
     return dict(sorted(dictionary.items(), reverse=reverse))
