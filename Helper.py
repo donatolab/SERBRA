@@ -1159,6 +1159,12 @@ def is_integer(array: np.ndarray) -> bool:
 def is_floating(array: np.ndarray) -> bool:
     return np.issubdtype(array.dtype, np.floating)
 
+def is_list_of_ndarrays(variable):
+    # Check if the variable is a list
+    if isinstance(variable, list):
+        # Check if every element in the list is an instance of np.ndarray
+        return all(isinstance(element, np.ndarray) for element in variable)
+    return False
 
 def force_1_dim_larger(data: np.ndarray):
     if len(data.shape) == 1 or data.shape[0] < data.shape[1]:
@@ -1176,6 +1182,7 @@ def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
     Force two arrays to have the same dimensions.
     By cropping the larger array to the size of the smaller array.
     """
+    .............this function needs to be changed, so also arrays inside a list are cropped to the same size, not only the outer arrays
     shape_0_diff = array1.shape[0] - array2.shape[0]
     if shape_0_diff > 0:
         array1 = array1[:-shape_0_diff]

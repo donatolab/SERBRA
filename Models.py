@@ -38,7 +38,6 @@ class Models:
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
         if not model_settings:
             model_settings = kwargs
-        # TODO: catch possible error if model_settings is not a dict
         place_cell_settings = (
             model_settings["place_cell"] if "place_cell" in model_settings else None
         )
@@ -48,18 +47,185 @@ class Models:
         self.place_cell = PlaceCellDetectors(model_dir, model_id, place_cell_settings)
         self.cebras = Cebras(model_dir, model_id, cebra_cell_settings)
 
-    def train(self):
-        # TODO: move train_model function from task class, leverage ability to train all models at once
-        pass
+    def set_model_name(
+        self,
+        model_type,
+        model_name=None,
+        shuffled=False,
+        movement_state="all",
+        split_ratio=1,
+        model_settings=None,
+    ):
+        if model_name:
+            if model_type not in model_name:
+                model_name = f"{model_type}_{model_name}"
+            if shuffled and "shuffled" not in model_name:
+                model_name = f"{model_name}_shuffled"
+        else:
+            model_name = model_type
+            model_name = f"{model_name}_shuffled" if shuffled else model_name
 
-    def set_model_name(self):
-        # TODO: move set_model_name function from task class
-        pass
+        if movement_state != "all":
+            model_name = f"{model_name}_{movement_state}"
 
-    def get_model(self):
-        # TODO: move get_model function from task class
-        pass
+        if split_ratio != 1:
+            model_name = f"{model_name}_{split_ratio}"
 
+        if model_settings is not None:
+            max_iterations = model_settings["max_iterations"]
+            model_name = f"{model_name}_iter-{max_iterations}"
+        return model_name
+
+    def get_model(self, model_name, model_type, pipeline="cebra", model_settings=None):
+        models_class = self.get_model_class(pipeline)
+
+        model_settings = model_settings[pipeline]
+        # check if model with given model_settings is available
+        model_available = False
+        if model_name in models_class.models.keys():
+            model_available = True
+            model = models_class.models[model_name]
+            model_parameter = model.get_params()
+            if model_settings:
+                for (
+                    model_setting_name,
+                    model_setting_value,
+                ) in model_settings.items():
+                    if model_parameter[model_setting_name] != model_setting_value:
+                        model_available = False
+                        break
+
+        if not model_available:
+            model_creation_function = getattr(models_class, model_type)
+            model = model_creation_function(
+                name=model_name, model_settings=model_settings
+            )
+        return model
+
+    def get_pipeline_models(
+        self,
+        manifolds_pipeline="cebra",
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+    ):
+        if manifolds_pipeline == "cebra":
+            models = self.cebras.get_models(
+                model_naming_filter_include=model_naming_filter_include,
+                model_naming_filter_exclude=model_naming_filter_exclude,
+            )
+        else:
+            raise ValueError(
+                f"Manifolds Pipeline {manifolds_pipeline} is not implemented. Use 'cebra'."
+            )
+        return models
+
+    def get_models_splitted_original_shuffled(
+        self,
+        models=None,
+        manifolds_pipeline="cebra",
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+    ):
+        models_original = []
+        models_shuffled = []
+        models = models or self.get_pipeline_models(
+            manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude
+        )
+
+        # convert list of model objects to dictionary[model_name] = model
+        if isinstance(models, list):
+            models_dict = {}
+            for model in models:
+                models_dict[model.name] = model
+            models = models_dict
+
+        for model_name, model in models.items():
+            if "shuffled" in model.name:
+                models_shuffled.append(model)
+            else:
+                models_original.append(model)
+        return models_original, models_shuffled
+
+    def is_model_fitted(self, model, pipeline="cebra"):
+        return self.get_model_class(pipeline).is_fitted(model)
+
+    def train_model(self,
+        neural_data,
+        model=None,
+        behavior_data=None,
+        pipeline="cebra",
+        model_type="time",
+        model_name=None,
+        idx_to_keep=None,
+        shuffle=False,
+        movement_state="moving",
+        split_ratio=1,
+        model_settings=None,
+        create_embeddings=False,
+        regenerate=False,
+              ):
+        model_name = self.set_model_name(
+            model_type,
+            model_name,
+            shuffle,
+            movement_state,
+            split_ratio,
+            model_settings[pipeline],
+        )
+
+        model = model or self.get_model(
+            pipeline=pipeline,
+            model_name=model_name,
+            model_type=model_type,
+            model_settings=model_settings,
+        )
+
+        neural_data_train, neural_data_test = Dataset.manipulate_data(neural_data, 
+                                                                      idx_to_keep=idx_to_keep,
+                                                                      shuffle=shuffle,
+                                                                      split_ratio=split_ratio)
+        
+        if behavior_data is not None:
+            behavior_data_train, behavior_data_test = Dataset.manipulate_data(behavior_data, 
+                                                                              idx_to_keep=idx_to_keep,
+                                                                              shuffle=shuffle,
+                                                                              split_ratio=split_ratio)
+
+
+        model_class = self.get_model_class(pipeline)
+        
+        model, train_embedding, test_embedding  = model_class.train(
+            model=model,
+            model_type=model_type,
+            neural_data_train=neural_data_train,
+            neural_data_test=neural_data_test,
+            behavior_data_train=behavior_data_train,
+            create_embeddings=create_embeddings,
+            regenerate=regenerate,
+        )
+
+        model.data = {
+            "train": {
+                "neural": neural_data_train,
+                "behavior": behavior_data_train,
+                "embedding": train_embedding,
+            },
+            "test": {
+                "neural": neural_data_test,
+                "behavior": behavior_data_test,
+                "embedding": test_embedding,
+            },
+        }
+        
+        return model
+
+
+    def get_model_class(self, pipeline="cebra"):
+        if pipeline == "cebra":
+            models_class = self.cebras
+        else:
+            raise ValueError(f"Pipeline {pipeline} not supported. Choose 'cebra'.")
+        return models_class
 
 class ModelsWrapper:
     """
@@ -126,6 +292,8 @@ class Model:
         model = self.load_fitted_model(model)
         return model
 
+
+        return model
 
 class PlaceCellDetectors(ModelsWrapper):
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
@@ -752,7 +920,59 @@ class Cebras(ModelsWrapper, Model):
         model = self.model_settings_end(model)
         return model
 
+    def train(
+        self,
+        model,
+        model_type,
+        neural_data_train,
+        neural_data_test=None,
+        behavior_data_train=None,
+        create_embeddings=False,
+        regenerate=False,
+    ):
+        # remove list if neural data is a list and only one element
+        #if isinstance(neural_data_test, list) and len(neural_data_test) == 1:
+        #    neural_data_test = neural_data_test[0]
+        #    neural_data_train = neural_data_train[0]
 
+        if not model.fitted or regenerate:
+            # skip if no neural data available
+            if isinstance(neural_data_train, np.ndarray) and neural_data_train.shape[0] < 10:
+                global_logger.error(
+                    f"Not enough frames to use for {model.name}. At least 10 are needed. Skipping"
+                )
+                print(
+                    f"Skipping: Not enough frames to use for {model.name}. At least 10 are needed."
+                )
+            else:
+                # train model
+                global_logger.info(f"Training  {model.name} model.")
+                print(f"Training  {model.name} model.")
+                if model_type == "time":
+                    model.fit(neural_data_train)
+                else:
+                    if behavior_data_train is None:
+                        raise ValueError(
+                            f"No behavior data types given for {model_type} model."
+                        )
+                    neural_data_train, behavior_data_train = force_equal_dimensions(
+                        neural_data_train, behavior_data_train
+                    )
+                    model.fit(neural_data_train, behavior_data_train)
+                model.fitted = self.is_fitted(model)
+                model.save(model.save_path)
+        else:
+            global_logger.info(
+                f"{model.name} model already trained. Skipping."
+            )
+            print(f"{model.name} model already trained. Skipping.")
+
+        if create_embeddings:
+            train_embedding = model.transform(neural_data_train) if neural_data_train.shape[0] > 10 else None
+            test_embedding = model.transform(neural_data_test) if neural_data_test.shape[0] > 10 else None
+
+        return model, train_embedding, test_embedding
+    
 def decode(
     model=None,
     neural_data_train_to_embedd=None,

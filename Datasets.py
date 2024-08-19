@@ -312,7 +312,61 @@ class Dataset:
             raise ValueError("Data has more than 2 dimensions.")
         return data_2d
 
+    @staticmethod
+    def manipulate_data(data, idx_to_keep=None, shuffle=False, split_ratio=None):
+        """
+        Manipulates the input data by applying filtering, shuffling, splitting, 
+        and enforcing a 2D structure on the resulting subsets.
 
+        Parameters:
+        -----------
+        data : list or any type
+            The input data to be manipulated. If not a list, the data is first converted into a list.
+        
+        idx_to_keep : list or None, optional
+            A list of indices to filter the data. Only data at these indices will be retained. 
+            If None, no filtering is applied. Default is None.
+        
+        shuffle : bool, optional
+            If True, the filtered data will be shuffled before splitting. 
+            If False, the data remains in its original order. Default is False.
+        
+        split_ratio : float or None, optional
+            The ratio used to split the data into training and testing subsets. 
+            If None, no splitting is applied and the entire dataset is considered training data. Default is None.
+
+        Returns:
+        --------
+        data_train : list
+            A list containing the training subsets of the input data. 
+            Each subset has been filtered, shuffled (if requested), split, and enforced to be 2D.
+
+        data_test : list
+            A list containing the testing subsets of the input data. 
+            Each subset has been filtered, shuffled (if requested), split, and enforced to be 2D.
+
+        Notes:
+        ------
+        - The function assumes the existence of the `Dataset` class with the following methods:
+            - `filter_by_idx(data, idx_to_keep)`: Filters data by keeping only the specified indices.
+            - `shuffle(data)`: Shuffles the input data.
+            - `split(data, split_ratio)`: Splits the data into training and testing subsets based on the `split_ratio`.
+            - `force_2d(data)`: Ensures that the data has a 2D structure.
+        - The `make_list_ifnot` function is assumed to convert the input into a list if it is not already a list.
+        """
+        if not is_list_of_ndarrays(data):
+            data = [data]
+        data_train = []
+        data_test = []
+        for i, data_i in enumerate(data):
+            data_filtered = Dataset.filter_by_idx(data_i, idx_to_keep=idx_to_keep)
+            data_shuffled = Dataset.shuffle(data_filtered) if shuffle else data_filtered
+            data_train_i, data_test_i = Dataset.split(data_shuffled, split_ratio)
+            data_train_i = Dataset.force_2d(data_train_i)
+            data_test_i = Dataset.force_2d(data_test_i)
+            data_train.append(data_train_i)
+            data_test.append(data_test_i)
+        return data_train, data_test
 class BehaviorDataset(Dataset):
     def __init__(
         self,
