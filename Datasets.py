@@ -182,7 +182,7 @@ class Dataset:
         )
 
         descriptive_metadata_keys = [
-            "area",
+            "area", 
             "stimulus_type",
             "method",
             "preprocessing_software",

@@ -108,15 +108,10 @@ class Models:
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
     ):
-        if manifolds_pipeline == "cebra":
-            models = self.cebras.get_models(
-                model_naming_filter_include=model_naming_filter_include,
-                model_naming_filter_exclude=model_naming_filter_exclude,
-            )
-        else:
-            raise ValueError(
-                f"Manifolds Pipeline {manifolds_pipeline} is not implemented. Use 'cebra'."
-            )
+        models_class = self.get_model_class(manifolds_pipeline)
+        models = models_class.get_models(
+            model_naming_filter_include, model_naming_filter_exclude
+        )
         return models
 
     def get_models_splitted_original_shuffled(
@@ -145,6 +140,35 @@ class Models:
             else:
                 models_original.append(model)
         return models_original, models_shuffled
+
+    def create_embeddings(
+        self,
+        models=None,
+        to_transform_data=None,
+        to_2d=False,
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        manifolds_pipeline="cebra",
+        save=False,
+    ):
+        if not type(to_transform_data) == np.ndarray:
+            global_logger.warning(f"No data to transform given. Using model training data.")
+            print(f"No data to transform given. Using model training data.")
+
+        model_class = self.get_model_class(manifolds_pipeline)
+
+        models = model_class.get_models(
+            model_naming_filter_include, model_naming_filter_exclude
+        )
+
+        embeddings = model_class.create_embeddings(
+            models=models,
+            to_transform_data=to_transform_data,
+            to_2d=to_2d,
+            save=save,
+        )
+
+        return embeddings
 
     def is_model_fitted(self, model, pipeline="cebra"):
         return self.get_model_class(pipeline).is_fitted(model)
@@ -931,9 +955,10 @@ class Cebras(ModelsWrapper, Model):
         regenerate=False,
     ):
         # remove list if neural data is a list and only one element
-        #if isinstance(neural_data_test, list) and len(neural_data_test) == 1:
-        #    neural_data_test = neural_data_test[0]
-        #    neural_data_train = neural_data_train[0]
+        if isinstance(neural_data_test, list) and len(neural_data_test) == 1:
+            neural_data_test = neural_data_test[0]
+            neural_data_train = neural_data_train[0]
+            behavior_data_train = behavior_data_train[0]
 
         if not model.fitted or regenerate:
             # skip if no neural data available
@@ -968,11 +993,84 @@ class Cebras(ModelsWrapper, Model):
             print(f"{model.name} model already trained. Skipping.")
 
         if create_embeddings:
-            train_embedding = model.transform(neural_data_train) if neural_data_train.shape[0] > 10 else None
-            test_embedding = model.transform(neural_data_test) if neural_data_test.shape[0] > 10 else None
+            if is_list_of_ndarrays(neural_data_train):
+                train_embedding = []
+                for i, neural_data in enumerate(neural_data_train):
+                    train_embed = self.create_embedding(model, to_transform_data=neural_data_train, session_id=i)
+                    train_embedding.append(train_embed)
+                
+                test_embedding = []
+                for i, neural_data in enumerate(neural_data_test):
+                    test_embed = self.create_embedding(model, to_transform_data=neural_data_test, session_id=i)
+                    test_embedding.append(test_embed)
+            else:
+                train_embedding = self.create_embedding(model, to_transform_data=neural_data_train)
+                test_embedding = self.create_embedding(model, to_transform_data=neural_data_test)
 
         return model, train_embedding, test_embedding
-    
+
+    def create_embedding(
+        self, model, session_id=None, to_transform_data=None, to_2d=False, save=False
+    ):
+        embedding = None
+        if model.fitted:
+            to_transform_data = model.data["train"]["neural"]
+            if isinstance(to_transform_data, list) and len(to_transform_data) == 1:
+                to_transform_data = to_transform_data[0]
+            
+            if isinstance(to_transform_data, np.ndarray):
+                embedding = model.transform(to_transform_data) if to_transform_data.shape[0] > 10 else None
+                if to_2d:
+                    if embedding.shape[1] > 2:
+                        embedding = sphere_to_plane(embedding)
+                    elif embedding.shape[1] == 2:
+                        print(f"Embedding is already 2D.")
+                if save:
+                    raise NotImplementedError("Saving embeddings not implemented yet.")
+                    import pickle
+                    with open('multi_embeddings.pkl', 'wb') as f:
+                        pickle.dump(embedding, f)
+            else:
+                if session_id is not None:
+                    # single session embedding from multi-session model
+                    embedding_title = f"{model.name}_session_{session_id}"
+                    embedding = self.create_embedding(model, session_id, data, to_2d, save)
+                else:
+                    embedding = {}
+                    # multi-session embedding
+                    for i, data in enumerate(to_transform_data):
+                        embedding_title = f"{model.name}_session_{i}"
+                        embedding = self.create_embedding(model, i, data, to_2d, save)
+                        if embedding is not None:
+                            embedding[embedding_title] = embedding
+        else:
+            global_logger.error(f"{model.name} model. Not fitted.")
+            global_logger.warning(
+                f"Skipping {model.name} model"
+            )
+            print(f"{model.name} model. Not fitted.")
+            print(
+                f"Skipping {model.name} model"
+            )
+        return embedding
+
+    def create_embeddings(self, 
+                          models: Dict[str, Model],
+                          to_transform_data: Union[np.ndarray, List[np.ndarray]]=None, 
+                          to_2d=False,
+                          save=False):
+
+        embeddings = {}
+        for model_name, model in models.items():
+            embedding_title = f"{model_name}"
+            embedding = self.create_embedding(model, to_transform_data, to_2d, save)
+            if embedding is not None:
+                if isinstance(embedding, dict):
+                    embeddings.update(embedding)
+                else:
+                    embeddings[embedding_title] = embedding
+        return embeddings
+
 def decode(
     model=None,
     neural_data_train_to_embedd=None,

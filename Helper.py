@@ -1182,12 +1182,16 @@ def force_equal_dimensions(array1: np.ndarray, array2: np.ndarray):
     Force two arrays to have the same dimensions.
     By cropping the larger array to the size of the smaller array.
     """
-    .............this function needs to be changed, so also arrays inside a list are cropped to the same size, not only the outer arrays
-    shape_0_diff = array1.shape[0] - array2.shape[0]
-    if shape_0_diff > 0:
-        array1 = array1[:-shape_0_diff]
-    elif shape_0_diff < 0:
-        array2 = array2[:shape_0_diff]
+    if is_list_of_ndarrays(array1) and is_list_of_ndarrays(array2):
+        for i in range(len(array1)):
+            array1[i], array2[i] = force_equal_dimensions(array1[i], array2[i])
+        return array1, array2
+    elif isinstance(array1, np.ndarray) and isinstance(array2, np.ndarray):
+        shape_0_diff = array1.shape[0] - array2.shape[0]
+        if shape_0_diff > 0:
+            array1 = array1[:-shape_0_diff]
+        elif shape_0_diff < 0:
+            array2 = array2[:shape_0_diff]
     return array1, array2
 
 

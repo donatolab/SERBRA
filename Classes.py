@@ -141,10 +141,10 @@ class Multi:
                     model_settings: dict = None,
                     create_embeddings: bool = True,
                     ):
+        #FIXME: merge this function with tasks train_model
         if not tasks:
             tasks = self.filter(wanted_properties)
 
-        multi_embeddings = dict()
         datas = []
         labels = []
         for task_id, task in tasks.items():
@@ -187,22 +187,97 @@ class Multi:
             regenerate=regenerate,
         )
 
-        #################################### cebra example code ####################################
-        model.fit()
-        multi_embeddings = dict()
-        # Multisession training
+        return multi_model
 
-        # Provide a list of data, i.e. datas = [data_a, data_b, ...]
-        multi_cebra_model.fit(datas, labels)
+def plot_embeddings(
+        self,
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        embeddings: Optional[Dict[str, np.ndarray]] = None,
+        to_2d: bool = False,
+        show_hulls: bool = False,
+        to_transform_data: Optional[np.ndarray] = None,
+        colorbar_ticks: Optional[List] = None,
+        embedding_labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
+        behavior_data_types: List[str] = ["position"],
+        manifolds_pipeline: str = "cebra",
+        set_title: Optional[str] = None,
+        title_comment: Optional[str] = None,
+        markersize: float = None,
+        alpha: float = None,
+        figsize: Tuple[int, int] = None,
+        dpi: int = 300,
+        as_pdf: bool = False,
+    ):
+        #FIXME: merge this function with tasks plot_embeddings
+        if not embeddings:
+            embeddings = self.models.create_embeddings(
+                to_transform_data=to_transform_data,
+                to_2d=to_2d,
+                model_naming_filter_include=model_naming_filter_include,
+                model_naming_filter_exclude=model_naming_filter_exclude,
+                manifolds_pipeline="cebra",
+            )
 
-        # Transform each session with the right model, by providing the corresponding session ID
-        for i, (name, X) in enumerate(zip(names, datas)):
-            multi_embeddings[name] = multi_cebra_model.transform(X, session_id=i)
+        # get embedding lables
+        if not isinstance(embedding_labels, np.ndarray) and not isinstance(
+            embedding_labels, dict
+        ):
+            global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
+            print(f"Using behavior_data_types: {behavior_data_types}")
 
-        # Save embeddings in current folder
-        with open('multi_embeddings.pkl', 'wb') as f:
-            pickle.dump(multi_embeddings, f)
+            embedding_labels_dict = {}
+            for behavior_data_type in behavior_data_types:
+                behavior_data, _ = self.behavior.get_multi_data(
+                    behavior_data_type, binned=False
+                )
+                embedding_labels_dict[behavior_data_type] = behavior_data
+        else:
+            if isinstance(embedding_labels, np.ndarray):
+                embedding_labels_dict = {"Provided_labels": embedding_labels}
+            else:
+                embedding_labels_dict = embedding_labels
 
+        # get ticks
+        if len(behavior_data_types) == 1 and colorbar_ticks is None:
+            dataset_object = getattr(self.behavior, behavior_data_types[0])
+            colorbar_ticks = dataset_object.plot_attributes["yticks"]
+
+        viz = Vizualizer(self.data_dir.parent.parent)
+
+        for embedding_title, embedding_labels in embedding_labels_dict.items():
+            if set_title:
+                title = set_title
+            else:
+                title = f"{manifolds_pipeline.upper()} embeddings {self.id}"
+                descriptive_metadata_keys = [
+                    "stimulus_type",
+                    "method",
+                    "processing_software",
+                ]
+                title += (
+                    get_str_from_dict(
+                        dictionary=self.behavior_metadata,
+                        keys=descriptive_metadata_keys,
+                    )
+                    + f"{' '+str(title_comment) if title_comment else ''}"
+                )
+            projection = "2d" if to_2d else "3d"
+            labels_dict = {"name": embedding_title, "labels": embedding_labels}
+            viz.plot_multiple_embeddings(
+                embeddings,
+                labels=labels_dict,
+                ticks=colorbar_ticks,
+                title=title,
+                projection=projection,
+                show_hulls=show_hulls,
+                markersize=markersize,
+                figsize=figsize,
+                alpha=alpha,
+                dpi=dpi,
+                as_pdf=as_pdf,
+            )
+        return embeddings
 
 
 class Animal:
@@ -530,7 +605,7 @@ class Session:
         task: Task
         models = {}
         for task_name, task in self.tasks.items():
-            task_models = task.get_pipeline_models(
+            task_models = task.models.get_pipeline_models(
                 model_naming_filter_include=model_naming_filter_include,
                 model_naming_filter_exclude=model_naming_filter_exclude,
                 manifolds_pipeline=manifolds_pipeline,
@@ -904,7 +979,7 @@ class Task:
         neural_data: np.ndarray = None,
         behavior_data: np.ndarray = None,
         binned: bool = True,
-        neural_data_types: List[str] = None,  # 
+        neural_data_types: List[str] = None,  # currently not used in get_multi_data
         behavior_data_types: List[str] = None,  # ["position"],
         manifolds_pipeline: str = "cebra",
         model_settings: dict = None,
@@ -916,7 +991,7 @@ class Task:
         # get neural data
         idx_to_keep = self.behavior.moving.get_idx_to_keep(movement_state)
 
-        neural_data_types = neural_data_types or self.neural_metadata["preprocessing"]
+        #neural_data_types = neural_data_types or self.neural_metadata["preprocessing"]
         neural_data = self.get_multi_data(
             datasets_object=self.neural,
             idx_to_keep=idx_to_keep,
@@ -951,44 +1026,6 @@ class Task:
         )
         return model
 
-    def create_embeddings(
-        self,
-        models=None,
-        to_transform_data=None,
-        to_2d=False,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
-        manifolds_pipeline="cebra",
-    ):
-        # TODO: create function to integrate train and test embeddings into models
-        if not type(to_transform_data) == np.ndarray:
-            global_logger.warning(f"No data to transform given. Using default labels.")
-            print(f"No neural data given. Using default labels. photon")
-            to_transform_data = self.neural.photon.data
-            if not isinstance(to_transform_data, np.ndarray):
-                raise ValueError("No data to neural transform given.")
-
-        filtered_models = models or self.get_pipeline_models(
-            manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude
-        )
-        embeddings = {}
-        for model_name, model in filtered_models.items():
-            embedding_title = f"{model_name}"
-            if model.fitted:
-                embedding = model.transform(to_transform_data)
-                if to_2d and embedding.shape[1] > 2:
-                    embedding = sphere_to_plane(embedding)
-                embeddings[embedding_title] = embedding
-            else:
-                global_logger.error(f"{model_name} model. Not fitted.")
-                global_logger.warning(
-                    f"Skipping {model_name} model. May because of no statioary frames"
-                )
-                print(
-                    f"Skipping {model_name} model. May because of no statioary frames"
-                )
-        return embeddings
-
     def plot_embeddings(
         self,
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
@@ -1010,7 +1047,7 @@ class Task:
         as_pdf: bool = False,
     ):
         if not embeddings:
-            embeddings = self.create_embeddings(
+            embeddings = self.models.create_embeddings(
                 to_transform_data=to_transform_data,
                 to_2d=to_2d,
                 model_naming_filter_include=model_naming_filter_include,
@@ -1022,7 +1059,6 @@ class Task:
         if not isinstance(embedding_labels, np.ndarray) and not isinstance(
             embedding_labels, dict
         ):
-            # global_logger.error("No embedding labels given.")
             global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
             print(f"Using behavior_data_types: {behavior_data_types}")
 
