@@ -850,37 +850,45 @@ class Vizualizer:
 
         axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
-        # create 2D RGBA labels to overwrite 1D cmap coloring
-        rgba_colors = None
-        if labels["labels"].shape[1] == 2:
-            min_vals = np.min(labels["labels"], axis=0)
-            max_vals = np.max(labels["labels"], axis=0)
-            # steps = 5
-            xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
-            yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
+        for i, (subplot_title, embedding) in enumerate(embeddings.items()):
+            labels_list = labels["labels"]
+            labels_list = make_list_ifnot(labels_list)
+            session_number = int(subplot_title[-1]) if subplot_title[-1].isdigit() else 0
+            session_labels = labels_list[session_number]
 
-            rgba_colors = Vizualizer.create_rgba_labels(labels["labels"])
-        elif is_rgba(labels["labels"]):
-            first_embedding = list(embeddings.values())[0]
-            if first_embedding.shape[1] == 2:
-                min_vals = np.min(first_embedding, axis=0)
-                max_vals = np.max(first_embedding, axis=0)
+            # create 2D RGBA labels to overwrite 1D cmap coloring
+            rgba_colors = None
+            if session_labels.shape[1] == 2:
+                min_vals = np.min(session_labels, axis=0)
+                max_vals = np.max(session_labels, axis=0)
+                # steps = 5
                 xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
                 yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
-            else:
-                xticks_2d_colormap = None
-                yticks_2d_colormap = None
-            rgba_colors = labels["labels"]
 
-        if rgba_colors is not None:
-            labels["labels"] = rgba_colors
+                rgba_colors = Vizualizer.create_rgba_labels(session_labels)
+            elif is_rgba(session_labels):
+                first_embedding = list(embeddings.values())[0]
+                if first_embedding.shape[1] == 2:
+                    min_vals = np.min(first_embedding, axis=0)
+                    max_vals = np.max(first_embedding, axis=0)
+                    xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
+                    yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
+                else:
+                    xticks_2d_colormap = None
+                    yticks_2d_colormap = None
+                rgba_colors = session_labels
 
-        for i, (subplot_title, embedding) in enumerate(embeddings.items()):
+            if rgba_colors is not None:
+                session_labels = rgba_colors
+
+            session_labels_dict = {"name": labels["name"], "labels": session_labels}
+
+            # plot the embedding
             ax = axes[i]
             ax = self.plot_embedding(
                 ax=ax,
                 embedding=embedding,
-                embedding_labels=labels,
+                embedding_labels=session_labels_dict,
                 title=subplot_title,
                 show_hulls=show_hulls,
                 cmap=cmap,
@@ -891,16 +899,16 @@ class Vizualizer:
             )
 
         if plot_legend and len(embeddings) > 0:
-            if labels["labels"].shape[1] == 1:
+            if session_labels_dict["labels"].shape[1] == 1:
                 Vizualizer.add_1d_colormap_legend(
-                    labels=labels["labels"],
+                    labels=session_labels_dict["labels"],
                     ax=ax,
-                    label_name=labels["name"],
+                    label_name=session_labels_dict["name"],
                     ticks=ticks,
                     cmap=cmap,
                 )
             else:
-                unique_rgba_colors = np.unique(labels["labels"], axis=0)
+                unique_rgba_colors = np.unique(session_labels_dict["labels"], axis=0)
                 discrete_n_colors = (
                     int(np.ceil(np.sqrt(len(unique_rgba_colors))))
                     if legend_cmap is None

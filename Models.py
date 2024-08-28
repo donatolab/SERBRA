@@ -1022,7 +1022,6 @@ class Cebras(ModelsWrapper, Model):
             if isinstance(to_transform_data, np.ndarray):
                 if session_id is not None:
                     # single session embedding from multi-session model
-                    embedding_title = f"{model.name}_session_{session_id}"
                     embedding = model.transform(to_transform_data, session_id=session_id) if to_transform_data.shape[0] > 10 else None
                 else:
                     embedding = model.transform(to_transform_data) if to_transform_data.shape[0] > 10 else None
@@ -1041,7 +1040,7 @@ class Cebras(ModelsWrapper, Model):
                     embedding = {}
                     # multi-session embedding
                     for i, data in enumerate(to_transform_data):
-                        embedding_title = f"{model.name}_session_{i}"
+                        embedding_title = f"{model.name}_task_{i}"
                         if return_labels:
                             session_embedding, label = self.create_embedding(model, i, data, to_2d, save, return_labels)
                             if session_embedding is not None:
@@ -1076,18 +1075,14 @@ class Cebras(ModelsWrapper, Model):
         labels = {}
         for model_name, model in models.items():
             embedding_title = f"{model_name}"
-            embedding = self.create_embedding(model, to_transform_data=to_transform_data, to_2d=to_2d, save=save)
             if return_labels:
                 embedding, label = self.create_embedding(model, to_transform_data=to_transform_data, to_2d=to_2d, save=save, return_labels=return_labels)
+            else:
+                embedding = self.create_embedding(model, to_transform_data=to_transform_data, to_2d=to_2d, save=save)
             if embedding is not None:
-                if isinstance(embedding, dict):
-                    embeddings.update(embedding)
-                    if return_labels:
-                        labels.update(label)
-                else:
-                    embeddings[embedding_title] = embedding
-                    if return_labels:
-                        labels[embedding_title] = label
+                embeddings[embedding_title] = embedding
+                if return_labels:
+                    labels[embedding_title] = label
         
         if return_labels:
             return embeddings, labels

@@ -1411,6 +1411,8 @@ def is_dict_of_dicts(dict):
 def equal_number_entries(embeddings, embedding_labels):
     # check if number labels is the same as number of embedded frames
     for key, labels in embedding_labels.items():
+        if isinstance(embeddings, np.ndarray):
+            embeddings = {"dummy_name": embeddings}
         for embedding_name, embedding in embeddings.items():
             if labels.shape[0] != embedding.shape[0]:
                 return False

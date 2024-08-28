@@ -133,7 +133,7 @@ class Multi:
 
     def train_model(self, 
                     model_type: str,  # types: time, behavior, hybrid
-                    tasks=None, 
+                    tasks =None, 
                     wanted_properties=None, 
                     regenerate: bool = False,
                     shuffle: bool = False,
@@ -153,14 +153,15 @@ class Multi:
         if not tasks:
             tasks = self.filter(wanted_properties)
 
+        task_ids = list(tasks.keys())
         datas = []
         labels = []
         for task_id, task in tasks.items():
             # get neural data
             idx_to_keep = task.behavior.moving.get_idx_to_keep(movement_state)
-
             neural_data, _ = task.neural.get_multi_data(
                 sources=task.neural.imaging_type,
+                idx_to_keep=idx_to_keep,
                 binned=binned,
             )
 
@@ -168,18 +169,17 @@ class Multi:
             if behavior_data_types:
                 behavior_data, _ = task.behavior.get_multi_data(
                 sources=behavior_data_types,  # e.g. ["position", "stimulus"]
+                idx_to_keep=idx_to_keep,
                 binned=binned,
             )
             
             datas.append(neural_data)
             labels.append(behavior_data)
 
-        model_name = f"{self.name}_{model_name}"
         print(self.id)
         multi_model = self.models.train_model(
             neural_data=datas,
             behavior_data=labels,
-            idx_to_keep=idx_to_keep,
             model_type=model_type,
             model_name=model_name,
             movement_state=movement_state,
@@ -190,6 +190,7 @@ class Multi:
             create_embeddings=create_embeddings,
             regenerate=regenerate,
         )
+
 
         return multi_model
 
@@ -215,9 +216,10 @@ class Multi:
     ):
         #FIXME: merge this function with tasks plot_embeddings
 
+        #models = self.get_pipeline_models(manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude)
 
         if not embeddings:
-            embeddings = self.models.create_embeddings(
+            models_embeddings  = self.models.create_embeddings(
                 to_transform_data=to_transform_data,
                 to_2d=to_2d,
                 model_naming_filter_include=model_naming_filter_include,
@@ -226,65 +228,74 @@ class Multi:
             )
 
         # get embedding lables
-        if not isinstance(embedding_labels, np.ndarray) and not isinstance(
-            embedding_labels, dict
-        ):
-            global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
-            print(f"Using behavior_data_types: {behavior_data_types}")
+        for embedding_model_name, embeddings in models_embeddings.items():
+            if not isinstance(embedding_labels, np.ndarray) and not isinstance(
+                embedding_labels, dict
+            ):
+                global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
+                print(f"Using behavior_data_types: {behavior_data_types}")
 
-            behavior_data_types = make_list_ifnot(behavior_data_types)
-            embedding_labels_dict = {}
-            for behavior_data_type in behavior_data_types:
-                behavior_label = []
-                for task_id, task in self.filtered_tasks.items():
-                    #.............. session number in model name should be changed to task_id or similar..........
-                    task_behavior_label = task.get_behavior_labels(behavior_data_types)
-                    behavior_label.append(task_behavior_label)
-        else:
-            if isinstance(embedding_labels, np.ndarray):
-                embedding_labels_dict = {"Provided_labels": embedding_labels}
+                behavior_data_types = make_list_ifnot(behavior_data_types)
+                embedding_labels_dict = {}
+                for behavior_data_type in behavior_data_types:
+                    behavior_label = []
+                    for (task_id, task), (embedding_title, embedding) in zip(self.filtered_tasks.items(), embeddings.items()):
+                        task_behavior_labels_dict = task.get_behavior_labels([behavior_data_type], idx_to_keep=None)
+                        if not equal_number_entries(embedding, task_behavior_labels_dict):
+                            task_behavior_labels_dict = task.get_behavior_labels([behavior_data_type], movement_state="moving")
+                            if not equal_number_entries(embedding, task_behavior_labels_dict):
+                                task_behavior_labels_dict = task.get_behavior_labels([behavior_data_type], movement_state="stationary")
+                                if not equal_number_entries(embedding, task_behavior_labels_dict):
+                                    raise ValueError(
+                                        f"Number of labels is not equal to all, moving or stationary number of frames."
+                                    )
+                        behavior_label.append(task_behavior_labels_dict[behavior_data_type])
+                    embedding_labels_dict[behavior_data_type] = behavior_label
             else:
-                embedding_labels_dict = embedding_labels
+                if isinstance(embedding_labels, np.ndarray):
+                    embedding_labels_dict = {"Provided_labels": embedding_labels}
+                else:
+                    embedding_labels_dict = embedding_labels
 
-        # get ticks
-        if len(behavior_data_types) == 1 and colorbar_ticks is None:
-            dataset_object = getattr(task.behavior, behavior_data_types[0])
-            colorbar_ticks = dataset_object.plot_attributes["yticks"]
+            # get ticks
+            if len(behavior_data_types) == 1 and colorbar_ticks is None:
+                dataset_object = getattr(task.behavior, behavior_data_types[0])
+                colorbar_ticks = dataset_object.plot_attributes["yticks"]
 
-        viz = Vizualizer(self.model_dir.parent)
-        self.id = self.define_id(self.name)
-        for embedding_title, embedding_labels in embedding_labels_dict.items():
-            if set_title:
-                title = set_title
-            else:
-                title = f"{manifolds_pipeline.upper()} embeddings {self.id}"
-                descriptive_metadata_keys = [
-                    "stimulus_type",
-                    "method",
-                    "processing_software",
-                ]
-                title += (
-                    get_str_from_dict(
-                        dictionary=task.behavior_metadata,
-                        keys=descriptive_metadata_keys,
+            viz = Vizualizer(self.model_dir.parent)
+            self.id = self.define_id(self.name)
+            for embedding_title, embedding_labels in embedding_labels_dict.items():
+                if set_title:
+                    title = set_title
+                else:
+                    title = f"{manifolds_pipeline.upper()} embeddings {self.id}"
+                    descriptive_metadata_keys = [
+                        "stimulus_type",
+                        "method",
+                        "processing_software",
+                    ]
+                    title += (
+                        get_str_from_dict(
+                            dictionary=task.behavior_metadata,
+                            keys=descriptive_metadata_keys,
+                        )
+                        + f"{' '+str(title_comment) if title_comment else ''}"
                     )
-                    + f"{' '+str(title_comment) if title_comment else ''}"
+                projection = "2d" if to_2d else "3d"
+                labels_dict = {"name": embedding_title, "labels": embedding_labels}
+                viz.plot_multiple_embeddings(
+                    embeddings,
+                    labels=labels_dict,
+                    ticks=colorbar_ticks,
+                    title=title,
+                    projection=projection,
+                    show_hulls=show_hulls,
+                    markersize=markersize,
+                    figsize=figsize,
+                    alpha=alpha,
+                    dpi=dpi,
+                    as_pdf=as_pdf,
                 )
-            projection = "2d" if to_2d else "3d"
-            labels_dict = {"name": embedding_title, "labels": embedding_labels}
-            viz.plot_multiple_embeddings(
-                embeddings,
-                labels=labels_dict,
-                ticks=colorbar_ticks,
-                title=title,
-                projection=projection,
-                show_hulls=show_hulls,
-                markersize=markersize,
-                figsize=figsize,
-                alpha=alpha,
-                dpi=dpi,
-                as_pdf=as_pdf,
-            )
         return embeddings
 
 

@@ -1124,6 +1124,7 @@ class Cam(Behavior_Preprocessing):
                 cam_data, save=save, overwrite=overwrite
             )
 
+        # convert pixel to meter
         position = self.pixel_to_meter(
             position_in_pixel, self.metadata["pixel_per_meter"]
         )
