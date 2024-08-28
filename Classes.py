@@ -228,17 +228,22 @@ class Multi:
             )
 
         # get embedding lables
-        for embedding_model_name, embeddings in models_embeddings.items():
-            if not isinstance(embedding_labels, np.ndarray) and not isinstance(
-                embedding_labels, dict
-            ):
-                global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
-                print(f"Using behavior_data_types: {behavior_data_types}")
+        if not isinstance(embedding_labels, np.ndarray) and not isinstance(
+            embedding_labels, dict
+        ):
+            behavior_label = []
+            embedding_labels_dict = {}
+            all_embeddings = {}
+            behavior_data_types = make_list_ifnot(behavior_data_types)
+            
+            # create labels for all behavior data types
+            for behavior_data_type in behavior_data_types:
 
-                behavior_data_types = make_list_ifnot(behavior_data_types)
-                embedding_labels_dict = {}
-                for behavior_data_type in behavior_data_types:
-                    behavior_label = []
+                for embedding_model_name, embeddings in models_embeddings.items():
+                    global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
+                    print(f"Using behavior_data_types: {behavior_data_types}")
+
+                    # extract behavior labels from corresponding task
                     for (task_id, task), (embedding_title, embedding) in zip(self.filtered_tasks.items(), embeddings.items()):
                         task_behavior_labels_dict = task.get_behavior_labels([behavior_data_type], idx_to_keep=None)
                         if not equal_number_entries(embedding, task_behavior_labels_dict):
@@ -250,52 +255,56 @@ class Multi:
                                         f"Number of labels is not equal to all, moving or stationary number of frames."
                                     )
                         behavior_label.append(task_behavior_labels_dict[behavior_data_type])
-                    embedding_labels_dict[behavior_data_type] = behavior_label
+                    all_embeddings.update(embeddings)
+                embedding_labels_dict[behavior_data_type] = behavior_label
+        else:
+            if isinstance(embedding_labels, np.ndarray):
+                embedding_labels_dict = {"Provided_labels": embedding_labels}
             else:
-                if isinstance(embedding_labels, np.ndarray):
-                    embedding_labels_dict = {"Provided_labels": embedding_labels}
-                else:
-                    embedding_labels_dict = embedding_labels
+                embedding_labels_dict = embedding_labels
 
-            # get ticks
-            if len(behavior_data_types) == 1 and colorbar_ticks is None:
-                dataset_object = getattr(task.behavior, behavior_data_types[0])
-                colorbar_ticks = dataset_object.plot_attributes["yticks"]
 
-            viz = Vizualizer(self.model_dir.parent)
-            self.id = self.define_id(self.name)
-            for embedding_title, embedding_labels in embedding_labels_dict.items():
-                if set_title:
-                    title = set_title
-                else:
-                    title = f"{manifolds_pipeline.upper()} embeddings {self.id}"
-                    descriptive_metadata_keys = [
-                        "stimulus_type",
-                        "method",
-                        "processing_software",
-                    ]
-                    title += (
-                        get_str_from_dict(
-                            dictionary=task.behavior_metadata,
-                            keys=descriptive_metadata_keys,
-                        )
-                        + f"{' '+str(title_comment) if title_comment else ''}"
+
+        # get ticks
+        if len(behavior_data_types) == 1 and colorbar_ticks is None:
+            dataset_object = getattr(task.behavior, behavior_data_types[0])
+            #TODO: ticks are not always equal for all tasks, so this is not a good solution
+            colorbar_ticks = dataset_object.plot_attributes["yticks"]
+
+        viz = Vizualizer(self.model_dir.parent)
+        self.id = self.define_id(self.name)
+        for embedding_title, embedding_labels in embedding_labels_dict.items():
+            if set_title:
+                title = set_title
+            else:
+                title = f"{manifolds_pipeline.upper()} embeddings {self.id}"
+                descriptive_metadata_keys = [
+                    "stimulus_type",
+                    "method",
+                    "processing_software",
+                ]
+                title += (
+                    get_str_from_dict(
+                        dictionary=task.behavior_metadata,
+                        keys=descriptive_metadata_keys,
                     )
-                projection = "2d" if to_2d else "3d"
-                labels_dict = {"name": embedding_title, "labels": embedding_labels}
-                viz.plot_multiple_embeddings(
-                    embeddings,
-                    labels=labels_dict,
-                    ticks=colorbar_ticks,
-                    title=title,
-                    projection=projection,
-                    show_hulls=show_hulls,
-                    markersize=markersize,
-                    figsize=figsize,
-                    alpha=alpha,
-                    dpi=dpi,
-                    as_pdf=as_pdf,
+                    + f"{' '+str(title_comment) if title_comment else ''}"
                 )
+            projection = "2d" if to_2d else "3d"
+            labels_dict = {"name": embedding_title, "labels": embedding_labels}
+            viz.plot_multiple_embeddings(
+                all_embeddings,
+                labels=labels_dict,
+                ticks=colorbar_ticks,
+                title=title,
+                projection=projection,
+                show_hulls=show_hulls,
+                markersize=markersize,
+                figsize=figsize,
+                alpha=alpha,
+                dpi=dpi,
+                as_pdf=as_pdf,
+            )
         return embeddings
 
 

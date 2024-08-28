@@ -850,10 +850,14 @@ class Vizualizer:
 
         axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
+        # Plot each embedding
         for i, (subplot_title, embedding) in enumerate(embeddings.items()):
+            # Get the labels for the current subplot
             labels_list = labels["labels"]
-            labels_list = make_list_ifnot(labels_list)
-            session_number = int(subplot_title[-1]) if subplot_title[-1].isdigit() else 0
+            labels_list = [labels_list] if not isinstance(labels_list, list) else labels_list
+            
+            # get number of session for labels list of multi-session model
+            session_number = int(subplot_title[-1]) if subplot_title.split("_")[-1] == "task" and subplot_title[-1].isdigit() else 0
             session_labels = labels_list[session_number]
 
             # create 2D RGBA labels to overwrite 1D cmap coloring

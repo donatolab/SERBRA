@@ -1129,6 +1129,8 @@ class Cam(Behavior_Preprocessing):
             position_in_pixel, self.metadata["pixel_per_meter"]
         )
 
+        ...
+
         data = {"position": position}
 
         if save:
