@@ -723,7 +723,8 @@ def mahalanobis_distance(x, mean, inv_cov):
     float: Mahalanobis distance
     """
     diff = x - mean
-    return np.sqrt(diff.dot(inv_cov).dot(diff))
+    distance = np.sqrt(diff.dot(inv_cov).dot(diff))
+    return distance
 
 
 @jit(nopython=True)
@@ -963,6 +964,9 @@ def correlate_vectors(vectors: np.ndarray, metric="pearson"):
     else:
         raise ValueError("metric must be 'pearson' or 'cosine'.")
 
+    # extract only diagonal
+    correlation_matrix = np.diagonal(correlation_matrix)
+
     return correlation_matrix
 
 
@@ -1079,9 +1083,16 @@ def encode_categorical(data, categories=None, return_category_map=False):
         The encoded data.
     """
     if categories is None:
+        # 1D categories
         categories = np.unique(data, axis=0)
-    category_map = {tuple(category): i for i, category in enumerate(categories)}
-    encoded_data = np.array([category_map[tuple(category)] for category in data])
+        if categories[0].shape[0] == 1:
+            # Single-dimensional categories
+            category_map = {category:category for category in categories}
+            encoded_data = np.array([category_map[category] for category in data])
+        elif categories[0].shape[0] > 1:
+            # Multi-dimensional categories
+            category_map = {tuple(category): i for i, category in enumerate(categories)}
+            encoded_data = np.array([category_map[tuple(category)] for category in data])
     if return_category_map:
         return encoded_data, category_map
     else:
@@ -1394,6 +1405,16 @@ def dict_value_keylist(dict, keylist):
         dict = dict[key]
     return dict
 
+def is_dict_of_dicts(dict):
+    return all(type(value) == type(dict) for value in dict.values())
+
+def equal_number_entries(embeddings, embedding_labels):
+    # check if number labels is the same as number of embedded frames
+    for key, labels in embedding_labels.items():
+        for embedding_name, embedding in embeddings.items():
+            if labels.shape[0] != embedding.shape[0]:
+                return False
+    return True
 
 def group_by_binned_data(
     binned_data: np.ndarray,
@@ -1425,13 +1446,13 @@ def group_by_binned_data(
     # Define bins and counts
     if category_map is None:
         bins = unique_locations = np.unique(binned_data, axis=0, return_counts=False)
+        uncoded_binned_data = binned_data
     else:
         unique_locations = list(category_map.keys())
         bins = list(category_map.keys())
+        uncoded_binned_data = uncode_categories(binned_data, category_map)
 
     max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
-
-    uncoded_binned_data = uncode_categories(binned_data, category_map)
 
     # create groups
     groups = {}

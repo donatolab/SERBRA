@@ -81,13 +81,21 @@ class Multi:
         self.animals: Animal = animals_dict
         self.filtered_tasks = self.animals if not wanted_properties else self.filter()
         self.model_settings = model_settings or kwargs
-        self.name = "UNDEFINED_NAME" if name is None else name
+        self.name = self.define_name(name)
         self.id = self.define_id(self.name)
         self.model_dir = self.animals[list(self.animals.keys())[0]].dir.parent.joinpath("models")
         self.models = self.init_models(model_settings=model_settings)
 
+    def define_name(self, name):
+        name = name if name else "UNDEFINED_NAME"
+        name = f"multi_set_{name}" 
+        return name
+
     def define_id(self, name):
         id = f"{name}_{self.model_settings}_{self.wanted_properties}"
+        remove_ilegal_chars = [" ", "[", "]", "{", "}", ":", ",", "'", "\\", "/"]
+        for char in remove_ilegal_chars:
+            id = id.replace(char, "")
         return id
 
     def filter(self, wanted_properties=None):
@@ -151,31 +159,27 @@ class Multi:
             # get neural data
             idx_to_keep = task.behavior.moving.get_idx_to_keep(movement_state)
 
-            neural_data = task.get_multi_data(
-                datasets_object=task.neural,
-                idx_to_keep=idx_to_keep,
-                data_types=task.neural.imaging_type,
-                data=neural_data,
+            neural_data, _ = task.neural.get_multi_data(
+                sources=task.neural.imaging_type,
                 binned=binned,
             )
 
             # get behavior data
             if behavior_data_types:
-                behavior_data = task.get_multi_data(
-                    datasets_object=task.behavior,
-                    idx_to_keep=idx_to_keep,
-                    data_types=behavior_data_types,  # e.g. ["position", "stimulus"]
-                    data=behavior_data,
-                    binned=binned,
-                )
+                behavior_data, _ = task.behavior.get_multi_data(
+                sources=behavior_data_types,  # e.g. ["position", "stimulus"]
+                binned=binned,
+            )
             
             datas.append(neural_data)
             labels.append(behavior_data)
 
+        model_name = f"{self.name}_{model_name}"
         print(self.id)
         multi_model = self.models.train_model(
             neural_data=datas,
             behavior_data=labels,
+            idx_to_keep=idx_to_keep,
             model_type=model_type,
             model_name=model_name,
             movement_state=movement_state,
@@ -189,7 +193,7 @@ class Multi:
 
         return multi_model
 
-def plot_embeddings(
+    def plot_embeddings(
         self,
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
@@ -210,6 +214,8 @@ def plot_embeddings(
         as_pdf: bool = False,
     ):
         #FIXME: merge this function with tasks plot_embeddings
+
+
         if not embeddings:
             embeddings = self.models.create_embeddings(
                 to_transform_data=to_transform_data,
@@ -226,12 +232,14 @@ def plot_embeddings(
             global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
             print(f"Using behavior_data_types: {behavior_data_types}")
 
+            behavior_data_types = make_list_ifnot(behavior_data_types)
             embedding_labels_dict = {}
             for behavior_data_type in behavior_data_types:
-                behavior_data, _ = self.behavior.get_multi_data(
-                    behavior_data_type, binned=False
-                )
-                embedding_labels_dict[behavior_data_type] = behavior_data
+                behavior_label = []
+                for task_id, task in self.filtered_tasks.items():
+                    #.............. session number in model name should be changed to task_id or similar..........
+                    task_behavior_label = task.get_behavior_labels(behavior_data_types)
+                    behavior_label.append(task_behavior_label)
         else:
             if isinstance(embedding_labels, np.ndarray):
                 embedding_labels_dict = {"Provided_labels": embedding_labels}
@@ -240,11 +248,11 @@ def plot_embeddings(
 
         # get ticks
         if len(behavior_data_types) == 1 and colorbar_ticks is None:
-            dataset_object = getattr(self.behavior, behavior_data_types[0])
+            dataset_object = getattr(task.behavior, behavior_data_types[0])
             colorbar_ticks = dataset_object.plot_attributes["yticks"]
 
-        viz = Vizualizer(self.data_dir.parent.parent)
-
+        viz = Vizualizer(self.model_dir.parent)
+        self.id = self.define_id(self.name)
         for embedding_title, embedding_labels in embedding_labels_dict.items():
             if set_title:
                 title = set_title
@@ -257,7 +265,7 @@ def plot_embeddings(
                 ]
                 title += (
                     get_str_from_dict(
-                        dictionary=self.behavior_metadata,
+                        dictionary=task.behavior_metadata,
                         keys=descriptive_metadata_keys,
                     )
                     + f"{' '+str(title_comment) if title_comment else ''}"
@@ -944,30 +952,6 @@ class Task:
         )
 
     # Cebra
-    def get_multi_data(
-        self,
-        datasets_object: Datasets,
-        data_types=None,
-        data=None,
-        binned=False,
-        idx_to_keep=None,
-        movement_state="all",
-        shuffled=False,
-        split_ratio=1,
-    ):
-        # get data
-        if not isinstance(data, np.ndarray):
-            if data_types is None:
-                raise ValueError("No data and not data types given for get_multi_data.")
-            data, _ = datasets_object.get_multi_data(
-                data_types,
-                idx_to_keep=idx_to_keep,
-                binned=binned,
-                # shuffle=shuffled,
-                # split_ratio=split_ratio
-            )
-        return data
-
     def train_model(
         self,
         model_type: str,  # types: time, behavior, hybrid
@@ -979,7 +963,6 @@ class Task:
         neural_data: np.ndarray = None,
         behavior_data: np.ndarray = None,
         binned: bool = True,
-        neural_data_types: List[str] = None,  # currently not used in get_multi_data
         behavior_data_types: List[str] = None,  # ["position"],
         manifolds_pipeline: str = "cebra",
         model_settings: dict = None,
@@ -992,28 +975,28 @@ class Task:
         idx_to_keep = self.behavior.moving.get_idx_to_keep(movement_state)
 
         #neural_data_types = neural_data_types or self.neural_metadata["preprocessing"]
-        neural_data = self.get_multi_data(
-            datasets_object=self.neural,
-            idx_to_keep=idx_to_keep,
-            data_types=self.neural.imaging_type,
-            data=neural_data,
-            binned=binned,
-        )
-
-        # get behavior data
-        if behavior_data_types:
-            behavior_data = self.get_multi_data(
-                datasets_object=self.behavior,
-                idx_to_keep=idx_to_keep,
-                data_types=behavior_data_types,  # e.g. ["position", "stimulus"]
-                data=behavior_data,
+        if neural_data is None:
+            neural_data, _ = self.neural.get_multi_data(
+                sources=self.neural.imaging_type,
                 binned=binned,
             )
+        elif not isinstance(neural_data, np.ndarray):
+            raise ValueError("neural_data must be a numpy array.")
+
+        # get behavior data
+        if behavior_data is None:
+            behavior_data, _ = self.behavior.get_multi_data(
+                sources=behavior_data_types,  # e.g. ["position", "stimulus"]
+                binned=binned,
+            )
+        elif not isinstance(behavior_data, np.ndarray):
+            raise ValueError("behavior_data must be a numpy array.")
 
         print(self.id)
         model = self.models.train_model(
             neural_data=neural_data,
             behavior_data=behavior_data,
+            idx_to_keep=idx_to_keep,
             model_type=model_type,
             model_name=model_name,
             movement_state=movement_state,
@@ -1025,6 +1008,17 @@ class Task:
             regenerate=regenerate,
         )
         return model
+
+    def get_behavior_labels(self, behavior_data_types, binned=False, idx_to_keep=None, movement_state="all"):
+        if idx_to_keep is None and movement_state != "all":
+            idx_to_keep = self.behavior.moving.get_idx_to_keep(movement_state)
+        embedding_labels_dict = {}
+        for behavior_data_type in behavior_data_types:
+            behavior_data, _ = self.behavior.get_multi_data(
+                behavior_data_type, binned=binned, idx_to_keep=idx_to_keep
+            )
+            embedding_labels_dict[behavior_data_type] = behavior_data
+        return embedding_labels_dict
 
     def plot_embeddings(
         self,
@@ -1062,12 +1056,16 @@ class Task:
             global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
             print(f"Using behavior_data_types: {behavior_data_types}")
 
-            embedding_labels_dict = {}
-            for behavior_data_type in behavior_data_types:
-                behavior_data, _ = self.behavior.get_multi_data(
-                    behavior_data_type, binned=False
-                )
-                embedding_labels_dict[behavior_data_type] = behavior_data
+            embedding_labels_dict = self.get_behavior_labels(behavior_data_types, idx_to_keep=None)
+            if not equal_number_entries(embeddings, embedding_labels_dict):
+                embedding_labels_dict = self.get_behavior_labels(behavior_data_types, movement_state="moving")
+                if not equal_number_entries(embeddings, embedding_labels_dict):
+                    embedding_labels_dict = self.get_behavior_labels(behavior_data_types, movement_state="stationary")
+                    if not equal_number_entries(embeddings, embedding_labels_dict):
+                        raise ValueError(
+                            f"Number of labels is not equal to all, moving or stationary number of frames."
+                        )
+
         else:
             if isinstance(embedding_labels, np.ndarray):
                 embedding_labels_dict = {"Provided_labels": embedding_labels}

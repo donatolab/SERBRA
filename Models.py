@@ -47,7 +47,7 @@ class Models:
         self.place_cell = PlaceCellDetectors(model_dir, model_id, place_cell_settings)
         self.cebras = Cebras(model_dir, model_id, cebra_cell_settings)
 
-    def set_model_name(
+    def define_model_name(
         self,
         model_type,
         model_name=None,
@@ -150,6 +150,7 @@ class Models:
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         manifolds_pipeline="cebra",
         save=False,
+        return_labels=False,
     ):
         if not type(to_transform_data) == np.ndarray:
             global_logger.warning(f"No data to transform given. Using model training data.")
@@ -167,7 +168,12 @@ class Models:
             to_2d=to_2d,
             save=save,
         )
-
+        if return_labels:
+            labels = []
+            for model_name, model in models.items():
+                labels.append(model_name)
+            return embeddings, labels
+        
         return embeddings
 
     def is_model_fitted(self, model, pipeline="cebra"):
@@ -188,7 +194,9 @@ class Models:
         create_embeddings=False,
         regenerate=False,
               ):
-        model_name = self.set_model_name(
+        if not is_dict_of_dicts(model_settings):
+            model_settings = {pipeline: model_settings}
+        model_name = self.define_model_name(
             model_type,
             model_name,
             shuffle,
@@ -218,13 +226,12 @@ class Models:
 
         model_class = self.get_model_class(pipeline)
         
-        model, train_embedding, test_embedding  = model_class.train(
+        model  = model_class.train(
             model=model,
             model_type=model_type,
             neural_data_train=neural_data_train,
             neural_data_test=neural_data_test,
             behavior_data_train=behavior_data_train,
-            create_embeddings=create_embeddings,
             regenerate=regenerate,
         )
 
@@ -232,15 +239,22 @@ class Models:
             "train": {
                 "neural": neural_data_train,
                 "behavior": behavior_data_train,
-                "embedding": train_embedding,
+                "embedding": None,
             },
             "test": {
                 "neural": neural_data_test,
                 "behavior": behavior_data_test,
-                "embedding": test_embedding,
+                "embedding": None,
             },
         }
         
+        if create_embeddings:
+            train_embedding = model_class.create_embedding(model, to_transform_data=neural_data_train)
+            test_embedding = model_class.create_embedding(model, to_transform_data=neural_data_test)
+        
+        model.data["train"]["embedding"] = train_embedding,
+        model.data["test"]["embedding"] = test_embedding,
+
         return model
 
 
@@ -365,7 +379,6 @@ class PlaceCellDetectors(ModelsWrapper):
         # hist, yedges, xedges = np.histogram2d(in_range_y, in_range_x, bins=bins, range=limits)
         #    edges = [xedges, yedges]
         time_map, bins_edges = np.histogram(binned_pos, bins=bins, range=range)
-
         return time_map, bins_edges
 
     @staticmethod
@@ -517,7 +530,8 @@ class PlaceCellDetectors(ModelsWrapper):
         )
         rate_map_occupancy = spike_map / time_map
         rate_map_occupancy = np.nan_to_num(rate_map_occupancy, nan=0.0)
-        # .............is die summe richtig oder soll ich das anders machen?
+        
+        # normalize by activity
         rate_map = rate_map_occupancy / np.sum(rate_map_occupancy)
 
         return rate_map, time_map
@@ -951,11 +965,10 @@ class Cebras(ModelsWrapper, Model):
         neural_data_train,
         neural_data_test=None,
         behavior_data_train=None,
-        create_embeddings=False,
         regenerate=False,
     ):
         # remove list if neural data is a list and only one element
-        if isinstance(neural_data_test, list) and len(neural_data_test) == 1:
+        if isinstance(neural_data_train, list) and len(neural_data_train) == 1:
             neural_data_test = neural_data_test[0]
             neural_data_train = neural_data_train[0]
             behavior_data_train = behavior_data_train[0]
@@ -991,35 +1004,29 @@ class Cebras(ModelsWrapper, Model):
                 f"{model.name} model already trained. Skipping."
             )
             print(f"{model.name} model already trained. Skipping.")
-
-        if create_embeddings:
-            if is_list_of_ndarrays(neural_data_train):
-                train_embedding = []
-                for i, neural_data in enumerate(neural_data_train):
-                    train_embed = self.create_embedding(model, to_transform_data=neural_data_train, session_id=i)
-                    train_embedding.append(train_embed)
-                
-                test_embedding = []
-                for i, neural_data in enumerate(neural_data_test):
-                    test_embed = self.create_embedding(model, to_transform_data=neural_data_test, session_id=i)
-                    test_embedding.append(test_embed)
-            else:
-                train_embedding = self.create_embedding(model, to_transform_data=neural_data_train)
-                test_embedding = self.create_embedding(model, to_transform_data=neural_data_test)
-
-        return model, train_embedding, test_embedding
+        return model
 
     def create_embedding(
-        self, model, session_id=None, to_transform_data=None, to_2d=False, save=False
+        self, model, session_id=None, to_transform_data=None, to_2d=False, save=False, return_labels=False
     ):
         embedding = None
+        labels = None
         if model.fitted:
-            to_transform_data = model.data["train"]["neural"]
+            if to_transform_data is None:
+                to_transform_data = model.data["train"]["neural"]
+                label = model.data["train"]["behavior"]
+            
             if isinstance(to_transform_data, list) and len(to_transform_data) == 1:
                 to_transform_data = to_transform_data[0]
             
             if isinstance(to_transform_data, np.ndarray):
-                embedding = model.transform(to_transform_data) if to_transform_data.shape[0] > 10 else None
+                if session_id is not None:
+                    # single session embedding from multi-session model
+                    embedding_title = f"{model.name}_session_{session_id}"
+                    embedding = model.transform(to_transform_data, session_id=session_id) if to_transform_data.shape[0] > 10 else None
+                else:
+                    embedding = model.transform(to_transform_data) if to_transform_data.shape[0] > 10 else None
+
                 if to_2d:
                     if embedding.shape[1] > 2:
                         embedding = sphere_to_plane(embedding)
@@ -1031,18 +1038,20 @@ class Cebras(ModelsWrapper, Model):
                     with open('multi_embeddings.pkl', 'wb') as f:
                         pickle.dump(embedding, f)
             else:
-                if session_id is not None:
-                    # single session embedding from multi-session model
-                    embedding_title = f"{model.name}_session_{session_id}"
-                    embedding = self.create_embedding(model, session_id, data, to_2d, save)
-                else:
                     embedding = {}
                     # multi-session embedding
                     for i, data in enumerate(to_transform_data):
                         embedding_title = f"{model.name}_session_{i}"
-                        embedding = self.create_embedding(model, i, data, to_2d, save)
-                        if embedding is not None:
-                            embedding[embedding_title] = embedding
+                        if return_labels:
+                            session_embedding, label = self.create_embedding(model, i, data, to_2d, save, return_labels)
+                            if session_embedding is not None:
+                                embedding[embedding_title] = session_embedding
+                                labels[embedding_title] = label
+                        else:
+                            session_embedding = self.create_embedding(model, i, data, to_2d, save)
+                            if session_embedding is not None:
+                                embedding[embedding_title] = session_embedding
+
         else:
             global_logger.error(f"{model.name} model. Not fitted.")
             global_logger.warning(
@@ -1052,23 +1061,36 @@ class Cebras(ModelsWrapper, Model):
             print(
                 f"Skipping {model.name} model"
             )
+        if return_labels:
+            return embedding, labels
         return embedding
 
     def create_embeddings(self, 
                           models: Dict[str, Model],
                           to_transform_data: Union[np.ndarray, List[np.ndarray]]=None, 
                           to_2d=False,
-                          save=False):
+                          save=False,
+                          return_labels=False):
 
         embeddings = {}
+        labels = {}
         for model_name, model in models.items():
             embedding_title = f"{model_name}"
-            embedding = self.create_embedding(model, to_transform_data, to_2d, save)
+            embedding = self.create_embedding(model, to_transform_data=to_transform_data, to_2d=to_2d, save=save)
+            if return_labels:
+                embedding, label = self.create_embedding(model, to_transform_data=to_transform_data, to_2d=to_2d, save=save, return_labels=return_labels)
             if embedding is not None:
                 if isinstance(embedding, dict):
                     embeddings.update(embedding)
+                    if return_labels:
+                        labels.update(label)
                 else:
                     embeddings[embedding_title] = embedding
+                    if return_labels:
+                        labels[embedding_title] = label
+        
+        if return_labels:
+            return embeddings, labels
         return embeddings
 
 def decode(

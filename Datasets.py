@@ -417,6 +417,7 @@ class BehaviorDataset(Dataset):
         if "max_bin" not in self.__dict__.keys():
             self.max_bin = None
         occupancy, _ = group_by_binned_data(
+            data=filtered_data,
             binned_data=filtered_data,
             category_map=self.category_map,
             group_values=group_values,
@@ -538,6 +539,7 @@ class NeuralDataset(Dataset):
 
         Args:
             category map: maps discrete labels to multi dimensional position vectors
+
         """
         if use_embedding:
             if model is None and self.embedding is None:
@@ -550,12 +552,11 @@ class NeuralDataset(Dataset):
         data = self.embedding if use_embedding or model is not None else self.data
 
         filtered_neural_data = self.filter_by_idx(data, idx_to_keep=idx_to_keep)
+
         if binned_features is not None:
             filtered_binned_features = self.filter_by_idx(
                 binned_features, idx_to_keep=idx_to_keep
             )
-
-        if binned_features is not None:
             if inside_bin_similarity:
                 similarities = correlate_vectors(filtered_neural_data, metric=metric)
                 # Calculate similarity inside binned features
