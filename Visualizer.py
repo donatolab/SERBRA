@@ -857,7 +857,11 @@ class Vizualizer:
             labels_list = [labels_list] if not isinstance(labels_list, list) else labels_list
             
             # get number of session for labels list of multi-session model
-            session_number = int(subplot_title[-1]) if subplot_title.split("_")[-2] == "task" and subplot_title[-1].isdigit() else 0
+            session_number = 0
+            subplot_title_parts = subplot_title.split("_")
+            if len(subplot_title_parts) > 1:
+                if subplot_title_parts[-2] == "task" and subplot_title_parts[-1].isdigit():
+                    session_number = int(subplot_title_parts[-1])
             session_labels = labels_list[session_number]
 
             # create 2D RGBA labels to overwrite 1D cmap coloring

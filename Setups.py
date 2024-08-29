@@ -1116,6 +1116,11 @@ class Cam(Behavior_Preprocessing):
         )
 
     def preprocess_data(self, cam_data, save=True, overwrite=False):
+        """
+        Processes the camera data to extract the position of the animal.
+        If the data is already processed the data is loaded, pixels are converted to meters and 
+        the position is corrected to the real 0,0 position.
+        """
         check_needed_keys(self.metadata, ["pixel_per_meter"])
 
         position_in_pixel = self.load_data(file_name=self.data_naming_scheme)
@@ -1129,7 +1134,12 @@ class Cam(Behavior_Preprocessing):
             position_in_pixel, self.metadata["pixel_per_meter"]
         )
 
-        ...
+        # set 0,0 position to real 0,0 position not to cam position
+        borders = Environment.define_border_by_pos(position)
+        min_borders = borders[:, 0]
+        for dim in range(position.shape[1]):
+            position[:, dim] = position[:, dim] - min_borders[dim]
+        raise NotImplementedError("Test position correction first")
 
         data = {"position": position}
 

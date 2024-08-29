@@ -149,11 +149,9 @@ class Multi:
                     model_settings: dict = None,
                     create_embeddings: bool = True,
                     ):
-        #FIXME: merge this function with tasks train_model
         if not tasks:
             tasks = self.filter(wanted_properties)
 
-        task_ids = list(tasks.keys())
         datas = []
         labels = []
         for task_id, task in tasks.items():
@@ -418,94 +416,6 @@ class Animal:
             )
             models[session_date] = session_models
         return models
-
-    def define_decoding_statistics(
-        self,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
-        manifolds_pipeline: str = "cebra",
-    ):
-        models = self.get_pipeline_models(
-            model_naming_filter_include=model_naming_filter_include,
-            model_naming_filter_exclude=model_naming_filter_exclude,
-            manifolds_pipeline=manifolds_pipeline,
-        )
-        to_delete_models_key_list = []
-        for keys_list, model in traverse_dicts(models):
-            remove_model = False
-
-            if model.data is None:
-                remove_model = True
-            elif model.data["test"]["neural"].shape[0] < 10:
-                remove_model = True
-
-            if remove_model:
-                to_delete_models_key_list.append(keys_list)
-            else:
-                model = dict_value_keylist(models, keys_list)
-                #if True:
-                if model.decoding_statistics is None:
-                    model.decoding_statistics = decode(model=model)
-
-        # check model labels and data
-
-
-        for keys_list in to_delete_models_key_list:
-            delete_nested_key(models, keys_list)
-        return models
-
-    def plot_consistency_scores(
-        self,
-        wanted_stimulus_types,
-        wanted_embeddings,
-        exclude_properties=None,
-        figsize=(7, 7),
-    ):
-        # TODO: change to only inter Session?
-        raise NotImplementedError()
-        viz = Vizualizer(root_dir=self.root_dir)
-        labels = {}  # {wanted_embedding 1: {animal_session_task_id: embedding}, ...}
-        for wanted_embedding in wanted_embeddings:
-            labels[wanted_embedding] = {"embeddings": {}, "labels": {}}
-            for wanted_stimulus_type in wanted_stimulus_types:
-                for session_date, session in self.sessions.items():
-                    for task_name, task in session.tasks.items():
-                        if (
-                            task.behavior_metadata["stimulus_type"]
-                            == wanted_stimulus_type
-                        ):
-                            wanted_embeddings_dict = filter_dict_by_properties(
-                                task.embeddings,
-                                include_properties=wanted_embedding,
-                                exclude_properties=exclude_properties,
-                            )
-                            for (
-                                embedding_key,
-                                embedding,
-                            ) in wanted_embeddings_dict.items():
-                                labels_id = f"{session_date[-3:]}_{task.task} {wanted_stimulus_type}"
-                                position_lables = task.behavior.position.data
-                                position_lables, embedding = force_equal_dimensions(
-                                    position_lables, embedding
-                                )
-                                labels[wanted_embedding]["embeddings"][
-                                    labels_id
-                                ] = embedding
-                                labels[wanted_embedding]["labels"][
-                                    labels_id
-                                ] = position_lables
-
-            dataset_ids = list(labels[wanted_embedding]["embeddings"].keys())
-            embeddings = list(labels[wanted_embedding]["embeddings"].values())
-            labeling = list(labels[wanted_embedding]["labels"].values())
-
-            title = f"CEBRA-{wanted_embedding} embedding consistency"
-            fig = plt.figure(figsize=figsize)
-            ax1 = plt.subplot(111)
-            ax1 = viz.plot_consistency_scores(
-                ax1, title, embeddings, labeling, dataset_ids
-            )
-            plt.show()
 
     def filter_sessions(self, wanted_properties=None):
         if not wanted_properties:
@@ -1215,7 +1125,6 @@ class Task:
         pass
 
     # Place Cells
-    # TODO: implement 1D or 2D differentiation
     def get_rate_time_map(
         self,
         movement_state="moving",

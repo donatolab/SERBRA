@@ -176,6 +176,38 @@ class Models:
         
         return embeddings
 
+    def define_decoding_statistics(
+        self,
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        manifolds_pipeline: str = "cebra",
+    ):
+        models = self.get_pipeline_models(
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
+            manifolds_pipeline=manifolds_pipeline,
+        )
+        to_delete_models_key_list = []
+        for keys_list, model in traverse_dicts(models):
+            remove_model = False
+
+            if model.data is None:
+                remove_model = True
+            elif model.data["test"]["neural"].shape[0] < 10:
+                remove_model = True
+
+            if remove_model:
+                to_delete_models_key_list.append(keys_list)
+            else:
+                model = dict_value_keylist(models, keys_list)
+                #if True:
+                if model.decoding_statistics is None:
+                    model.decoding_statistics = decode(model=model)
+
+        for keys_list in to_delete_models_key_list:
+            delete_nested_key(models, keys_list)
+        return models
+
     def is_model_fitted(self, model, pipeline="cebra"):
         return self.get_model_class(pipeline).is_fitted(model)
 
@@ -1100,52 +1132,33 @@ def decode(
     metric="cosine",
     detailed_accuracy=False,
 ):
-    if model is None:
-        if (
-            neural_data_train_to_embedd is None
-            or neural_data_test_to_embedd is None
-            or embedding_train is None
-            or embedding_test is None
-            or labels_train is None
-            or labels_test is None
-        ):
-            raise ValueError(
-                "Not all data is provided. Please provide the model or the necessary data."
-            )
+    if model is None and (
+                        embedding_train is None or
+                        embedding_test is None or
+                        labels_train is None or
+                        labels_test is None
+                        ):
+        raise ValueError("Model and embedding or neural_data to embedd is required to decode.")
 
-    if (
-        neural_data_train_to_embedd is None
-        or neural_data_test_to_embedd is None
-        or embedding_train is None
-        or embedding_test is None
-        or labels_train is None
-        or labels_test is None
-    ):
-        print(
-            "WARNING: Not all data is provided. Using model data. Make sure correct data is provided."
-        )
+    if embedding_train is not None and neural_data_train_to_embedd is not None or embedding_test is not None and neural_data_test_to_embedd is not None:
+        raise ValueError("Only one embedding or to embedd variables is required.")
 
     if neural_data_train_to_embedd is None:
-        neural_data_train_to_embedd = model.data["train"]["neural"]
-
-    if embedding_train is None:
-        embedding_train = model.data["train"]["embedding"]
         if embedding_train is None:
-            embedding_train = model.transform(neural_data_train_to_embedd)
-
-    if labels_train is None:
-        labels_train = model.data["train"]["behavior"]
+            neural_data_train_to_embedd = model.data["train"]["neural"]
+            embedding_train = model.data["train"]["embedding"] if model.data["train"]["embedding"] is not None else model.transform(neural_data_train_to_embedd)
+    else:
+        embedding_train = model.transform(neural_data_train_to_embedd)
 
     if neural_data_test_to_embedd is None:
-        neural_data_test_to_embedd = model.data["test"]["neural"]
-
-    if embedding_test is None:
-        embedding_test = model.data["test"]["embedding"]
         if embedding_test is None:
-            embedding_test = model.transform(neural_data_test_to_embedd)
+            neural_data_test_to_embedd = model.data["test"]["neural"]
+            embedding_test = model.data["test"]["embedding"] if model.data["test"]["embedding"] is not None else model.transform(neural_data_test_to_embedd)
+    else:
+        embedding_test = model.transform(neural_data_test_to_embedd)
 
-    if labels_test is None:
-        labels_test = model.data["test"]["behavior"]
+    labels_train = model.data["train"]["behavior"] if labels_train is None else labels_train
+    labels_test = model.data["test"]["behavior"] if labels_test is None else labels_test
 
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
     if is_floating(labels_train):
