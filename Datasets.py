@@ -297,7 +297,7 @@ class Dataset:
             data_filtered = data_unfiltered[idx_to_keep]
             return data_filtered
         else:
-            global_logger
+
             print(f"No idx_to_keep given. Returning unfiltered data.")
             return data
 
@@ -544,10 +544,10 @@ class NeuralDataset(Dataset):
         if use_embedding:
             if model is None and self.embedding is None:
                 raise (f"Embedding was not generated. Model needed for embedding.")
-        elif model:
-            if self.embedding is not None:
-                print(f"Recalculated Embedding based on given model")
-            self.embedd_data(model)
+            if model:
+                if self.embedding is not None:
+                    print(f"Recalculated Embedding based on given model")
+                self.embedd_data(model)
 
         data = self.embedding if use_embedding or model is not None else self.data
 

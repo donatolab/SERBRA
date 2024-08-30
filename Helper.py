@@ -361,10 +361,15 @@ def may_butter_lowpass_filter(data, smooth=True, cutoff=2, fps=None, order=2):
 @njit(nopython=True)
 def cosine_similarity(v1, v2):
     """
-    A cosine similarity can be seen as the correlation between two vectors.
+    A cosine similarity can be seen as the correlation between two vectors or point distributions.
     Returns:
         float: The cosine similarity between the two vectors.
     """
+    # Compute mean vector if input is a point cloud
+    if v1.ndim == 2:
+        mean1 = np.mean(v1, axis=0)
+    if v2.ndim == 2:
+        mean2 = np.mean(v2, axis=0)
     return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
 
 
@@ -576,35 +581,13 @@ def compare_distributions(
         return np.mean(distances)
 
     elif metric == "euclidean":
-        # Compute the pairwise distances between points
-        points1 = np.atleast_2d(points1)
-        points2 = np.atleast_2d(points2)
-        d1 = pairwise_euclidean_distance(points1, points1)
-        d2 = pairwise_euclidean_distance(points2, points2)
-        d3 = pairwise_euclidean_distance(points1, points2)
-        return np.abs(np.mean(d1) + np.mean(d2) - 2 * np.mean(d3))
+        return euclidean_distance_between_distributions(points1, points2)
 
     elif metric == "mahalanobis":
-        # Mahalanobis Distance
-        # Compute the covariance matrix for each distribution (can be estimated from data)
-        cov_matrix1 = get_covariance_matrix(points1)
-        cov_matrix2 = get_covariance_matrix(points2)
-        if cov_matrix1.ndim < 2 or cov_matrix2.ndim < 2:
-            return np.inf
-        # Compute the inverse of the covariance matrices
-        cov_inv1 = np.linalg.inv(cov_matrix1)
-        cov_inv2 = np.linalg.inv(cov_matrix2)
-
-        # Compute the Mahalanobis distance between the means of the dists
-        mean1 = np.mean(points1, axis=0)
-        mean2 = np.mean(points2, axis=0)
-        return mahalanobis_distance(mean1, mean2, cov_inv1 + cov_inv2)
+        return mahalanobis_distance_between_distributions(points1, points2)
 
     elif metric == "cosine":
-        # Cosine Similarity
-        mean1 = np.mean(points1, axis=0)
-        mean2 = np.mean(points2, axis=0)
-        return cosine_similarity(mean1, mean2)
+        return cosine_similarity(points1, points2)
 
     elif "overlap" in metric:
         if True:  # "2d" in metric:
@@ -624,13 +607,16 @@ def compare_distributions(
     else:
         raise ValueError(f"Unsupported metric: {metric}")
 
+@njit(nopython=True)
 def get_covariance_matrix(data: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
     cov = np.cov(data, rowvar=False)
     return regularized_covariance(cov, epsilon=epsilon)
 
+@njit(nopython=True)
 def regularized_covariance(cov_matrix, epsilon=1e-6):
     return cov_matrix + np.eye(cov_matrix.shape[0]) * epsilon
 
+@njit(nopython=True)
 def sphere_to_plane(points: np.ndarray):
     """
     Convert 3D points on a sphere to 2D points on a plane.
@@ -686,7 +672,44 @@ def is_positive_definite(A):
     except:
         return False
 
+#@njit(nopython=True)
+def mahalanobis_distance_between_distributions(points1, points2):
+    # Mahalanobis Distance
+    # Compute the covariance matrix for each distribution (can be estimated from data)
+    cov_matrix1 = get_covariance_matrix(points1)
+    cov_matrix2 = get_covariance_matrix(points2)
+    if cov_matrix1.ndim < 2 or cov_matrix2.ndim < 2:
+        return np.inf
+    # Compute the inverse of the covariance matrices
+    cov_inv1 = np.linalg.inv(cov_matrix1)
+    cov_inv2 = np.linalg.inv(cov_matrix2)
 
+    # Compute the Mahalanobis distance between the means of the dists
+    mean1 = np.mean(points1, axis=0)
+    mean2 = np.mean(points2, axis=0)
+    return mahalanobis_distance(mean1, mean2, cov_inv1 + cov_inv2)
+
+@njit(nopython=True)
+def euclidean_distance_between_distributions(points1: np.ndarray, points2: np.ndarray) -> float:
+    """
+    Computes a distance metric between two distributions using pairwise Euclidean distances. 
+    This is done by computing the pairwise Euclidean distances between all points in the two distributions,
+    and then taking the mean of these distances. 
+
+    Args:
+        points1 (np.ndarray): A 2D array of shape (n_samples1, n_features) representing the first distribution.
+        points2 (np.ndarray): A 2D array of shape (n_samples2, n_features) representing the second distribution.
+        metric (str): A string specifying the metric to use. Only "euclidean" is supported in this implementation.
+
+    Returns:
+        float: A non-negative float representing the distance between the two distributions.
+    """
+    points1 = np.atleast_2d(points1)
+    points2 = np.atleast_2d(points2)
+    d1 = pairwise_euclidean_distance(points1, points1)
+    d2 = pairwise_euclidean_distance(points2, points2)
+    d3 = pairwise_euclidean_distance(points1, points2)
+    return np.abs(np.mean(d1) + np.mean(d2) - 2 * np.mean(d3))
 
 @njit(nopython=True)
 def pairwise_euclidean_distance(points1, points2):
@@ -722,6 +745,9 @@ def mahalanobis_distance(x, mean, inv_cov):
     Returns:
     float: Mahalanobis distance
     """
+    x = x.astype(np.float64)
+    mean = mean.astype(np.float64)
+    inv_cov = inv_cov.astype(np.float64)
     diff = x - mean
     distance = np.sqrt(diff.dot(inv_cov).dot(diff))
     return distance
@@ -963,10 +989,6 @@ def correlate_vectors(vectors: np.ndarray, metric="pearson"):
         correlation_matrix = sklearn.metrics.pairwise.cosine_similarity(vectors)
     else:
         raise ValueError("metric must be 'pearson' or 'cosine'.")
-
-    # extract only diagonal
-    correlation_matrix = np.diagonal(correlation_matrix)
-
     return correlation_matrix
 
 
