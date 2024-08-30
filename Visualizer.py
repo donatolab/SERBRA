@@ -2980,3 +2980,51 @@ class Vizualizer:
                         dpi=300, 
                         bbox_inches="tight", 
                         format=format)
+
+    @staticmethod
+    def barplot_from_dict_of_dicts(
+        data: Dict[str, Dict[str, Union[float, int]]],
+        title: str = 'Decoding of Positon from Adapted Models',
+        legend_title: str = 'Source: Mean RMSE',
+        data_labels: List[str] = None,
+        xlabel: str = 'Model Based on Source and adapted to Task',
+        ylabel: str = 'RMSE (m)',
+        figsize=(10, 6),
+        save_dir=None,
+        as_pdf=False,
+    ):
+        # Flatten the dictionary for plotting
+        color_map = matplotlib.cm.get_cmap('tab20')
+
+        plt.figure(figsize=figsize)
+
+        for source_num, (source, task_dict) in enumerate(data.items()):
+            tasks = []
+            values = []
+            for task_num, (task, value) in enumerate(task_dict.items()):
+                if not data_labels:
+                    label = f"{source}: {task.split('_')[-3][-3:]}"
+                else:
+                    label = data_labels[source_num+task_num]
+                tasks.append(label)
+                values.append(value)
+            color = color_map(source_num)
+            
+            bars = plt.bar(tasks, values, color=color, label=f"{source}: {np.mean(values):.4f}")
+            for bar, value in zip(bars, values):
+                # Adding labels to each bar
+                plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f'{value:.4f}',
+                        ha='center', va='bottom', fontsize=9)
+
+        # Plotting
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.title(title)
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        plt.legend(title=legend_title, bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
+
+        # Show the plot
+        plt.show()
