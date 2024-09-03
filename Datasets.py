@@ -522,6 +522,8 @@ class NeuralDataset(Dataset):
         category_map: Dict = None,
         inside_bin_similarity: bool = False,
         remove_outliers: bool = True,
+        out_det_method: str = "density",
+        parallel: bool = False,
         max_bin: List[int] = None,
         show_frames: int = None,
         idx_to_keep: np.ndarray = None,
@@ -584,6 +586,16 @@ class NeuralDataset(Dataset):
                     as_array=False,
                 )
                 max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
+                
+                radius = 1 # maximum position of sample in space
+                max_distance = 2*radius # maximum distance between two samples
+                ## based on the biggest distance in the space
+                #neighbor_distance = max_distance/len(group_vectors)
+                # based on the amount of space every bin has on the surface of a sphere
+                neighbor_distance = np.sqrt(4/len(group_vectors)) 
+                
+                if out_det_method == "density" and use_embedding==False:
+                    print("WARNING: Density based outlier detection is not recommended for high dimensional data. Euclidean distance is used for samples distance calculation.")
                 similarities = {}
                 for group_i, (group_name, group1) in enumerate(group_vectors.items()):
                     max_bin = max_bin.astype(int)
@@ -592,11 +604,16 @@ class NeuralDataset(Dataset):
                     for group_j, (group_name2, group2) in enumerate(
                         group_vectors.items()
                     ):
+                        print("######################################################")
+                        print(f"Comparing {group_name} to {group_name2}")
                         dist = compare_distributions(
                             group1,
                             group2,
                             metric=metric,
+                            neighbor_distance=neighbor_distance,
                             filter_outliers=remove_outliers,
+                            parallel=parallel,
+                            out_det_method=out_det_method,
                         )
                         group_position = (
                             group_j if isinstance(group_name2, str) else group_name2

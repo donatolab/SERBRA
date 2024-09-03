@@ -3028,3 +3028,160 @@ class Vizualizer:
 
         # Show the plot
         plt.show()
+
+    @staticmethod
+    def plot_3D_group_scatter(
+        gropu_data: np.ndarray,
+        additional_title: str = '',
+        xlabel: str = 'X',
+        ylabel: str = 'Y',
+        zlabel: str = 'Z',
+        cmap="rainbow",
+        figsize=(20, 20),
+        specific_group: tuple[int, int]=None,
+        save_dir=None,
+        as_pdf=False,
+    ):
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111, projection='3d')
+        title = '3D Scatter'
+        title += f" {additional_title}" if additional_title else ""
+        title += f" {specific_group}" if specific_group else ""
+
+        # Define unique colors for each group
+        group_colors = plt.cm.get_cmap(cmap, len(gropu_data))  # Get a colormap with distinct colors
+
+        # Plot each group with its unique color and density-based transparency
+        for i, (group_name, data) in enumerate(gropu_data.items()):
+            if specific_group:
+                if group_name != specific_group:
+                    continue
+            locations = data["locations"]
+            values = data["values"]
+            
+            # Normalize the density values to be between 0 and 1 for alpha
+            #norm = mcolors.Normalize(vmin=min(values), vmax=max(values))
+            #alphas = norm(values)
+            norm = mcolors.Normalize(vmin=0, vmax=max(values))
+            alphas = norm(values)
+            
+            # Convert RGB color to RGBA with alpha
+            rgba_colors = np.zeros((locations.shape[0], 4))
+            rgba_colors[:, :3] = group_colors(i)[:3]  # Assign the unique color
+            rgba_colors[:, 3] = alphas  # Assign the alpha values
+            # filter for every 10th point
+            steps = 1
+            part_locations = locations[::steps]
+            rgba_colors = rgba_colors[::steps]
+            ax.scatter(part_locations[:, 0], part_locations[:, 1], part_locations[:, 2], 
+                    color=rgba_colors, label=group_name, edgecolor=None, s=10)
+            
+            break
+            
+
+        # Add labels and legend
+        ax.set_xlabel('X axis')
+        ax.set_ylabel('Y axis')
+        ax.set_zlabel('Z axis')
+
+        ax.grid(False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+
+        #ax.legend()
+
+        # Show plot
+        plt.show()
+
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_zlabel(zlabel)
+        ax.set_title(title)
+
+        Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
+
+        plt.show()
+
+    def plot_2d_group_scatter(
+        group_data: dict,
+        additional_title=None,
+        supxlabel: str = 'Bin X',
+        supylabel: str = 'Bin Y',
+        figsize=(2, 2),
+        plot_legend=True,
+        cmap='rainbow',
+        save_dir=None,
+        as_pdf=False,
+        use_alpha=True,
+    ):
+        """
+        group data is expected to have x, y coordinates as group_name
+        """
+        title = 'Point Distributions in 2D'
+        title += f" {additional_title}" if additional_title else ""
+        title += f" no alpha" if not use_alpha else ""
+
+        # Determine the number of subplots
+        unique_bins = np.unique(list(group_data.keys()), axis=0)
+        max_bins = np.max(unique_bins, axis=0)+1
+        figsize = (figsize[0] * max_bins[0], figsize[1] * max_bins[1])
+        fig, axes = plt.subplots(max_bins[0], max_bins[1], figsize=figsize)
+
+        # Define unique colors for each group
+        num_groups = len(unique_bins)
+        group_colors = plt.cm.get_cmap(cmap, num_groups)
+
+        # Plot each group in its respective subplot
+        for i, (group_name, data) in enumerate(group_data.items()):
+            loc_x, loc_y = group_name
+            locations = data["locations"]
+            if len(locations[0]) == 3:
+                # Project 3D locations to 2D
+                locations = sphere_to_plane(locations, center_distr=True)
+            values = data["values"]
+
+            # Normalize the density values to be between 0 and 1 for alpha
+            norm = mcolors.Normalize(vmin=0, vmax=max(values))
+            alphas = norm(values) if use_alpha else np.ones_like(values)
+
+            # Convert RGB color to RGBA with alpha
+            rgba_colors = np.zeros((locations.shape[0], 4))
+            rgba_colors[:, :3] = group_colors(i)[:3]  # Assign the unique color
+            rgba_colors[:, 3] = alphas  # Assign the alpha values
+
+            # filter for every step point
+            steps = 1
+            part_locations = locations[::steps]
+            rgba_colors = rgba_colors[::steps]
+
+            # Plot in 2D
+            axes[loc_x, loc_y].scatter(part_locations[:, 0], part_locations[:, 1], 
+                        color=rgba_colors, label=group_name, edgecolor=None, s=10)
+            axes[loc_x, loc_y].set_title(group_name)
+
+            # remove axis labels
+            axes[loc_x, loc_y].set_xticks([])
+            axes[loc_x, loc_y].set_yticks([])
+
+            # Optionally, add axis labels
+            #axes[loc_x, loc_y].set_xlabel('X axis')
+            #axes[loc_x, loc_y].set_ylabel('Y axis')
+
+        
+        fig.suptitle(title)
+        fig.suptitle(title, fontsize=figsize[1], y=1.01)
+        fig.supxlabel(supxlabel, fontsize=figsize[1], x=0.5, y=-0.03)
+        fig.align_xlabels()
+        fig.supylabel(supylabel, fontsize=figsize[1], x=-0.02, y=0.5)
+
+        if plot_legend:
+            plt.legend()
+
+        fig.tight_layout()
+        Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
+        plt.show()

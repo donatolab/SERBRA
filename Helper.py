@@ -364,13 +364,10 @@ def cosine_similarity(v1, v2):
     A cosine similarity can be seen as the correlation between two vectors or point distributions.
     Returns:
         float: The cosine similarity between the two vectors.
-    """
-    # Compute mean vector if input is a point cloud
-    if v1.ndim == 2:
-        mean1 = np.mean(v1, axis=0)
-    if v2.ndim == 2:
-        mean2 = np.mean(v2, axis=0)
-    return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+    """   
+    dot_product = np.dot(v1, v2)
+    norm_product = np.linalg.norm(v1) * np.linalg.norm(v2)
+    return dot_product / norm_product
 
 
 def compute_mutual_information(
@@ -448,7 +445,7 @@ def same_distribution(points1, points2):
 
 
 def compare_distributions(
-    points1, points2, metric="cosine", filter_outliers=True, prallel=True, out_det_method="contamination"
+    points1, points2, metric="cosine", filter_outliers=True, parallel=True, neighbor_distance=None, out_det_method="density"
 ):
     """
     Compare two distributions using the specified metric.
@@ -504,35 +501,40 @@ def compare_distributions(
         points1.shape[1] == points2.shape[1]
     ), "Distributions must have the same number of dimensions"
 
+    similarity_range = {
+        "euclidean": {"lowest": np.inf,"highest": 0.0},
+        "wasserstein": {"lowest": np.inf,"highest": 0.0},
+        "ks": {"lowest": np.inf,"highest": 0.0},
+        "chi2": {"lowest": np.inf,"highest": 0.0},
+        "kullback-leibler": {"lowest": np.inf,"highest": 0.0},
+        "jensen-shannon": {"lowest": np.inf,"highest": 0.0},
+        "energy": {"lowest": np.inf,"highest": 0.0},
+        "mahalanobis": {"lowest": np.inf,"highest": 0.0},
+        "cosine": {"lowest": 0.0,"highest": 1.0},
+        "overlap": {"lowest": 0.0,"highest": 1.0},
+    }
+
+    same_dist = False
     if same_distribution(points1, points2):
-        if metric in [
-            "euclidean",
-            "wasserstein",
-            "ks",
-            "chi2",
-            "kullback-leibler",
-            "jensen-shannon",
-            "energy",
-            "mahalanobis",
-            "kolmogorov-smirnov",
-        ]:
-            max_similarity_value = 0.0
-        elif metric in ["cosine"]:
-            max_similarity_value = 1.0
-        elif "overlap" in metric:
-            max_similarity_value = 1.0
-        else:
-            raise NotImplementedError(f"Metric {metric} not implemented")
-        return max_similarity_value
+        same_dist = True
 
     # Filter out outliers from the distributions
-    if filter_outliers:
-        if prallel:
-            points1 = filter_outlier_numba(points1, out_det_method=out_det_method)
-            points2 = filter_outlier_numba(points2, out_det_method=out_det_method)
+    if filter_outliers and not same_dist:
+        if parallel:
+            points1 = filter_outlier_numba(points1, method=out_det_method, neighbor_distance=neighbor_distance)
+            points2 = filter_outlier_numba(points2, method=out_det_method, neighbor_distance=neighbor_distance)
         else:
-            points1 = filter_outlier(points1, out_det_method=out_det_method)
-            points2 = filter_outlier(points2, out_det_method=out_det_method)
+            points1 = filter_outlier(points1, method=out_det_method)
+            points2 = filter_outlier(points2, method=out_det_method)
+        
+    if same_dist:
+        if metric in similarity_range.keys():
+            if points1.shape[0] == 0 or points2.shape[0] == 0:
+                return None
+            else:
+                return similarity_range[metric]["highest"]
+        else:
+            raise NotImplementedError(f"Metric {metric} not implemented")
 
     if metric == "wasserstein":
         distances = [
@@ -587,10 +589,14 @@ def compare_distributions(
         return mahalanobis_distance_between_distributions(points1, points2)
 
     elif metric == "cosine":
-        return cosine_similarity(points1, points2)
+        if points1.ndim == 2:
+            v1 = np.mean(points1, axis=0)
+        if points2.ndim == 2:
+            v2 = np.mean(points2, axis=0)
+        return cosine_similarity(v1, v2)
 
     elif "overlap" in metric:
-        if True:  # "2d" in metric:
+        if "2d" in metric:
             # 1. Convert surface of 3D sphere to 2D plane
             points1 = sphere_to_plane(points1)
             points2 = sphere_to_plane(points2)
@@ -617,10 +623,17 @@ def regularized_covariance(cov_matrix, epsilon=1e-6):
     return cov_matrix + np.eye(cov_matrix.shape[0]) * epsilon
 
 @njit(nopython=True)
-def sphere_to_plane(points: np.ndarray):
+def sphere_to_plane(points: np.ndarray, center_distr=False):
     """
     Convert 3D points on a sphere to 2D points on a plane.
     """
+    if center_distr:
+        # extract principal components
+        cov = get_covariance_matrix(points)
+        eigvals, eigvecs = np.linalg.eigh(cov)
+        idx = np.argsort(eigvals)[::-1]
+        eigvecs = eigvecs[:, idx]
+        points = np.dot(points, eigvecs)
     phi = np.arctan2(points[:, 1], points[:, 0])
     theta = np.arccos(points[:, 2])
     points1_2d = np.column_stack((phi, theta))
@@ -672,7 +685,7 @@ def is_positive_definite(A):
     except:
         return False
 
-#@njit(nopython=True)
+@njit(nopython=True)
 def mahalanobis_distance_between_distributions(points1, points2):
     # Mahalanobis Distance
     # Compute the covariance matrix for each distribution (can be estimated from data)
@@ -728,8 +741,23 @@ def pairwise_euclidean_distance(points1, points2):
     distances = np.zeros((n1, n2))
     for i in range(n1):
         for j in range(n2):
-            diff = points1[i] - points2[j]
-            distances[i, j] = np.sqrt(np.dot(diff, diff))
+            distances[i, j] = euclidean_distance(points1[i], points2[j])        
+    return distances
+
+@njit(nopython=True)
+def euclidean_distance(x, y):
+    """
+    Compute the Euclidean distance between two points.
+
+    Args:
+    x (np.ndarray): First point, shape (n_features,)
+    y (np.ndarray): Second point, shape (n_features,)
+
+    Returns:
+    float: Euclidean distance
+    """
+    diff = x - y
+    distances = np.sqrt(np.dot(diff, diff))
     return distances
 
 @njit(nopython=True)
@@ -752,9 +780,43 @@ def mahalanobis_distance(x, mean, inv_cov):
     distance = np.sqrt(diff.dot(inv_cov).dot(diff))
     return distance
 
+#@njit(nopython=True)
+def compute_density(points, neighbor_distance, inv_cov=None):
+    """
+    Compute the density of each high-dimensional point in the distribution using a neighbor_distance and Mahalanobis distance.
+    """
+    n = points.shape[0]
+    densities = np.zeros(n)
 
-@jit(nopython=True)
-def get_outlier_mask_numba(points, contamination=0.2, method="contamination"):
+    for i in range(n):
+        count = 0
+        for j in range(n):
+            if i != j:
+                ## compute euclidean distance for low dimensional data
+                if points.ndim <= 3:
+                    dist = euclidean_distance(points[i], points[j])
+                else:
+                    dist = euclidean_distance(points[i], points[j])
+                    # proper way to define neighbor_distance for outlier detection does not work with mahalanobis distance
+                    # Compute Mahalanobis distance for high-dimensional data
+                    #dist = mahalanobis_distance(points[i], points[j], inv_cov)
+
+                if dist < neighbor_distance:
+                    count += 1
+
+        densities[i] = count
+    
+    densities = densities / np.max(densities)
+    # remove nan
+    densities = np.nan_to_num(densities, nan=0.0)
+
+    if densities.sum() == 0:
+        print("No inliers found")
+        print("No inliers found")
+    return densities
+
+#@njit(nopython=True)
+def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, method="contamination"):
     n, d = points.shape
 
     # Remove any rows with NaN or inf
@@ -767,44 +829,52 @@ def get_outlier_mask_numba(points, contamination=0.2, method="contamination"):
         # Not enough valid points to compute covariance
         return np.ones(len(valid_points), dtype=np.bool_)
 
-    # Compute mean and covariance
-    mean, cov = compute_mean_and_cov(valid_points)
-
-    # Check if covariance matrix is positive definite
-    if not is_positive_definite(cov):
-        # If not, add a small value to the diagonal
-        cov += np.eye(d) * 1e-6
-
-    try:
-        inv_cov = np.linalg.inv(cov)
-    except:
-        # If inversion fails, return valid points
-        return np.ones(len(valid_points), dtype=np.bool_)
-
-    # Compute Mahalanobis distances
-    distances = np.zeros(len(valid_points))
-    for i in range(len(valid_points)):
-        distances[i] = mahalanobis_distance(valid_points[i], mean, inv_cov)
-
-    if method=="contamination":
-        # Determine threshold based on contamination (percentage of outliers)
-        threshold = np.percentile(distances, 100 * (1 - contamination))
-    elif method=="density":
-        # Determine threshold based on density estimation
-        raise NotImplementedError(f"Method 'density' not implemented for not parallel filter_outlier. Threshold calculation needs to be determined")
-        #threshold = ?
-    
 
     # Create mask for non-outlier points
     mask_inliers = np.zeros(len(valid_points), dtype=np.bool_)
-    for i in range(len(valid_points)):
-        mask_inliers[i] = distances[i] <= threshold
+    if method=="contamination":
+        # Compute mean and covariance
+        mean, cov = compute_mean_and_cov(valid_points)
+
+        # Check if covariance matrix is positive definite
+        if not is_positive_definite(cov):
+            # If not, add a small value to the diagonal
+            cov += np.eye(d) * 1e-6
+
+        try:
+            inv_cov = np.linalg.inv(cov)
+        except:
+            # If inversion fails, return valid points
+            return np.ones(len(valid_points), dtype=np.bool_)
+        # Compute Mahalanobis distances
+        distances = np.zeros(len(valid_points))
+        for i in range(len(valid_points)):
+            distances[i] = mahalanobis_distance(valid_points[i], mean, inv_cov)
+
+        # Determine threshold based on contamination (percentage of outliers)
+        threshold = np.percentile(distances, 100 * (1 - contamination))
+
+        for i in range(len(valid_points)):
+            mask_inliers[i] = distances[i] <= threshold
+
+    elif method=="density":
+        # Determine threshold based on density estimation
+        # Compute densities for each point
+        if neighbor_distance is None:
+            raise ValueError("neighbor_distance must be specified for density-based outlier detection")
+        densities = compute_density(valid_points, neighbor_distance)
+        
+        # Determine threshold based on contamination (percentage of lowest density points)
+        threshold = np.percentile(densities, 100 * contamination)
+    
+        for i in range(len(valid_points)):
+            mask_inliers[i] = densities[i] > threshold
 
     return mask_inliers
 
 
-@njit(nopython=True)
-def filter_outlier_numba(points, contamination=0.2, out_det_method="contamination"):
+#@njit(nopython=True)
+def filter_outlier_numba(points, contamination=0.2, neighbor_distance=None, method="contamination"):
     """
     Filter out outliers from a set of points using a simplified Elliptic Envelope method.
 
@@ -829,10 +899,10 @@ def filter_outlier_numba(points, contamination=0.2, out_det_method="contaminatio
         mask_valid[i] = all_finite(points[i])
     valid_points = points[mask_valid]
 
-    mask_inliers = get_outlier_mask_numba(points, contamination, out_det_method)
+    mask_inliers = get_outlier_mask_numba(points, contamination, neighbor_distance=neighbor_distance, method=method)
     return valid_points[mask_inliers]
 
-def filter_outlier(points, contamination=0.2, only_mask=False, method="density"):
+def filter_outlier(points, contamination=0.2, only_mask=False, method="contamination"):
     """
     Filter out outliers from a 2D distribution using an Elliptic Envelope.
     The algorithm fits an ellipse to the data, trying to encompass the most concentrated 80% of the points (since we set contamination to 0.2).
