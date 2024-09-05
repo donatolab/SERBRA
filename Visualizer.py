@@ -2753,12 +2753,12 @@ class Vizualizer:
             for group_i, (group_name, dists) in enumerate(group_similarities.items()):
                 vmin = None
                 vmax = None
-                if name in ["cosine", "overlap"]:
-                    vmax = 1
-                    cmap = "viridis"
+                if name in ["cosine", "overlap", "overlap_2d"]:
+                    cmap = cmap.replace("_r", "")
                 else:
                     if "_r" not in cmap:
                         cmap = f"{cmap}_r"
+
                 if name in [
                     "euclidean",
                     "wasserstein",
@@ -2768,11 +2768,13 @@ class Vizualizer:
                     "jensen-shannon",
                     "energy",
                     "mahalanobis",
-                    "overlap",
                 ]:
                     vmin = 0
                 elif name in ["correlation", "cosine"]:
                     vmin = -1
+                    vmax = 1
+                elif name in ["overlap", "overlap_2d"]:
+                    vmin = 0
                     vmax = 1
 
                 if vmax is None:
@@ -2830,9 +2832,14 @@ class Vizualizer:
                 )
 
             if colorbar:
+                if vmin is None or vmax is None:
+                    print("No colorbar label give, using default")
+                    vmin = vmin or -777
+                    vmax = vmax or 777
+                labels = np.linspace(vmin, vmax, 5)
                 Vizualizer.add_1d_colormap_legend(
                     fig=fig,
-                    labels=np.linspace(vmin, vmax, 5),
+                    labels=labels,
                     label_name=colorbar_label,
                     label_size=max(max_bins) * 2,
                     cmap=cmap,
@@ -3038,7 +3045,9 @@ class Vizualizer:
         zlabel: str = 'Z',
         cmap="rainbow",
         figsize=(20, 20),
-        specific_group: tuple[int, int]=None,
+        use_alpha=True,
+        specific_group: Tuple[int, int]=None,
+        plot_legend=True,
         save_dir=None,
         as_pdf=False,
     ):
@@ -3047,6 +3056,7 @@ class Vizualizer:
         title = '3D Scatter'
         title += f" {additional_title}" if additional_title else ""
         title += f" {specific_group}" if specific_group else ""
+        title += f" no alpha" if not use_alpha else ""
 
         # Define unique colors for each group
         group_colors = plt.cm.get_cmap(cmap, len(gropu_data))  # Get a colormap with distinct colors
@@ -3063,7 +3073,7 @@ class Vizualizer:
             #norm = mcolors.Normalize(vmin=min(values), vmax=max(values))
             #alphas = norm(values)
             norm = mcolors.Normalize(vmin=0, vmax=max(values))
-            alphas = norm(values)
+            alphas = norm(values) if use_alpha else np.ones_like(values)
             
             # Convert RGB color to RGBA with alpha
             rgba_colors = np.zeros((locations.shape[0], 4))
@@ -3075,8 +3085,6 @@ class Vizualizer:
             rgba_colors = rgba_colors[::steps]
             ax.scatter(part_locations[:, 0], part_locations[:, 1], part_locations[:, 2], 
                     color=rgba_colors, label=group_name, edgecolor=None, s=10)
-            
-            break
             
 
         # Add labels and legend
@@ -3093,7 +3101,8 @@ class Vizualizer:
         ax.yaxis.pane.fill = False
         ax.zaxis.pane.fill = False
 
-        #ax.legend()
+        if plot_legend:
+            ax.legend()
 
         # Show plot
         plt.show()
@@ -3109,11 +3118,13 @@ class Vizualizer:
 
     def plot_2d_group_scatter(
         group_data: dict,
+        use_pca: bool = True,
+        filter_outlier: bool = False,
         additional_title=None,
         supxlabel: str = 'Bin X',
         supylabel: str = 'Bin Y',
         figsize=(2, 2),
-        plot_legend=True,
+        plot_legend=False,
         cmap='rainbow',
         save_dir=None,
         as_pdf=False,
@@ -3124,7 +3135,9 @@ class Vizualizer:
         """
         title = 'Point Distributions in 2D'
         title += f" {additional_title}" if additional_title else ""
+        title += f" pca" if use_pca else ""
         title += f" no alpha" if not use_alpha else ""
+        title += f" no outlier" if filter_outlier else ""
 
         # Determine the number of subplots
         unique_bins = np.unique(list(group_data.keys()), axis=0)
@@ -3137,14 +3150,32 @@ class Vizualizer:
         group_colors = plt.cm.get_cmap(cmap, num_groups)
 
         # Plot each group in its respective subplot
+        c_outliers = 0
+        c_samples = 0
         for i, (group_name, data) in enumerate(group_data.items()):
             loc_x, loc_y = group_name
-            locations = data["locations"]
+            # remove axis labels
+            axes[loc_x, loc_y].set_xticks([])
+            axes[loc_x, loc_y].set_yticks([])
+
+            # Optionally, add axis labels
+            #axes[loc_x, loc_y].set_xlabel('X axis')
+            #axes[loc_x, loc_y].set_ylabel('Y axis')
+
+            locations_raw = data["locations"]
+            values_raw = data["values"]
+            usefull_idx = values_raw>0.2
+
+            if sum(usefull_idx) == 0:
+                continue
+            locations = locations_raw[usefull_idx] if filter_outlier else locations_raw
+            values = values_raw[usefull_idx] if filter_outlier else values_raw
             if len(locations[0]) == 3:
                 # Project 3D locations to 2D
-                locations = sphere_to_plane(locations, center_distr=True)
-            values = data["values"]
+                locations = pca_numba(locations.astype(np.float64))
 
+            c_outliers += np.sum(values<0.2)
+            c_samples += len(values)
             # Normalize the density values to be between 0 and 1 for alpha
             norm = mcolors.Normalize(vmin=0, vmax=max(values))
             alphas = norm(values) if use_alpha else np.ones_like(values)
@@ -3162,18 +3193,10 @@ class Vizualizer:
             # Plot in 2D
             axes[loc_x, loc_y].scatter(part_locations[:, 0], part_locations[:, 1], 
                         color=rgba_colors, label=group_name, edgecolor=None, s=10)
-            axes[loc_x, loc_y].set_title(group_name)
+            axes[loc_x, loc_y].set_title(group_name, fontsize=max_bins[0]/3 ,pad=figsize[0]/max_bins[0])
 
-            # remove axis labels
-            axes[loc_x, loc_y].set_xticks([])
-            axes[loc_x, loc_y].set_yticks([])
-
-            # Optionally, add axis labels
-            #axes[loc_x, loc_y].set_xlabel('X axis')
-            #axes[loc_x, loc_y].set_ylabel('Y axis')
-
-        
-        fig.suptitle(title)
+        if use_alpha:
+            title += f" {c_outliers/c_samples:.2%} outliers"
         fig.suptitle(title, fontsize=figsize[1], y=1.01)
         fig.supxlabel(supxlabel, fontsize=figsize[1], x=0.5, y=-0.03)
         fig.align_xlabels()

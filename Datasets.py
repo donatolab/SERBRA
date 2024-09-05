@@ -591,6 +591,7 @@ class NeuralDataset(Dataset):
                 max_distance = 2*radius # maximum distance between two samples
                 ## based on the biggest distance in the space
                 #neighbor_distance = max_distance/len(group_vectors)
+                
                 # based on the amount of space every bin has on the surface of a sphere
                 neighbor_distance = np.sqrt(4/len(group_vectors)) 
                 
@@ -604,7 +605,6 @@ class NeuralDataset(Dataset):
                     for group_j, (group_name2, group2) in enumerate(
                         group_vectors.items()
                     ):
-                        print("######################################################")
                         print(f"Comparing {group_name} to {group_name2}")
                         dist = compare_distributions(
                             group1,

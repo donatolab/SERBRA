@@ -36,7 +36,7 @@ from datetime import datetime
 # debugging
 import logging
 from time import time
-
+from pyinstrument import Profiler
 
 class GlobalLogger:
     def __init__(self, save_dir=""):
@@ -528,13 +528,14 @@ def compare_distributions(
             points2 = filter_outlier(points2, method=out_det_method)
         
     if same_dist:
-        if metric in similarity_range.keys():
-            if points1.shape[0] == 0 or points2.shape[0] == 0:
-                return None
-            else:
-                return similarity_range[metric]["highest"]
-        else:
-            raise NotImplementedError(f"Metric {metric} not implemented")
+        for key in similarity_range.keys():
+            if key in metric:
+                if points1.shape[0] == 0 or points2.shape[0] == 0:
+                    return None
+                else:
+                    return similarity_range[key]["highest"]
+        # if metric_name has no implemented function
+        raise NotImplementedError(f"Metric {metric} not implemented")
 
     if metric == "wasserstein":
         distances = [
@@ -600,6 +601,8 @@ def compare_distributions(
             # 1. Convert surface of 3D sphere to 2D plane
             points1 = sphere_to_plane(points1)
             points2 = sphere_to_plane(points2)
+        else:
+            raise ValueError(f"Calculation of overlap only possible in 2d space, name metric as overlap_2d")
 
         # 3. Calculate overlap
         hull1 = ConvexHull(points1)
@@ -623,21 +626,37 @@ def regularized_covariance(cov_matrix, epsilon=1e-6):
     return cov_matrix + np.eye(cov_matrix.shape[0]) * epsilon
 
 @njit(nopython=True)
-def sphere_to_plane(points: np.ndarray, center_distr=False):
+def pca_numba(data, n_components=2):
+    """
+    Perform Principal Component Analysis (PCA) on the input data.
+
+    Args:
+    data (np.ndarray): Input data, shape (n_samples, n_features)
+    n_components (int): Number of components to keep
+
+    Returns: 
+        data_pca (np.ndarray): Transformed data, shape (n_samples, n_components)
+    """
+    # Compute the covariance matrix
+    cov = get_covariance_matrix(data)
+    # Compute the eigenvectors and eigenvalues
+    eigvals, eigvecs = np.linalg.eigh(cov)
+    idx = np.argsort(eigvals)[::-1]
+    eigvecs = eigvecs[:, idx[:n_components]]  # extract only the first n_components principal components
+    data_pca = np.dot(data, eigvecs)
+    return data_pca
+
+@njit(nopython=True)
+def sphere_to_plane(points: np.ndarray):
     """
     Convert 3D points on a sphere to 2D points on a plane.
     """
-    if center_distr:
-        # extract principal components
-        cov = get_covariance_matrix(points)
-        eigvals, eigvecs = np.linalg.eigh(cov)
-        idx = np.argsort(eigvals)[::-1]
-        eigvecs = eigvecs[:, idx]
-        points = np.dot(points, eigvecs)
+    points = points.astype(np.float64)
+    # convert spherical coordinates to 2D plane
     phi = np.arctan2(points[:, 1], points[:, 0])
     theta = np.arccos(points[:, 2])
-    points1_2d = np.column_stack((phi, theta))
-    return points1_2d
+    points_2d = np.column_stack((phi, theta))
+    return points_2d
 
 
 @njit(nopython=True)
@@ -780,7 +799,7 @@ def mahalanobis_distance(x, mean, inv_cov):
     distance = np.sqrt(diff.dot(inv_cov).dot(diff))
     return distance
 
-#@njit(nopython=True)
+@njit(nopython=True)
 def compute_density(points, neighbor_distance, inv_cov=None):
     """
     Compute the density of each high-dimensional point in the distribution using a neighbor_distance and Mahalanobis distance.
@@ -812,10 +831,9 @@ def compute_density(points, neighbor_distance, inv_cov=None):
 
     if densities.sum() == 0:
         print("No inliers found")
-        print("No inliers found")
     return densities
 
-#@njit(nopython=True)
+@njit(nopython=True)
 def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, method="contamination"):
     n, d = points.shape
 
@@ -873,7 +891,7 @@ def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, me
     return mask_inliers
 
 
-#@njit(nopython=True)
+@njit(nopython=True)
 def filter_outlier_numba(points, contamination=0.2, neighbor_distance=None, method="contamination"):
     """
     Filter out outliers from a set of points using a simplified Elliptic Envelope method.
@@ -928,55 +946,83 @@ def filter_outlier(points, contamination=0.2, only_mask=False, method="contamina
     return points[mask]
 
 
-def intersect_segments(seg1, seg2):
-    """
-    Determine if two line segments intersect and return the point of intersection.
+import numpy as np
 
-    This function uses the parametric form of line equations to find the
-    intersection point of two line segments.
+@njit(nopython=True)
+def numba_cross(a, b):
+    """
+    Numba implementation of np.cross function.
 
     Parameters:
-    seg1 (list of tuples): The first line segment, represented by two points [(x1, y1), (x2, y2)]
-    seg2 (list of tuples): The second line segment, represented by two points [(x3, y3), (x4, y4)]
+    a (np.ndarray): First input array.
+    b (np.ndarray): Second input array.
 
     Returns:
-    tuple or None: If the segments intersect, returns the (x, y) coordinates of the
+    np.ndarray: Cross product of a and b.
+
+    Note:
+    - This function assumes that a and b are 2D or 3D arrays.
+    """
+    if a.shape[-1] == 2 and b.shape[-1] == 2:
+        result = np.zeros_like(a)
+        result[0] = a[0] * b[1] - a[1] * b[0]
+    elif a.shape[-1] == 3 and b.shape[-1] == 3:
+        result = np.zeros_like(a)
+        result[0] = a[1] * b[2] - a[2] * b[1]
+        result[1] = a[2] * b[0] - a[0] * b[2]
+        result[2] = a[0] * b[1] - a[1] * b[0]
+    else:
+        raise ValueError("Input arrays must be 2D or 3D.")
+    return result
+
+
+def intersect_segments(seg1, seg2):
+    """
+    Determine if two line segments intersect in any number of dimensions (2D or 3D) and return the point of intersection.
+
+    Parameters:
+    seg1 (list of tuples): The first line segment, represented by two points [(p1), (p2)].
+    seg2 (list of tuples): The second line segment, represented by two points [(q1), (q2)].
+
+    Returns:
+    tuple or None: If the segments intersect, returns the coordinates of the
                    intersection point. If they don't intersect or are parallel, returns None.
 
     Note:
     - The function assumes that the input segments are valid (i.e., two distinct points for each segment).
-    - Parallel segments (including collinear segments) are considered as non-intersecting.
+    - Parallel or collinear segments are considered as non-intersecting unless their projections overlap.
     """
-    # Unpack the segment endpoints
-    x1, y1 = seg1[0]
-    x2, y2 = seg1[1]
-    x3, y3 = seg2[0]
-    x4, y4 = seg2[1]
+    # Convert points to numpy arrays for easier manipulation
+    p1, p2 = np.array(seg1[0]), np.array(seg1[1])
+    q1, q2 = np.array(seg2[0]), np.array(seg2[1])
 
-    # Calculate the denominator
-    den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+    # Direction vectors for each segment
+    r = p2 - p1
+    s = q2 - q1
 
-    # If den is zero, the lines are parallel
-    if den == 0:
-        return None
+    # Check if the segments are parallel (determinant == 0)
+    r_cross_s = numba_cross(r, s)
+    r_cross_s_magnitude = np.linalg.norm(r_cross_s)
 
-    # Calculate the parameters t and u
-    t = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den
-    u = -((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den
+    if r_cross_s_magnitude == 0:
+        return None  # Segments are parallel or collinear
+
+    # Calculate the parameters t and u for the parametric equations
+    qp = q1 - p1
+    t = np.sum(numba_cross(qp, s)) / r_cross_s_magnitude
+    u = np.sum(numba_cross(qp, r)) / r_cross_s_magnitude
 
     # Check if the intersection point lies on both line segments
     if 0 <= t <= 1 and 0 <= u <= 1:
         # Calculate the point of intersection
-        x = x1 + t * (x2 - x1)
-        y = y1 + t * (y2 - y1)
-        return (x, y)
+        intersection_point = p1 + t * r
+        return tuple(intersection_point)
     else:
         return None
 
-
 def area_of_intersection(hull1, hull2):
     """
-    Calculate the area of intersection between two 2D convex hulls.
+    Calculate the area of intersection between two convex hulls.
 
     This function finds the intersection points between the edges of two convex hulls
     and calculates the area of the resulting intersection polygon.
@@ -1019,8 +1065,12 @@ def area_of_intersection(hull1, hull2):
     area = 0
     if len(intersect_points) > 2:
         try:
-            intersection_hull = ConvexHull(intersect_points)
-            area = intersection_hull.area
+            if hull1.points.shape[1] == 2:
+                intersection_hull = ConvexHull(intersect_points)
+                area = intersection_hull.area
+            elif hull1.points.shape[1] == 3:
+                intersection_hull = ConvexHull(intersect_points)
+                area = intersection_hull.volum
         except:
             area = 0
     return area
@@ -1898,4 +1948,17 @@ def timer(func):
         print(f"Function {func.__name__!r} executed in {(t2-t1):.4f}s")
         return result
 
+    return wrap_func
+
+def profile_function(func):
+    def wrap_func(*args, **kwargs):
+        profiler = Profiler()
+        profiler.start()
+        result = func(*args, **kwargs)
+        profiler.stop()
+        print(profiler.output_text(unicode=True, color=True))
+        # Save the output to an HTML file
+        with open('profile_report.html', 'w') as f:
+            f.write(profiler.output_html())
+        return result
     return wrap_func
