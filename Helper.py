@@ -883,7 +883,7 @@ def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, me
         densities = compute_density(valid_points, neighbor_distance)
         
         # Determine threshold based on contamination (percentage of lowest density points)
-        threshold = np.percentile(densities, 100 * contamination)
+        threshold = np.percentile(densities, 100 * contamination) if sum(densities) > 0 else np.inf
     
         for i in range(len(valid_points)):
             mask_inliers[i] = densities[i] > threshold

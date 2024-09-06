@@ -2644,6 +2644,7 @@ class Vizualizer:
         cmap="viridis",
         save_path=None,
         interpolation="none",
+        colorbar_label=None,
         show=True,
     ):
         # Create figure and axis
@@ -2671,7 +2672,7 @@ class Vizualizer:
         )
 
         if colorbar:
-            fig.colorbar(cax, ax=ax)
+            fig.colorbar(cax, ax=ax, label=colorbar_label)
 
         if save_path:
             plt.savefig(save_path)
@@ -3164,6 +3165,8 @@ class Vizualizer:
 
             locations_raw = data["locations"]
             values_raw = data["values"]
+            c_samples += len(values_raw)
+            c_outliers += np.sum(values_raw<0.2)
             usefull_idx = values_raw>0.2
 
             if sum(usefull_idx) == 0:
@@ -3174,8 +3177,6 @@ class Vizualizer:
                 # Project 3D locations to 2D
                 locations = pca_numba(locations.astype(np.float64))
 
-            c_outliers += np.sum(values<0.2)
-            c_samples += len(values)
             # Normalize the density values to be between 0 and 1 for alpha
             norm = mcolors.Normalize(vmin=0, vmax=max(values))
             alphas = norm(values) if use_alpha else np.ones_like(values)
