@@ -2717,6 +2717,7 @@ class Vizualizer:
                 max_value[name] = np.max([max_value[name], np.max(dists)])
 
         for name, group_similarities in similarities.items():
+            name = name.lower()
             if name in skip:
                 continue
             # plot with all groups of a distance metric into a single plot with multiple heatmaps

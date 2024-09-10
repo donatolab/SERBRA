@@ -455,7 +455,7 @@ def compare_distributions(
     - points2: array-like, second distribution
     - metric: str, the metric to use for comparison ('wasserstein', 'ks', 'chi2', 'kl', 'js', 'energy', 'mahalanobis')
         - 'wasserstein': Wasserstein Distance (Earth Mover's Distance) energy needed to move one distribution to the other
-        - 'ks': Kolmogorov-Smirnov statistic for each dimension and take the maximum (typically used for 1D distributions)
+        - 'kolmogorov-smirnov': Kolmogorov-Smirnov statistic for each dimension and take the maximum (typically used for 1D distributions)
         - 'chi2': Chi-Squared test (requires binned data, here we just compare histograms) - sum of squared differences between observed and expected frequencies
         - 'kl': Kullback-Leibler Divergence - measure of how one probability distribution diverges from a second, expected probability distribution
         - 'js': Jensen-Shannon Divergence - measure of similarity between two probability distributions
@@ -504,7 +504,7 @@ def compare_distributions(
     similarity_range = {
         "euclidean": {"lowest": np.inf,"highest": 0.0},
         "wasserstein": {"lowest": np.inf,"highest": 0.0},
-        "ks": {"lowest": np.inf,"highest": 0.0},
+        "kolmogorov-smirnov": {"lowest": np.inf,"highest": 0.0},
         "chi2": {"lowest": np.inf,"highest": 0.0},
         "kullback-leibler": {"lowest": np.inf,"highest": 0.0},
         "jensen-shannon": {"lowest": np.inf,"highest": 0.0},
@@ -1936,6 +1936,18 @@ def range_to_times_xlables_xpos(
             xpos.append(i + 1)
     return xticks, xpos
 
+# generators
+def generate_linspace_samples(bounds, num):
+    # Generate a list of linspace arrays for each dimension
+    linspaces = [np.linspace(start, stop, num) for start, stop in bounds]
+    
+    # Create the meshgrid for all combinations
+    meshgrids = np.meshgrid(*linspaces, indexing='ij')
+    
+    # Combine the grids into a single (N, dimensions) array of points
+    samples = np.vstack([grid.ravel() for grid in meshgrids]).T
+    
+    return samples
 
 # decorator functions
 def timer(func):
@@ -1962,3 +1974,4 @@ def profile_function(func):
             f.write(profiler.output_html())
         return result
     return wrap_func
+

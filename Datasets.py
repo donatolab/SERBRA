@@ -523,7 +523,7 @@ class NeuralDataset(Dataset):
         inside_bin_similarity: bool = False,
         remove_outliers: bool = True,
         out_det_method: str = "density",
-        parallel: bool = False,
+        parallel: bool = True,
         max_bin: List[int] = None,
         show_frames: int = None,
         idx_to_keep: np.ndarray = None,
