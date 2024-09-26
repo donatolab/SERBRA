@@ -19,7 +19,7 @@ from sklearn.metrics import (
     rand_score,
     adjusted_rand_score,
 )
-from scipy.stats import wasserstein_distance, ks_2samp, entropy, energy_distance
+from scipy.stats import wasserstein_distance, ks_2samp, entropy, energy_distance, gaussian_kde
 from scipy.spatial.distance import cdist, mahalanobis
 from scipy.spatial import distance, ConvexHull
 from sklearn.covariance import EllipticEnvelope
@@ -453,6 +453,8 @@ def compare_distributions(
     Parameters:
     - points1: array-like, first distribution
     - points2: array-like, second distribution
+    - out_det_method: str, method to use for outlier detection ('density', 'contamination')
+    - neighbor_distance: float, distance threshold for outlier detection
     - metric: str, the metric to use for comparison ('wasserstein', 'ks', 'chi2', 'kl', 'js', 'energy', 'mahalanobis')
         - 'wasserstein': Wasserstein Distance (Earth Mover's Distance) energy needed to move one distribution to the other
         - 'kolmogorov-smirnov': Kolmogorov-Smirnov statistic for each dimension and take the maximum (typically used for 1D distributions)
@@ -514,20 +516,7 @@ def compare_distributions(
         "overlap": {"lowest": 0.0,"highest": 1.0},
     }
 
-    same_dist = False
     if same_distribution(points1, points2):
-        same_dist = True
-
-    # Filter out outliers from the distributions
-    if filter_outliers and not same_dist:
-        if parallel:
-            points1 = filter_outlier_numba(points1, method=out_det_method, neighbor_distance=neighbor_distance)
-            points2 = filter_outlier_numba(points2, method=out_det_method, neighbor_distance=neighbor_distance)
-        else:
-            points1 = filter_outlier(points1, method=out_det_method)
-            points2 = filter_outlier(points2, method=out_det_method)
-        
-    if same_dist:
         for key in similarity_range.keys():
             if key in metric:
                 if points1.shape[0] == 0 or points2.shape[0] == 0:
@@ -536,6 +525,15 @@ def compare_distributions(
                     return similarity_range[key]["highest"]
         # if metric_name has no implemented function
         raise NotImplementedError(f"Metric {metric} not implemented")
+
+    # Filter out outliers from the distributions
+    if filter_outliers:
+        if parallel:
+            points1 = filter_outlier_numba(points1, method=out_det_method, neighbor_distance=neighbor_distance)
+            points2 = filter_outlier_numba(points2, method=out_det_method, neighbor_distance=neighbor_distance)
+        else:
+            points1 = filter_outlier(points1, method=out_det_method)
+            points2 = filter_outlier(points2, method=out_det_method)
 
     if metric == "wasserstein":
         distances = [
@@ -554,26 +552,19 @@ def compare_distributions(
 
     elif metric == "chi2":
         # Chi-Squared test (requires binned data, here we just compare histograms)
-        hist1, _ = np.histogram(points1, bins=10, density=True)
-        hist2, _ = np.histogram(points2, bins=10, density=True)
-        return np.sum((hist1 - hist2) ** 2 / hist2 + 1e-10)
+        hist1, hist2 = points_to_histogram(points1, points2)
+        return np.sum((hist1 - hist2) ** 2 / hist2)
 
     elif metric == "kullback-leibler":
         # Kullback-Leibler Divergence
-        hist1, _ = np.histogram(points1, bins=10, density=True)
-        hist2, _ = np.histogram(points2, bins=10, density=True)
-        return entropy(
-            hist1 + 1e-10, hist2 + 1e-10
-        )  # Adding a small value to avoid division by zero
+        hist1, hist2 = points_to_histogram(points1, points2)
+        return entropy(hist1, hist2)
 
     elif metric == "jensen-shannon":
         # Jensen-Shannon Divergence
-        hist1, _ = np.histogram(points1, bins=10, density=True)
-        hist2, _ = np.histogram(points2, bins=10, density=True)
+        hist1, hist2 = points_to_histogram(points1, points2)
         m = 0.5 * (hist1 + hist2)
-        return 0.5 * (
-            entropy(hist1 + 1e-10, m + 1e-10) + entropy(hist2 + 1e-10, m + 1e-10)
-        )
+        return 0.5 * (entropy(hist1, m) + entropy(hist2, m))
 
     elif metric == "energy":
         # Energy Distance
@@ -596,25 +587,86 @@ def compare_distributions(
             v2 = np.mean(points2, axis=0)
         return cosine_similarity(v1, v2)
 
-    elif "overlap" in metric:
-        if "2d" in metric:
-            # 1. Convert surface of 3D sphere to 2D plane
-            points1 = sphere_to_plane(points1)
-            points2 = sphere_to_plane(points2)
-        else:
-            raise ValueError(f"Calculation of overlap only possible in 2d space, name metric as overlap_2d")
-
-        # 3. Calculate overlap
-        hull1 = ConvexHull(points1)
-        hull2 = ConvexHull(points2)
-
-        overlap = area_of_intersection(hull1, hull2) / (
-            hull1.area + hull2.area - area_of_intersection(hull1, hull2)
-        )
+    elif "overlap":
+        kde1 = gaussian_kde(points1.T)
+        kde2 = gaussian_kde(points2.T)
+        overlap = normalized_kde_overlap(kde1, kde2)
         return overlap
+    
+    elif "cross_entropy":
+
 
     else:
         raise ValueError(f"Unsupported metric: {metric}")
+
+def normalized_kde_overlap(kde1, kde2):
+    """
+    Compute the normalized overlap between two Kernel Density Estimation (KDE) distributions.
+    A
+
+    Normalization: The normalization step ensures that the final overlap measure is between 0 and 1, making it easier to interpret.
+    Interpretation
+    Value of 1: A normalized overlap of 1 indicates that the two KDEs are identical in terms of their distribution shapes and positions.
+    Value of 0: A normalized overlap of 0 indicates no overlap between the KDEs, meaning the distributions do not share any common area.
+    Intermediate Values: Values between 0 and 1 indicate partial overlap, with higher values indicating greater similarity between the distributions.
+    """
+    # Compute the self-overlaps
+    I11 = kde1.integrate_kde(kde1)
+    I22 = kde2.integrate_kde(kde2)
+
+    # Compute the cross-overlap
+    I12 = kde1.integrate_kde(kde2)
+
+    # Normalize the overlap
+    normalized_overlap = I12 / np.sqrt(I11 * I22)
+    return normalized_overlap
+
+def calc_kde_entropy(data, bandwidth=None, samples=1000):
+    """
+    Calculate entropy of a 2D distribution using Kernel Density Estimation.
+    
+    Parameters:
+    data : array-like
+        should have positional data in the form of (n_samples, n_dimensions)
+    bandwidth : float, optional
+        The bandwidth of the kernel
+        It is also possible to use the 
+            - "scott" to use Scott's Rule of Thumb for bandwidth selection ( default )
+            - "silverman" to use Silverman's Rule of Thumb for bandwidth selection
+    num_samples : int, optional
+        Number of samples to use for Monte Carlo integration
+    
+    Returns:
+    float
+        The estimated entropy
+    """
+    # The density array now contains the KDE values at each grid point in 3D space
+    kde = gaussian_kde(data.T) if bandwidth is None else gaussian_kde(data.T, bw_method=bandwidth)
+    
+    # get the probability density estimates at each data point 
+    # densities = kde.evaluate(data.T)
+
+    # Draw samples from the KDE
+    samples = kde.resample(size=samples)
+
+    # Compute log density for the samples
+    densities = kde.pdf(samples)
+    # log_dens = kde.logpdf(samples)
+
+    # Estimate entropy of the samples
+    sample_entropy = calc_entropy(densities, convert_to_probabilities=True)
+
+    return sample_entropy
+
+def calc_entropy(data, convert_to_probabilities=True):
+    """
+    Calculate entropy given probabilities or a distribution of states that is converted to probabilities.
+    """
+    ## convert filtered_group_densities to probabilities
+    probabilities = data/sum(data) if convert_to_probabilities else data
+    ## calculate shannon entropy
+    entropy = -sum(probabilities*np.log(probabilities + 1e-10))
+    return entropy
 
 @njit(nopython=True)
 def get_covariance_matrix(data: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
@@ -890,6 +942,24 @@ def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, me
 
     return mask_inliers
 
+def points_to_histogram(points1, points2, bins=None):
+    eps = 1e-10  # Small value to avoid division by zero and log(0)
+    
+    # Determine number of bins using Sturges' rule
+    n1, n2 = len(points1), len(points2)
+    num_bins = int(np.ceil(np.log2(max(n1, n2)) + 1))
+    
+    # Compute histograms with consistent bins
+    bin_range = (min(min(points1), min(points2)), max(max(points1), max(points2)))
+    hist1, bin_edges = np.histogram(points1, bins=num_bins, range=bin_range, density=True)
+    hist2, _ = np.histogram(points2, bins=bin_edges, density=True)
+    
+    # Add small value and normalize
+    hist1 = hist1 + eps
+    hist2 = hist2 + eps
+    hist1 /= np.sum(hist1)
+    hist2 /= np.sum(hist2)
+    return hist1, hist2
 
 @njit(nopython=True)
 def filter_outlier_numba(points, contamination=0.2, neighbor_distance=None, method="contamination"):

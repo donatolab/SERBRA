@@ -513,6 +513,19 @@ class NeuralDataset(Dataset):
         self.embedding = model.transform(self.data)
         return self.embedding
 
+    def get_data(self, use_embedding=False, model=None, idx_to_keep=None):
+        if use_embedding:
+            if model is None and self.embedding is None:
+                raise (f"Embedding was not generated. Model needed for embedding.")
+            if model:
+                if self.embedding is not None:
+                    print(f"Recalculated Embedding based on given model")
+                self.embedd_data(model)
+
+        data = self.embedding if use_embedding or model is not None else self.data
+        filtered_neural_data = self.filter_by_idx(data, idx_to_keep=idx_to_keep)
+        return filtered_neural_data
+
     def similarity(
         self,
         metric: str = "cosine",
@@ -543,24 +556,16 @@ class NeuralDataset(Dataset):
             category map: maps discrete labels to multi dimensional position vectors
 
         """
-        if use_embedding:
-            if model is None and self.embedding is None:
-                raise (f"Embedding was not generated. Model needed for embedding.")
-            if model:
-                if self.embedding is not None:
-                    print(f"Recalculated Embedding based on given model")
-                self.embedd_data(model)
-
-        data = self.embedding if use_embedding or model is not None else self.data
-
-        filtered_neural_data = self.filter_by_idx(data, idx_to_keep=idx_to_keep)
+        filtered_neural_data = self.get_data(use_embedding, model, idx_to_keep)
 
         if binned_features is not None:
             filtered_binned_features = self.filter_by_idx(
                 binned_features, idx_to_keep=idx_to_keep
             )
             if inside_bin_similarity:
+                # Calculate similarity between vectors
                 similarities = correlate_vectors(filtered_neural_data, metric=metric)
+
                 # Calculate similarity inside binned features
                 binned_similarities, _ = group_by_binned_data(
                     data=similarities,
@@ -587,17 +592,15 @@ class NeuralDataset(Dataset):
                 )
                 max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
                 
-                radius = 1 # maximum position of sample in space
-                max_distance = 2*radius # maximum distance between two samples
-                ## based on the biggest distance in the space
-                #neighbor_distance = max_distance/len(group_vectors)
-                
+                # This is a heuristic to determine the distance between two distributions, needed for density based outlier detection
                 # based on the amount of space every bin has on the surface of a sphere
                 neighbor_distance = np.sqrt(4/len(group_vectors)) 
                 
                 if out_det_method == "density" and use_embedding==False:
                     print("WARNING: Density based outlier detection is not recommended for high dimensional data. Euclidean distance is used for samples distance calculation.")
+                
                 similarities = {}
+                # Compare distributions between each group (bin)
                 for group_i, (group_name, group1) in enumerate(group_vectors.items()):
                     max_bin = max_bin.astype(int)
                     similarities_to_groupi = np.zeros(max_bin)
@@ -636,6 +639,7 @@ class NeuralDataset(Dataset):
                     xticks = bins
                 additional_title = f" from and to each Bin {self.metadata['task_id']}"
         else:
+            # No binned features, calculate similarity directly
             similarities = correlate_vectors(filtered_neural_data, metric=metric)
             inside_bin_similarity = True
             to_show_similarities = (
@@ -674,6 +678,146 @@ class NeuralDataset(Dataset):
                 )
         return similarities
 
+    def information_content(
+            self,
+            method="kde",
+            model=None,
+            idx_to_keep: np.ndarray = None,
+            use_embedding: bool = False,
+            binned_features: np.ndarray = None,
+            category_map: Dict = None,
+            max_bin: List[int] = None,
+            remove_outliers: bool = True,
+            outlier_threshold: float = 0.2,
+            plot=False,
+            plot_density=False,
+            use_alpha=False,
+            plot_legend=False,
+            figsize=(6, 5)):
+        """
+        Evaluates the amount of information in the neural data. Based on the distribution of samples labeld by the binned features.
+        Outlier are always removed based on the density of the samples in the feature space.
+
+        Parameter:
+            - method: str
+                The method used to calculate the information content. Default is "entropy".
+            - use_embedding: bool
+                If True, the data is embedded before calculating the information content. Default is False.
+            - model: cebra.model for embedding data
+            - idx_to_keep: np.ndarray
+                The indices of the samples to keep. Default is None.
+            - binned_features: np.ndarray
+                The binned features used to group the data. Default is None.
+            - category_map: Dict
+                The mapping of the discrete labels to the multi-dimensional position vectors. Default is None.
+            - max_bin: List[int]
+                The maximum bin for each dimension. Default is None and will be calculated based on the binned features (not perfect)
+            - remove_outliers: bool
+                If True, outliers are removed based on the density of the samples in the feature space. Default is True.
+            - outlier_threshold: float
+                The threshold used to determine outliers. Default is 0.2.
+            - plot: bool
+                If True, the information content is plotted. Default is False.
+        """
+        densities = self.density(
+            model=model,
+            idx_to_keep=idx_to_keep,
+            use_embedding=use_embedding,
+            binned_features=binned_features,
+            category_map=category_map,
+            max_bin=max_bin,
+            remove_outliers=remove_outliers,
+            outlier_threshold=outlier_threshold,
+            plot=plot_density,
+            use_alpha=False,
+        )
+        inf_contents = {}
+        for group_name, data in densities.items():
+            locations = data["locations"]
+            group_densities = data["values"]
+            # calculate entropy
+            if method == "entropy":
+                inf_content = calc_entropy(group_densities, convert_to_probabilities=True)
+            elif method == "kde":
+                inf_content = calc_kde_entropy(locations, bandwidth=None)
+            else:
+                raise ValueError(f"Method {method} not supported.")
+
+            inf_contents[group_name] = inf_content
+        
+        if plot:
+            # convert entropies dict to array for heatmap plotting
+            unique_bins = np.unique(list(densities.keys()), axis=0)
+            max_bins = np.max(unique_bins, axis=0)+1
+            heatmap_data = np.zeros(max_bins)
+            for group_name, entropy in inf_contents.items():
+                heatmap_data[group_name[0], group_name[1]] = entropy
+
+            title = "KDE based Entropy" if method == "kde" else "Entropy"
+            title += f" of density distributions {self.metadata['task_id']}"
+            title += "embedded" if use_embedding else ""
+            title += " filtered" if remove_outliers else ""
+            Vizualizer.plot_heatmap(heatmap_data, xlabel="Position Bin X", ylabel="Position Bin Y", title=title, colorbar_label="Entropy")
+        return inf_contents
+        
+    def density(
+           self,
+            model=None,
+            idx_to_keep: np.ndarray = None,
+            use_embedding: bool = False,
+            binned_features: np.ndarray = None,
+            category_map: Dict = None,
+            max_bin: List[int] = None,
+            remove_outliers: bool = True,
+            outlier_threshold: float = 0.2,
+            plot=False,
+            plot_legend=False,
+            use_alpha=False,      
+    ):
+        filtered_neural_data = self.get_data(use_embedding, model, idx_to_keep)
+        filtered_binned_features = self.filter_by_idx(
+                binned_features, idx_to_keep=idx_to_keep
+            )
+        group_vectors, bins = group_by_binned_data(
+            data=filtered_neural_data,
+            category_map=category_map,
+            binned_data=filtered_binned_features,
+            group_values="raw",
+            max_bin=max_bin,
+            as_array=False,
+        )
+        max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
+
+        # This is a heuristic to determine the distance between two distributions, needed for density based outlier detection
+        # based on the amount of space every bin has on the surface of a sphere
+        neighbor_distance = np.sqrt(4/len(group_vectors)) 
+
+
+        usefull_idx = []
+        densities = {}
+        for group_name, locations in group_vectors.items():
+            group_densities = compute_density(locations, neighbor_distance)
+            densities[group_name] = {"locations":locations,
+                                    "values": group_densities
+                                            }
+            if remove_outliers:
+                usefull_ids = np.where(group_densities > outlier_threshold)
+                usefull_idx.append(usefull_ids)
+
+        additional_title = f" from and to each Bin {self.metadata['task_id']}"
+        if plot==True or plot=="2d":
+            Vizualizer.plot_2d_group_scatter(densities, additional_title=additional_title, plot_legend=plot_legend, use_alpha=use_alpha, filter_outlier=remove_outliers, outlier_threshold=outlier_threshold)
+        elif plot=="3d":
+            Vizualizer.plot_3D_group_scatter(densities, additional_title=additional_title, plot_legend=plot_legend, use_alpha=use_alpha, filter_outlier=remove_outliers, outlier_threshold=outlier_threshold)
+        
+        if remove_outliers:
+            densities_filtered = {}
+            for (group_name, data), usefull_ids in zip(densities.items(), usefull_idx):
+                densities_filtered[group_name] = {"locations":data["locations"][usefull_ids],
+                                                    "values": data["values"][usefull_ids]
+                                                }
+            densities = densities_filtered
+        return densities
 
 class Data_Position(BehaviorDataset):
     """

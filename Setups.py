@@ -1532,6 +1532,7 @@ class Environment(Behavior_Processing):
             )
         n_dims = positions.shape[1]
         at_border = np.zeros(positions.shape[0], dtype=bool)
+        #TODO: Corner (based on degree?)
         at_corners = np.zeros(positions.shape[0], dtype=bool)
 
         # Calculate corner radius (same for all dimensions)

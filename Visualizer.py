@@ -3048,6 +3048,8 @@ class Vizualizer:
         cmap="rainbow",
         figsize=(20, 20),
         use_alpha=True,
+        filter_outlier: bool = False,
+        outlier_threshold: float = 0.2,
         specific_group: Tuple[int, int]=None,
         plot_legend=True,
         save_dir=None,
@@ -3064,12 +3066,23 @@ class Vizualizer:
         group_colors = plt.cm.get_cmap(cmap, len(gropu_data))  # Get a colormap with distinct colors
 
         # Plot each group with its unique color and density-based transparency
+        c_outliers = 0
+        c_samples = 0
         for i, (group_name, data) in enumerate(gropu_data.items()):
             if specific_group:
                 if group_name != specific_group:
                     continue
-            locations = data["locations"]
-            values = data["values"]
+
+            locations_raw = data["locations"]
+            values_raw = data["values"]
+            c_samples += len(values_raw)
+            c_outliers += np.sum(values_raw<outlier_threshold)
+            usefull_idx = values_raw>outlier_threshold
+
+            if sum(usefull_idx) == 0:
+                continue
+            locations = locations_raw[usefull_idx] if filter_outlier else locations_raw
+            values = values_raw[usefull_idx] if filter_outlier else values_raw
             
             # Normalize the density values to be between 0 and 1 for alpha
             #norm = mcolors.Normalize(vmin=min(values), vmax=max(values))
@@ -3088,6 +3101,8 @@ class Vizualizer:
             ax.scatter(part_locations[:, 0], part_locations[:, 1], part_locations[:, 2], 
                     color=rgba_colors, label=group_name, edgecolor=None, s=10)
             
+        if filter_outlier:
+            title += f" {c_outliers/c_samples:.2%} outliers"
 
         # Add labels and legend
         ax.set_xlabel('X axis')
@@ -3106,9 +3121,6 @@ class Vizualizer:
         if plot_legend:
             ax.legend()
 
-        # Show plot
-        plt.show()
-
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_zlabel(zlabel)
@@ -3122,6 +3134,7 @@ class Vizualizer:
         group_data: dict,
         use_pca: bool = True,
         filter_outlier: bool = False,
+        outlier_threshold: float = 0.2,
         additional_title=None,
         supxlabel: str = 'Bin X',
         supylabel: str = 'Bin Y',
@@ -3167,8 +3180,8 @@ class Vizualizer:
             locations_raw = data["locations"]
             values_raw = data["values"]
             c_samples += len(values_raw)
-            c_outliers += np.sum(values_raw<0.2)
-            usefull_idx = values_raw>0.2
+            c_outliers += np.sum(values_raw<outlier_threshold)
+            usefull_idx = values_raw>outlier_threshold
 
             if sum(usefull_idx) == 0:
                 continue
@@ -3197,7 +3210,7 @@ class Vizualizer:
                         color=rgba_colors, label=group_name, edgecolor=None, s=10)
             axes[loc_x, loc_y].set_title(group_name, fontsize=max_bins[0]/3 ,pad=figsize[0]/max_bins[0])
 
-        if use_alpha:
+        if filter_outlier:
             title += f" {c_outliers/c_samples:.2%} outliers"
         fig.suptitle(title, fontsize=figsize[1], y=1.01)
         fig.supxlabel(supxlabel, fontsize=figsize[1], x=0.5, y=-0.03)
