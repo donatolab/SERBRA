@@ -528,8 +528,10 @@ class NeuralDataset(Dataset):
 
     def similarity(
         self,
+        similarities: np.ndarray = None,
         metric: str = "cosine",
         model=None,
+        additional_title="",
         use_embedding: bool = False,
         binned_features: np.ndarray = None,
         category_map: Dict = None,
@@ -545,8 +547,9 @@ class NeuralDataset(Dataset):
         xlabel=None,
         ylabel=None,
         title=None,
-        plot: bool = False,
         figsize=(6, 5),
+        plot: bool = False,
+        save_plot: bool = False,
     ):
         """
         metrics: euclidean, wasserstein, kolmogorov-smirnov, chi2, kullback-leibler, jensen-shannon, energy, mahalanobis, cosine
@@ -577,6 +580,7 @@ class NeuralDataset(Dataset):
                 )
                 title = "Similarity Inside Binned Features"
                 title += f" Embedded" if use_embedding or model is not None else ""
+                additional_title = additional_title
                 xticks = xticks
                 xlabel = xlabel
                 ylabel = ylabel
@@ -599,31 +603,21 @@ class NeuralDataset(Dataset):
                 if out_det_method == "density" and use_embedding==False:
                     print("WARNING: Density based outlier detection is not recommended for high dimensional data. Euclidean distance is used for samples distance calculation.")
                 
-                similarities = {}
-                # Compare distributions between each group (bin)
-                for group_i, (group_name, group1) in enumerate(group_vectors.items()):
-                    max_bin = max_bin.astype(int)
-                    similarities_to_groupi = np.zeros(max_bin)
-
-                    for group_j, (group_name2, group2) in enumerate(
-                        group_vectors.items()
-                    ):
-                        print(f"Comparing {group_name} to {group_name2}")
-                        dist = compare_distributions(
-                            group1,
-                            group2,
-                            metric=metric,
-                            neighbor_distance=neighbor_distance,
-                            filter_outliers=remove_outliers,
-                            parallel=parallel,
-                            out_det_method=out_det_method,
-                        )
-                        group_position = (
-                            group_j if isinstance(group_name2, str) else group_name2
-                        )
-                        similarities_to_groupi[group_position] = dist
-
-                    similarities[group_name] = similarities_to_groupi
+                if similarities is None:
+                    similarities = compare_distribution_groups(
+                        group_vectors,
+                        metric=metric,
+                        neighbor_distance=neighbor_distance,
+                        filter_outliers=remove_outliers,
+                        parallel=parallel,
+                        out_det_method=out_det_method,
+                    )
+                else:
+                    if not isinstance(similarities, dict):
+                        raise ValueError("Similarities should be dictionary. For plotting similarities in 2D")
+                    if not isinstance(list(similarities.values())[0], np.ndarray):
+                        raise ValueError("Similarities inside dict should be numpy array.")
+                    
 
                 bins = np.array(bins)
                 plot_bins = xticks or bins
@@ -637,10 +631,19 @@ class NeuralDataset(Dataset):
                     yticks = ticks[1] if len(ticks) > 1 else None
                 else:
                     xticks = bins
-                additional_title = f" from and to each Bin {self.metadata['task_id']}"
+                additional_title += f" from and to each Bin {self.metadata['task_id']}"
         else:
             # No binned features, calculate similarity directly
-            similarities = correlate_vectors(filtered_neural_data, metric=metric)
+            if similarities is None:
+                similarities = correlate_vectors(filtered_neural_data, metric=metric)
+            else:
+                if not isinstance(similarities, np.ndarray):
+                    raise ValueError("Similarities should be numpy array. For inside bin similarity plotting.")
+                if similarities.ndim != 2:
+                    raise ValueError(
+                        "Similarities should be 2D array. For plotting similarities in 2D"
+                    )
+                
             inside_bin_similarity = True
             to_show_similarities = (
                 similarities[:show_frames, :show_frames]
@@ -654,10 +657,13 @@ class NeuralDataset(Dataset):
             ylabel = ylabel or "Frames"
 
         if plot:
+            if save_plot:
+                save_dir = self.data_dir.joinpath("figures")
             if inside_bin_similarity:
                 title += f" {self.metadata['task_id']}"
                 Vizualizer.plot_heatmap(
                     to_show_similarities,
+                    additional_title=additional_title,
                     figsize=figsize,
                     title=title,
                     xticks=xticks,

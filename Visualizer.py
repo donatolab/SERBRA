@@ -2631,6 +2631,7 @@ class Vizualizer:
     def plot_heatmap(
         data,
         title="Heatmap",
+        additional_title="",
         figsize=(6, 5),
         xlabel="Bin (x, y)",
         ylabel="Bin (x, y)",
@@ -2653,7 +2654,7 @@ class Vizualizer:
         # Remove diagonal elements
 
         data_no_diag = data - np.eye(data.shape[0]) if no_diag else data
-
+        title += f" {additional_title}" if additional_title else ""
         # Plot heatmap
         cax = Vizualizer.heatmap_subplot(
             data_no_diag,
@@ -2706,9 +2707,11 @@ class Vizualizer:
         tick_positions = np.arange(len(bins))
 
         tick_steps = make_list_ifnot(tick_steps)
+        for i, tick_step in enumerate(tick_steps):
+            tick_steps[i] = 1 if tick_step is 0 else tick_step
         if len(tick_steps) != len(max_bins):
             tick_steps = [tick_steps[0]] * len(max_bins)
-
+        
         max_value = {}
         for name, group_similarities in similarities.items():
             if name not in max_value.keys():
@@ -2721,10 +2724,11 @@ class Vizualizer:
             if name in skip:
                 continue
             # plot with all groups of a distance metric into a single plot with multiple heatmaps
-            title = f"{str(name).capitalize()} Distances{additional_title}"
+            title = f"{str(name).capitalize()} Distances"
+            title += f" {additional_title}" if additional_title else ""
             if name == "cosine":
                 title = title.replace("Distances", "Similarities")
-            if name == "overlap":
+            if name == "overlap" or name == "cross_entropy":
                 title = title.replace("Distances", "")
             if isinstance(max_bins, int) or max_bins.ndim == 0:
                 fig, axes = plt.subplots(
@@ -2755,7 +2759,7 @@ class Vizualizer:
             for group_i, (group_name, dists) in enumerate(group_similarities.items()):
                 vmin = None
                 vmax = None
-                if name in ["cosine", "overlap", "overlap_2d"]:
+                if name in ["cosine", "overlap", "cross_entropy"]:
                     cmap = cmap.replace("_r", "")
                 else:
                     if "_r" not in cmap:
@@ -2775,7 +2779,7 @@ class Vizualizer:
                 elif name in ["correlation", "cosine"]:
                     vmin = -1
                     vmax = 1
-                elif name in ["overlap", "overlap_2d"]:
+                elif name in ["overlap", "cross_entropy"]:
                     vmin = 0
                     vmax = 1
 
