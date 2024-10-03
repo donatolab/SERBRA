@@ -595,6 +595,7 @@ class NeuralDataset(Dataset):
                     as_array=False,
                 )
                 max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
+                max_bin = max_bin.astype(int)
                 
                 # This is a heuristic to determine the distance between two distributions, needed for density based outlier detection
                 # based on the amount of space every bin has on the surface of a sphere
@@ -605,7 +606,8 @@ class NeuralDataset(Dataset):
                 
                 if similarities is None:
                     similarities = compare_distribution_groups(
-                        group_vectors,
+                        group_vectors=group_vectors,
+                        max_bin=max_bin,
                         metric=metric,
                         neighbor_distance=neighbor_distance,
                         filter_outliers=remove_outliers,
@@ -670,6 +672,7 @@ class NeuralDataset(Dataset):
                     xticks_pos=xticks_pos,
                     xlabel=xlabel,
                     ylabel=ylabel,
+                    save_dir=save_dir,
                 )
             else:
                 Vizualizer.plot_group_distr_similarities(
@@ -681,6 +684,7 @@ class NeuralDataset(Dataset):
                     yticks=yticks,
                     tick_steps=tick_steps,
                     colorbar_label=metric,
+                    save_dir=save_dir,
                 )
         return similarities
 
@@ -699,7 +703,9 @@ class NeuralDataset(Dataset):
             plot_density=False,
             use_alpha=False,
             plot_legend=False,
-            figsize=(6, 5)):
+            figsize=(6, 5),
+            save_plot: bool = False,
+            ):
         """
         Evaluates the amount of information in the neural data. Based on the distribution of samples labeld by the binned features.
         Outlier are always removed based on the density of the samples in the feature space.
@@ -763,7 +769,9 @@ class NeuralDataset(Dataset):
             title += f" of density distributions {self.metadata['task_id']}"
             title += "embedded" if use_embedding else ""
             title += " filtered" if remove_outliers else ""
-            Vizualizer.plot_heatmap(heatmap_data, xlabel="Position Bin X", ylabel="Position Bin Y", title=title, colorbar_label="Entropy")
+
+            save_dir = self.data_dir.joinpath("figures") if save_plot else None
+            Vizualizer.plot_heatmap(heatmap_data, xlabel="Position Bin X", ylabel="Position Bin Y", title=title, colorbar_label="Entropy", save_dir=save_dir)
         return inf_contents
         
     def density(
@@ -779,6 +787,8 @@ class NeuralDataset(Dataset):
             plot=False,
             plot_legend=False,
             use_alpha=False,      
+            save_plot: bool = False,
+            save_dir: Path = None,
     ):
         filtered_neural_data = self.get_data(use_embedding, model, idx_to_keep)
         filtered_binned_features = self.filter_by_idx(
@@ -811,10 +821,12 @@ class NeuralDataset(Dataset):
                 usefull_idx.append(usefull_ids)
 
         additional_title = f" from and to each Bin {self.metadata['task_id']}"
+        if save_plot:
+            save_dir = save_dir or self.data_dir.joinpath("figures")
         if plot==True or plot=="2d":
-            Vizualizer.plot_2d_group_scatter(densities, additional_title=additional_title, plot_legend=plot_legend, use_alpha=use_alpha, filter_outlier=remove_outliers, outlier_threshold=outlier_threshold)
+            Vizualizer.plot_2d_group_scatter(densities, additional_title=additional_title, plot_legend=plot_legend, use_alpha=use_alpha, filter_outlier=remove_outliers, outlier_threshold=outlier_threshold, save_dir=save_dir)
         elif plot=="3d":
-            Vizualizer.plot_3D_group_scatter(densities, additional_title=additional_title, plot_legend=plot_legend, use_alpha=use_alpha, filter_outlier=remove_outliers, outlier_threshold=outlier_threshold)
+            Vizualizer.plot_3D_group_scatter(densities, additional_title=additional_title, plot_legend=plot_legend, use_alpha=use_alpha, filter_outlier=remove_outliers, outlier_threshold=outlier_threshold, save_dir=save_dir)
         
         if remove_outliers:
             densities_filtered = {}

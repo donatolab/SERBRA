@@ -358,7 +358,7 @@ def may_butter_lowpass_filter(data, smooth=True, cutoff=2, fps=None, order=2):
                 )
     return data_smoothed
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def cosine_similarity(v1, v2):
     """
     A cosine similarity can be seen as the correlation between two vectors or point distributions.
@@ -443,7 +443,8 @@ def same_distribution(points1, points2):
         return False
     return np.allclose(points1, points2)
 
-"""def compare_distribution_groups(
+def compare_distribution_groups(
+        max_bin,
         group_vectors,
         metric="cosine",
         neighbor_distance=0.1,
@@ -452,6 +453,7 @@ def same_distribution(points1, points2):
         out_det_method="density",
     ):
     
+    """
     Compare distributions between groups using the specified metric.
     Parameters:
         - group_vectors: dict, dictionary of group vectors
@@ -459,11 +461,12 @@ def same_distribution(points1, points2):
 
     Returns:
         - similarities: dict, dictionary of similarities between each group
+    """
     
     similarities = {}
     # Compare distributions between each group (bin)
     for group_i, (group_name, group1) in enumerate(group_vectors.items()):
-        max_bin = max_bin.astype(int)
+        
         similarities_to_groupi = np.zeros(max_bin)
 
         for group_j, (group_name2, group2) in enumerate(
@@ -485,90 +488,7 @@ def same_distribution(points1, points2):
             similarities_to_groupi[group_position] = dist
 
         similarities[group_name] = similarities_to_groupi
-    return similarities"""
-
-from joblib
-
-def compare_distribution_groups(
-        group_vectors,
-        metric="cosine",
-        neighbor_distance=0.1,
-        filter_outliers=True,
-        parallel=True,
-        out_det_method="density",
-    ):
-    """
-    Compare distributions between groups using the specified metric.
-    Parameters:
-        - group_vectors: dict, dictionary of group vectors
-        - other parameters are explained in compare_distributions
-
-    Returns:
-        - similarities: dict, dictionary of similarities between each group
-    """
-
-    def worker_compare(group_name, group1, group_vectors, metric, neighbor_distance, filter_outliers, parallel, out_det_method, max_bin):
-        similarities_to_groupi = np.zeros(max_bin)
-        
-        for group_j, (group_name2, group2) in enumerate(group_vectors.items()):
-            print(f"Comparing {group_name} to {group_name2}")
-            dist = compare_distributions(
-                group1,
-                group2,
-                metric=metric,
-                neighbor_distance=neighbor_distance,
-                filter_outliers=filter_outliers,
-                parallel=parallel,
-                out_det_method=out_det_method,
-            )
-            group_position = (
-                group_j if isinstance(group_name2, str) else group_name2
-            )
-            similarities_to_groupi[group_position] = dist
-        
-        return group_name, similarities_to_groupi
-
-    # Determine the maximum bin for the similarity array
-    max_bin = max([len(group) for group in group_vectors.values()])
-
-    if parallel:
-        # Use joblib to parallelize the group comparisons
-        results = joblib.Parallel(n_jobs=-1)(  # n_jobs=-1 utilizes all available CPUs
-            joblib.delayed(worker_compare)(
-                group_name, group1, group_vectors, metric, neighbor_distance, filter_outliers, parallel, out_det_method, max_bin
-            )
-            for group_name, group1 in group_vectors.items()
-        )
-        
-        # Convert the result list into the similarities dictionary
-        similarities = {group_name: similarities_to_groupi for group_name, similarities_to_groupi in results}
-
-    else:
-        # Sequential version without parallelism
-        similarities = {}
-        for group_i, (group_name, group1) in enumerate(group_vectors.items()):
-            similarities_to_groupi = np.zeros(max_bin)
-
-            for group_j, (group_name2, group2) in enumerate(group_vectors.items()):
-                print(f"Comparing {group_name} to {group_name2}")
-                dist = compare_distributions(
-                    group1,
-                    group2,
-                    metric=metric,
-                    neighbor_distance=neighbor_distance,
-                    filter_outliers=filter_outliers,
-                    parallel=parallel,
-                    out_det_method=out_det_method,
-                )
-                group_position = (
-                    group_j if isinstance(group_name2, str) else group_name2
-                )
-                similarities_to_groupi[group_position] = dist
-
-            similarities[group_name] = similarities_to_groupi
-    
     return similarities
-
 
 def compare_distributions(
     points1, points2, metric="cosine", filter_outliers=True, parallel=True, neighbor_distance=None, out_det_method="density"
@@ -652,6 +572,10 @@ def compare_distributions(
                     return similarity_range[key]["highest"]
         # if metric_name has no implemented function
         raise NotImplementedError(f"Metric {metric} not implemented")
+
+    if out_det_method is None:
+        print(points1[0].shape[0])
+        out_det_method = "density" if points1[0].shape[0] < 4 else "contamination"
 
     # Filter out outliers from the distributions
     if filter_outliers:
@@ -796,16 +720,16 @@ def calc_entropy(data, convert_to_probabilities=True):
     entropy = -sum(probabilities*np.log(probabilities + 1e-10))
     return entropy
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def get_covariance_matrix(data: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
     cov = np.cov(data, rowvar=False)
     return regularized_covariance(cov, epsilon=epsilon)
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def regularized_covariance(cov_matrix, epsilon=1e-6):
     return cov_matrix + np.eye(cov_matrix.shape[0]) * epsilon
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def pca_numba(data, n_components=2):
     """
     Perform Principal Component Analysis (PCA) on the input data.
@@ -826,7 +750,7 @@ def pca_numba(data, n_components=2):
     data_pca = np.dot(data, eigvecs)
     return data_pca
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def sphere_to_plane(points: np.ndarray):
     """
     Convert 3D points on a sphere to 2D points on a plane.
@@ -859,25 +783,25 @@ def compute_mean_and_cov(X):
     cov = np.zeros((d, d))
     for i in prange(n):
         diff = X[i] - mean
-        for j in prange(d):
-            for k in prange(d):
+        for j in range(d):
+            for k in range(d):
                 cov[j, k] += diff[j] * diff[k]
     cov /= n - 1
     return mean, cov
 
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def all_finite(arr):
     """Check if all elements in the array are finite."""
     flat_arr = arr.flat
-    for i in prange(len(flat_arr)):
+    for i in range(len(flat_arr)):
         x = flat_arr[i]
         if not np.isfinite(x):
             return False
     return True
 
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def is_positive_definite(A):
     """Check if a matrix is positive definite."""
     try:
@@ -886,7 +810,7 @@ def is_positive_definite(A):
     except:
         return False
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def mahalanobis_distance_between_distributions(points1, points2):
     # Mahalanobis Distance
     # Compute the covariance matrix for each distribution (can be estimated from data)
@@ -904,6 +828,24 @@ def mahalanobis_distance_between_distributions(points1, points2):
     return mahalanobis_distance(mean1, mean2, cov_inv1 + cov_inv2)
 
 @njit(nopython=True, parallel=True)
+def compute_mahalanobis_distances(points, mean, inv_cov):
+    """
+    Compute the Mahalanobis distance between each point and the distribution.
+
+    Args:
+    points (np.ndarray): Input points, shape (n_samples, n_features)
+    mean (np.ndarray): Mean of the distribution, shape (n_features,)
+    inv_cov (np.ndarray): Inverse of the covariance matrix, shape (n_features, n_features)
+
+    Returns:
+    np.ndarray: Mahalanobis distances, shape (n_samples,)
+    """
+    distances = np.zeros(len(points))
+    for i in prange(len(points)):
+        distances[i] = mahalanobis_distance(points[i], mean, inv_cov)
+    return distances
+
+@njit(nopython=True)
 def euclidean_distance_between_distributions(points1: np.ndarray, points2: np.ndarray) -> float:
     """
     Computes a distance metric between two distributions using pairwise Euclidean distances. 
@@ -941,11 +883,11 @@ def pairwise_euclidean_distance(points1, points2):
     n2 = points2.shape[0]
     distances = np.zeros((n1, n2))
     for i in prange(n1):
-        for j in prange(n2):
+        for j in range(n2):
             distances[i, j] = euclidean_distance(points1[i], points2[j])        
     return distances
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def euclidean_distance(x, y):
     """
     Compute the Euclidean distance between two points.
@@ -961,7 +903,7 @@ def euclidean_distance(x, y):
     distances = np.sqrt(np.dot(diff, diff))
     return distances
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def mahalanobis_distance(x, mean, inv_cov):
     """
     Compute the Mahalanobis distance between a point and the distribution.
@@ -985,6 +927,7 @@ def mahalanobis_distance(x, mean, inv_cov):
 def compute_density(points, neighbor_distance, inv_cov=None):
     """
     Compute the density of each high-dimensional point in the distribution using a neighbor_distance and Mahalanobis distance.
+    proper way to define neighbor_distance for outlier detection does not work with mahalanobis distance
     """
     n = points.shape[0]
     densities = np.zeros(n)
@@ -993,15 +936,17 @@ def compute_density(points, neighbor_distance, inv_cov=None):
         count = 0
         for j in range(n):
             if i != j:
-                ## compute euclidean distance for low dimensional data
+                """
+                # proper way to define neighbor_distance for outlier detection does not work with mahalanobis distance
                 if points.ndim <= 3:
                     dist = euclidean_distance(points[i], points[j])
                 else:
-                    dist = euclidean_distance(points[i], points[j])
-                    # proper way to define neighbor_distance for outlier detection does not work with mahalanobis distance
                     # Compute Mahalanobis distance for high-dimensional data
-                    #dist = mahalanobis_distance(points[i], points[j], inv_cov)
+                    dist = mahalanobis_distance(points[i], points[j], inv_cov)
+                """
 
+                ## compute euclidean distance for low dimensional data
+                dist = euclidean_distance(points[i], points[j])
                 if dist < neighbor_distance:
                     count += 1
 
@@ -1015,7 +960,7 @@ def compute_density(points, neighbor_distance, inv_cov=None):
         print("No inliers found")
     return densities
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, method="contamination"):
     n, d = points.shape
 
@@ -1046,16 +991,13 @@ def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, me
         except:
             # If inversion fails, return valid points
             return np.ones(len(valid_points), dtype=np.bool_)
-        # Compute Mahalanobis distances
-        distances = np.zeros(len(valid_points))
-        for i in prange(len(valid_points)):
-            distances[i] = mahalanobis_distance(valid_points[i], mean, inv_cov)
+        
+        distances = compute_mahalanobis_distances(valid_points, mean, inv_cov)
+        print("°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°")
 
         # Determine threshold based on contamination (percentage of outliers)
         threshold = np.percentile(distances, 100 * (1 - contamination))
-
-        for i in prange(len(valid_points)):
-            mask_inliers[i] = distances[i] <= threshold
+        mask_inliers = distances <= threshold
 
     elif method=="density":
         # Determine threshold based on density estimation
@@ -1066,9 +1008,7 @@ def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, me
         
         # Determine threshold based on contamination (percentage of lowest density points)
         threshold = np.percentile(densities, 100 * contamination) if sum(densities) > 0 else np.inf
-    
-        for i in prange(len(valid_points)):
-            mask_inliers[i] = densities[i] > threshold
+        mask_inliers = densities > threshold
 
     return mask_inliers
 
@@ -1091,7 +1031,7 @@ def points_to_histogram(points1, points2, bins=None):
     hist2 /= np.sum(hist2)
     return hist1, hist2
 
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def filter_outlier_numba(points, contamination=0.2, neighbor_distance=None, method="contamination"):
     """
     Filter out outliers from a set of points using a simplified Elliptic Envelope method.
@@ -1113,7 +1053,7 @@ def filter_outlier_numba(points, contamination=0.2, neighbor_distance=None, meth
     """
     n, d = points.shape
     mask_valid = np.zeros(n, dtype=np.bool_)
-    for i in prange(n):
+    for i in range(n):
         mask_valid[i] = all_finite(points[i])
     valid_points = points[mask_valid]
 
@@ -1145,10 +1085,7 @@ def filter_outlier(points, contamination=0.2, only_mask=False, method="contamina
         return mask
     return points[mask]
 
-
-import numpy as np
-
-@njit(nopython=True, parallel=True)
+@njit(nopython=True)
 def numba_cross(a, b):
     """
     Numba implementation of np.cross function.
@@ -2149,6 +2086,40 @@ def generate_linspace_samples(bounds, num):
     
     return samples
 
+# misc
+
+def split():
+    # loading Fluorescence data
+    npz_fpath = Path(r"d:\Experiments\Nathalie\box\DON-021472\DON-021472_2024-06-25-14-49-36_video_sched_0_binarized_traces_V3_curated.npz")
+    data = np.load(npz_fpath)
+    full_F_upphase = data["F_upphase"]
+
+    # loading the corresponding timestamps
+    yaml_fpath = Path(r"d:\Experiments\Nathalie\box\DON-021472\DON-021472_20240625_frames_per_session.yaml")
+    yaml_data = yaml.safe_load(open(yaml_fpath, "r"))
+    timestamp_strings = [key for key in yaml_data.keys() if key != "Frames"]
+
+    # converting the timestamps to list of tuples with start and end times
+    timestamps = []
+    for timestamp_string in timestamp_strings:
+        start_time, end_time = timestamp_string.split("-")
+        start_time = int(start_time)-1
+        end_time = int(end_time)-1
+        timestamps.append((start_time, end_time))
+
+    # splitting the fluorescence data into sessions
+    sessions = []
+    for start_time, end_time in timestamps:
+        session = full_F_upphase[:, start_time:end_time]
+        sessions.append(session)
+
+    # saving the sessions
+    output_dir = npz_fpath.parent / "sessions"
+    output_dir.mkdir(exist_ok=True)
+    session_names = [value for key, value in yaml_data.items() if key != "Frames"]
+    for session_name, session in zip(session_names, sessions):
+        np.save(output_dir / f"{session_name}.npy", session)
+
 # decorator functions
 def timer(func):
     # This function shows the execution time of
@@ -2162,16 +2133,33 @@ def timer(func):
 
     return wrap_func
 
-def profile_function(func):
-    def wrap_func(*args, **kwargs):
-        profiler = Profiler()
-        profiler.start()
-        result = func(*args, **kwargs)
-        profiler.stop()
-        print(profiler.output_text(unicode=True, color=True))
-        # Save the output to an HTML file
-        with open('profile_report.html', 'w') as f:
-            f.write(profiler.output_html())
-        return result
-    return wrap_func
+def profile_function(file_name="profile_output"):
+    """
+    Run a function and profile it using the Profiler class.
+    
+    Example:
+        @profile_function(file_name="profile_output_parallel")
+        def do_parallel(output_fname):
+            print("Running parallel function")
+
+        do_parallel()
+    """
+    def decorator(func):
+        def wrap_func(*args, **kwargs):
+            profiler = Profiler()
+            profiler.start()
+            try:
+                result = func(*args, **kwargs)
+            except Exception as e:
+                print("Error in function")
+                result = e
+            profiler.stop()
+            output_text = profiler.output_text(unicode=True, color=True)
+            print(output_text)
+            # Save the output to an HTML file
+            with open(f'{file_name}.html', 'w') as f:
+                f.write(profiler.output_html())
+            return result
+        return wrap_func
+    return decorator
 

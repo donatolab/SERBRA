@@ -2643,7 +2643,8 @@ class Vizualizer:
         rotation=45,
         colorbar=True,
         cmap="viridis",
-        save_path=None,
+        save_dir=None,
+        as_pdf=False,
         interpolation="none",
         colorbar_label=None,
         show=True,
@@ -2675,8 +2676,8 @@ class Vizualizer:
         if colorbar:
             fig.colorbar(cax, ax=ax, label=colorbar_label)
 
-        if save_path:
-            plt.savefig(save_path)
+        Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
+        
         if show:
             plt.show()
 
