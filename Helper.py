@@ -494,7 +494,8 @@ def compare_distributions(
     points1, points2, metric="cosine", filter_outliers=True, parallel=True, neighbor_distance=None, out_det_method="density"
 ):
     """
-    Compare two distributions using the specified metric.
+    Compare two distributions using the specified metric. 
+    CAUTION: Not all metric calculations are optimized with numba
 
     Parameters:
     - points1: array-like, first distribution
@@ -638,15 +639,19 @@ def compare_distributions(
             v2 = np.mean(points2, axis=0)
         return cosine_similarity(v1, v2)
 
-    elif "overlap":
+    elif metric == "overlap":
         kde1 = gaussian_kde(points1.T)
         kde2 = gaussian_kde(points2.T)
         overlap = normalized_kde_overlap(kde1, kde2)
         return overlap
     
-    elif "cross_entropy":
+    elif metric == "cross_entropy":
         # Cross entropy: H(p, q) = -sum(p * log(q))
-        return entropy(points1, points2)
+        kde1 = gaussian_kde(points1.T)
+        kde2 = gaussian_kde(points2.T)
+        kde1_densities = kde1.evaluate(points1.T)
+        kde2_densities = kde2.evaluate(points1.T)
+        return entropy(kde1_densities, kde2_densities)
 
     else:
         raise ValueError(f"Unsupported metric: {metric}")
@@ -822,10 +827,18 @@ def mahalanobis_distance_between_distributions(points1, points2):
     cov_inv1 = np.linalg.inv(cov_matrix1)
     cov_inv2 = np.linalg.inv(cov_matrix2)
 
-    # Compute the Mahalanobis distance between the means of the dists
-    mean1 = np.mean(points1, axis=0)
-    mean2 = np.mean(points2, axis=0)
-    return mahalanobis_distance(mean1, mean2, cov_inv1 + cov_inv2)
+    # Manually compute the mean along axis=0
+    mean1 = np.zeros(points1.shape[1])
+    mean2 = np.zeros(points2.shape[1])
+    
+    for i in range(points1.shape[1]):
+        mean1[i] = np.sum(points1[:, i]) / points1.shape[0]
+        mean2[i] = np.sum(points2[:, i]) / points2.shape[0]
+
+    # Sum of inverses of the covariance matrices
+    cov_inv_sum = cov_inv1 + cov_inv2
+
+    return mahalanobis_distance(mean1, mean2, cov_inv_sum)
 
 @njit(nopython=True, parallel=True)
 def compute_mahalanobis_distances(points, mean, inv_cov):
@@ -993,7 +1006,6 @@ def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, me
             return np.ones(len(valid_points), dtype=np.bool_)
         
         distances = compute_mahalanobis_distances(valid_points, mean, inv_cov)
-        print("°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°")
 
         # Determine threshold based on contamination (percentage of outliers)
         threshold = np.percentile(distances, 100 * (1 - contamination))
@@ -1343,6 +1355,20 @@ def check_correct_metadata(string_or_list, name_parts):
                 )
     return success
 
+def clean_filename(fname):
+    """
+    Clean a filename by replacing special characters with underscores.
+    """
+    nice = fname
+    for char in [" ", ":", ",", ";", "."]:
+        nice = nice.replace(char, "_")
+    nice = nice.replace(">", "bigger")
+    nice = nice.replace("<", "smaller")
+    for special_char in ["<", ">", ":", "\"", "/", "\\", "|", "?", "*"]:
+        nice = nice.replace(special_char, "")
+    for char in ["(", ")", "[", "]", "{", "}"]:
+        nice = nice.replace(special_char, "")
+    return nice
 
 # array
 def encode_categorical(data, categories=None, return_category_map=False):
@@ -2157,7 +2183,7 @@ def profile_function(file_name="profile_output"):
             output_text = profiler.output_text(unicode=True, color=True)
             print(output_text)
             # Save the output to an HTML file
-            with open(f'{file_name}.html', 'w') as f:
+            with open(f'./logs/{file_name}.html', 'w') as f:
                 f.write(profiler.output_html())
             return result
         return wrap_func

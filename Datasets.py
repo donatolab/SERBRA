@@ -410,6 +410,8 @@ class BehaviorDataset(Dataset):
         xticks_pos=None,
         yticks=None,
         ylabel="",
+        save_dir=None,
+        save_plot=False,
     ):
         
         data = data if data is not None else self.binned_data
@@ -427,9 +429,21 @@ class BehaviorDataset(Dataset):
         occupancy[occupancy == 0] = np.nan
         if plot:
             title = f"Occupancy Map {self.metadata['task_id']} {additional_title}"
+            if save_plot:
+                save_dir = save_dir or self.plot_attributes["save_path"].parent
+            else:
+                save_dir = None
+
             if self.key == "stimulus":
                 xticks = xticks or self.plot_attributes["yticks"][1]
                 xticks_pos = xticks_pos or self.plot_attributes["yticks"][0]
+            else:
+                unique_bins = np.array(list(self.category_map.keys()))
+                xticks = np.unique(unique_bins[:, 0])
+                yticks = np.unique(unique_bins[:, 1])
+                xticks_pos = xticks
+                yticks_pos = yticks
+
             # Plot occupancy map
             Vizualizer.plot_heatmap(
                 occupancy,
@@ -438,8 +452,10 @@ class BehaviorDataset(Dataset):
                 xticks=xticks,
                 xticks_pos=xticks_pos,
                 yticks=yticks,
+                yticks_pos=yticks_pos,
                 xlabel=f"{self.key.capitalize()} bins",
                 ylabel=ylabel,
+                save_dir=save_dir,
             )
 
         return occupancy
@@ -550,6 +566,7 @@ class NeuralDataset(Dataset):
         figsize=(6, 5),
         plot: bool = False,
         save_plot: bool = False,
+        save_dir = None,
     ):
         """
         metrics: euclidean, wasserstein, kolmogorov-smirnov, chi2, kullback-leibler, jensen-shannon, energy, mahalanobis, cosine
@@ -580,10 +597,11 @@ class NeuralDataset(Dataset):
                 )
                 title = "Similarity Inside Binned Features"
                 title += f" Embedded" if use_embedding or model is not None else ""
-                additional_title = additional_title
-                xticks = xticks
-                xlabel = xlabel
-                ylabel = ylabel
+                unique_bins = np.array(list(category_map.keys()))
+                xticks = np.unique(unique_bins[:, 0])
+                yticks = np.unique(unique_bins[:, 1])
+                xticks_pos = xticks
+                yticks_pos = yticks
                 to_show_similarities = binned_similarities
             else:
                 group_vectors, bins = group_by_binned_data(
@@ -653,14 +671,14 @@ class NeuralDataset(Dataset):
                 else similarities
             )
             title = title or f"Neural {metric} Similarity {self.metadata['task_id']}"
-            xticks = xticks
-            xticks_pos = xticks_pos
+            yticks = None
+            yticks_pos = None
             xlabel = xlabel or "Frames"
             ylabel = ylabel or "Frames"
 
         if plot:
             if save_plot:
-                save_dir = self.data_dir.joinpath("figures")
+                save_dir = save_dir or self.plot_attributes["save_path"].parent 
             if inside_bin_similarity:
                 title += f" {self.metadata['task_id']}"
                 Vizualizer.plot_heatmap(
@@ -669,7 +687,9 @@ class NeuralDataset(Dataset):
                     figsize=figsize,
                     title=title,
                     xticks=xticks,
+                    yticks=yticks,
                     xticks_pos=xticks_pos,
+                    yticks_pos=yticks_pos,
                     xlabel=xlabel,
                     ylabel=ylabel,
                     save_dir=save_dir,
@@ -692,6 +712,7 @@ class NeuralDataset(Dataset):
             self,
             method="kde",
             model=None,
+            additional_title="",
             idx_to_keep: np.ndarray = None,
             use_embedding: bool = False,
             binned_features: np.ndarray = None,
@@ -705,6 +726,7 @@ class NeuralDataset(Dataset):
             plot_legend=False,
             figsize=(6, 5),
             save_plot: bool = False,
+            save_dir = None,
             ):
         """
         Evaluates the amount of information in the neural data. Based on the distribution of samples labeld by the binned features.
@@ -770,13 +792,31 @@ class NeuralDataset(Dataset):
             title += "embedded" if use_embedding else ""
             title += " filtered" if remove_outliers else ""
 
-            save_dir = self.data_dir.joinpath("figures") if save_plot else None
-            Vizualizer.plot_heatmap(heatmap_data, xlabel="Position Bin X", ylabel="Position Bin Y", title=title, colorbar_label="Entropy", save_dir=save_dir)
+            if save_plot:
+                save_dir = save_dir or self.plot_attributes["save_path"].parent 
+            else:
+                save_dir = None
+            xticks = np.unique(unique_bins[:, 0])
+            yticks = np.unique(unique_bins[:, 1])
+            xticks_pos = xticks
+            yticks_pos = yticks
+            Vizualizer.plot_heatmap(heatmap_data, 
+                                    title=title, 
+                                    additional_title=additional_title, 
+                                    xticks=xticks,
+                                    yticks=yticks,
+                                    xticks_pos=xticks_pos,
+                                    yticks_pos=yticks_pos,
+                                    xlabel="Position Bin X", 
+                                    ylabel="Position Bin Y", 
+                                    colorbar_label="Entropy", 
+                                    save_dir=save_dir)
         return inf_contents
         
     def density(
            self,
             model=None,
+            additional_title="",
             idx_to_keep: np.ndarray = None,
             use_embedding: bool = False,
             binned_features: np.ndarray = None,
@@ -788,7 +828,7 @@ class NeuralDataset(Dataset):
             plot_legend=False,
             use_alpha=False,      
             save_plot: bool = False,
-            save_dir: Path = None,
+            save_dir = None,
     ):
         filtered_neural_data = self.get_data(use_embedding, model, idx_to_keep)
         filtered_binned_features = self.filter_by_idx(
@@ -820,9 +860,13 @@ class NeuralDataset(Dataset):
                 usefull_ids = np.where(group_densities > outlier_threshold)
                 usefull_idx.append(usefull_ids)
 
-        additional_title = f" from and to each Bin {self.metadata['task_id']}"
-        if save_plot:
-            save_dir = save_dir or self.data_dir.joinpath("figures")
+        additional_title += f" Bin {self.metadata['task_id']}"
+
+        if plot is not None:
+            if save_plot:
+                save_dir = save_dir or self.plot_attributes["save_path"].parent
+            else:
+                save_dir = None
         if plot==True or plot=="2d":
             Vizualizer.plot_2d_group_scatter(densities, additional_title=additional_title, plot_legend=plot_legend, use_alpha=use_alpha, filter_outlier=remove_outliers, outlier_threshold=outlier_threshold, save_dir=save_dir)
         elif plot=="3d":

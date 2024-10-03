@@ -1423,14 +1423,7 @@ class Vizualizer:
         plt.tight_layout()  # Ensure subplots fit within figure area
         
         if save:
-            plot_save_path = (
-                str(self.save_dir.joinpath(title + ".png"))
-                .replace(">", "bigger")
-                .replace("<", "smaller")
-            )
-            title = Path(plot_save_path).stem
-            save_dir = Path(plot_save_path).parent
-            Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
+            Vizualizer.save_plot(self.save_dir, title, "pdf" if as_pdf else "png")
 
         plt.show()
         plt.close()
@@ -2709,7 +2702,7 @@ class Vizualizer:
 
         tick_steps = make_list_ifnot(tick_steps)
         for i, tick_step in enumerate(tick_steps):
-            tick_steps[i] = 1 if tick_step is 0 else tick_step
+            tick_steps[i] = 1 if tick_step == 0 else tick_step
         if len(tick_steps) != len(max_bins):
             tick_steps = [tick_steps[0]] * len(max_bins)
         
@@ -2737,23 +2730,23 @@ class Vizualizer:
                     1,
                     figsize=(figsize[0], figsize[1]),
                 )
-                fig.suptitle(title, fontsize=max_bins * max_bins, y=1.01)
-                fig.supxlabel(supxlabel, fontsize=max_bins * max_bins, x=0.5, y=-0.03)
+                fig.suptitle(title, fontsize=figsize[0]+figsize[1], y=1.01)
+                fig.supxlabel(supxlabel, fontsize=figsize[0]+figsize[1], x=0.5, y=-0.03)
                 fig.align_xlabels()
-                fig.supylabel(supylabel, fontsize=max_bins * max_bins, x=-0.02, y=0.5)
+                fig.supylabel(supylabel, fontsize=figsize[0]*figsize[1], x=-0.02, y=0.5)
             elif max_bins.ndim == 1:
                 fig, axes = plt.subplots(
                     int(max_bins[0]),
                     int(max_bins[1]),
                     figsize=(max_bins[0] * figsize[0], max_bins[1] * figsize[1]),
                 )
-                fig.suptitle(title, fontsize=max_bins[0] * max_bins[1] / 2, y=1.01)
+                fig.suptitle(title, fontsize=figsize[0]*figsize[1], y=1.01)
                 fig.supxlabel(
-                    supxlabel, fontsize=max_bins[0] * max_bins[1] / 2, x=0.5, y=-0.03
+                    supxlabel, fontsize=figsize[0]*figsize[1], x=0.5, y=-0.03
                 )
                 fig.align_xlabels()
                 fig.supylabel(
-                    supylabel, fontsize=max_bins[0] * max_bins[1] / 2, x=-0.02, y=0.5
+                    supylabel, fontsize=figsize[0]*figsize[1], x=-0.02, y=0.5
                 )
             fig.tight_layout()
 
@@ -2848,7 +2841,7 @@ class Vizualizer:
                     fig=fig,
                     labels=labels,
                     label_name=colorbar_label,
-                    label_size=max(max_bins) * 2,
+                    label_size=figsize[0] * 2,
                     cmap=cmap,
                     move_right=1,
                 )
@@ -2989,6 +2982,8 @@ class Vizualizer:
     @staticmethod
     def save_plot(save_dir=None, title="NONAME_DEFINED", format="pdf"):
         if save_dir:
+            # clean title
+            title = clean_filename(title)
             save_path = os.path.join(save_dir, f"{title}.{format}")
             plt.savefig(save_path, 
                         dpi=300, 
@@ -3065,7 +3060,7 @@ class Vizualizer:
         title = '3D Scatter'
         title += f" {additional_title}" if additional_title else ""
         title += f" {specific_group}" if specific_group else ""
-        title += f" no alpha" if not use_alpha else ""
+        title += f" w/o alpha" if not use_alpha else ""
 
         # Define unique colors for each group
         group_colors = plt.cm.get_cmap(cmap, len(gropu_data))  # Get a colormap with distinct colors
@@ -3156,8 +3151,8 @@ class Vizualizer:
         title = 'Point Distributions in 2D'
         title += f" {additional_title}" if additional_title else ""
         title += f" pca" if use_pca else ""
-        title += f" no alpha" if not use_alpha else ""
-        title += f" no outlier" if filter_outlier else ""
+        title += f" w/o alpha" if not use_alpha else ""
+        title += f" w/o outlier" if filter_outlier else ""
 
         # Determine the number of subplots
         unique_bins = np.unique(list(group_data.keys()), axis=0)
@@ -3217,10 +3212,10 @@ class Vizualizer:
 
         if filter_outlier:
             title += f" {c_outliers/c_samples:.2%} outliers"
-        fig.suptitle(title, fontsize=figsize[1], y=1.01)
-        fig.supxlabel(supxlabel, fontsize=figsize[1], x=0.5, y=-0.03)
+        fig.suptitle(title, fontsize=figsize[0]+figsize[1], y=1.01)
+        fig.supxlabel(supxlabel, fontsize=figsize[0]+figsize[1], x=0.5, y=-0.03)
         fig.align_xlabels()
-        fig.supylabel(supylabel, fontsize=figsize[1], x=-0.02, y=0.5)
+        fig.supylabel(supylabel, fontsize=figsize[0]+figsize[1], x=-0.02, y=0.5)
 
         if plot_legend:
             plt.legend()
