@@ -223,7 +223,7 @@ class BehavioralSetup(Setup):
             else:
                 error = True
         elif preprocess_name == "cam":
-            ..........................
+            #TODO: create a proper cam usage for all behavioral setups
             if self.setup in ["openfield", "active_avoidance"]:
                 preprocess = Cam(
                     key=self.key, root_dir=self.data_dir, metadata=self.metadata

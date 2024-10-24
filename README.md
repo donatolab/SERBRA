@@ -147,8 +147,6 @@ This section describes the metadata variables used to describe the behavior data
 | `setup`      |  | Setup used for behavior recordings            | String  | `openfield` | `openfield`          |
 
 
-
-
 # TODO: Add more details to the following sections
 ..... create stimulus dict ? integrate camera??
 | Variable     | Default |  Description                      | Type    | Example    | Input Options              |
