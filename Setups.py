@@ -144,9 +144,9 @@ class Output:
 
         if fpath.exists():
             data = cebra.load_data(fpath)
+            data = force_1_dim_larger(data=data)
         else:
             print(f"File {file_name} not found in {fpath}")
-        data = force_1_dim_larger(data=data)
         return data
 
     def define_data_path(self, file_name: str = None):
@@ -223,6 +223,7 @@ class BehavioralSetup(Setup):
             else:
                 error = True
         elif preprocess_name == "cam":
+            ..........................
             if self.setup in ["openfield", "active_avoidance"]:
                 preprocess = Cam(
                     key=self.key, root_dir=self.data_dir, metadata=self.metadata
@@ -275,8 +276,9 @@ class NeuralSetup(Setup):
             fps = self.extract_fps()
         return fps
 
-
+####################################################################################################
 #######################           Hardware            ##############################################
+####################################################################################################
 class Wheel:
     def __init__(self, radius):
         self.radius = radius  # in meters
@@ -640,6 +642,9 @@ class Inscopix(NeuralSetup):
             )
         return binarized_data
 
+####################################################################################################
+##########################       Software         ##################################################
+####################################################################################################
 
 #######################       Preprocessing         ############################################################
 class Preprocessing(Output):
@@ -1089,7 +1094,7 @@ class Cam(Behavior_Preprocessing):
         self.data_naming_scheme = (
             "{animal_id}_{date}_"
             + f"{self.root_dir_name}"
-            + "_{task_name}[-A-Za-z_0-9 ()]*_locs.npy"
+            + "_{task_name}[-A-Za-z_0-9 ()]*locs.npy"
         )
 
         self.outputs = {
@@ -1109,6 +1114,8 @@ class Cam(Behavior_Preprocessing):
 
     def pixel_to_meter(self, pixel_data, pixel_per_meter):
         return pixel_data / pixel_per_meter
+
+
 
     def run_cam_processing(self, cam_data, save=True, overwrite=False):
         raise NotImplementedError(
@@ -1532,7 +1539,14 @@ class Environment(Behavior_Processing):
             )
         n_dims = positions.shape[1]
         at_border = np.zeros(positions.shape[0], dtype=bool)
-        #TODO: Corner (based on degree?)
+        #TODO: Corner (based on degree? - autodetection stimulus)
+        #TODO: Corner (based on degree? - autodetection stimulus)
+        #TODO: Corner (based on degree? - autodetection stimulus)
+        #TODO: Corner (based on degree? - autodetection stimulus)
+        #TODO: Corner (based on degree? - autodetection stimulus)
+        #TODO: Corner (based on degree? - autodetection stimulus)
+        #TODO: Corner (based on degree? - autodetection stimulus) penis
+        raise NotImplementedError("Corner detection not implemented yet")
         at_corners = np.zeros(positions.shape[0], dtype=bool)
 
         # Calculate corner radius (same for all dimensions)

@@ -304,7 +304,7 @@ class ModelsWrapper:
 
     def __init__(self, model_dir, model_settings=None, **kwargs):
         self.model_dir = Path(model_dir)
-        dir_exist_create(self.model_dir)
+        self.model_dir.mkdir(exist_ok=True)
         self.model_settings = model_settings or kwargs
         self.models = {}
 
@@ -324,7 +324,7 @@ class Model:
         self.model_dir = model_dir
         self.model_id = model_id
         self.model_settings = model_settings or kwargs
-        dir_exist_create(self.model_dir)
+        self.model_dir.mkdir(exist_ok=True)
 
     def create_defaul_model(self):
         raise NotImplementedError(
@@ -665,14 +665,11 @@ class SpatialInformation(Model):
         """
         Creates a default model configuration.
 
-        Returns
-        -------
-        model
-            The instance of the SpatialInformation model with default settings.
+        Returns: self
         """
-        model = self
-        model.si_formula = "skaags"
-        return model
+        #FIXME : implement default model loading part
+        self.si_formula = "skaags"
+        return self
 
     def define_parameter_save_path(self, model):
         """
@@ -746,7 +743,7 @@ class SpatialInformation(Model):
 
     @staticmethod
     def get_spatial_information(
-        rate_map, time_map=None, spatial_information_method="opexebo"
+        rate_map, time_map=None, spatial_information_method="skaggs"
     ):
         """
         ... old documentation ...

@@ -35,7 +35,7 @@ from Helper import *
 class Vizualizer:
     def __init__(self, root_dir) -> None:
         self.save_dir = Path(root_dir).joinpath("figures")
-        dir_exist_create(self.save_dir)
+        self.save_dir.mkdir(exist_ok=True)
 
     def plot_dataplot_summary(self, plot_dir, title="Data Summary"):
         # TODO: combine plots from top to bottom aligned by time
@@ -2730,7 +2730,7 @@ class Vizualizer:
                     1,
                     figsize=(figsize[0], figsize[1]),
                 )
-                fig.suptitle(title, fontsize=figsize[0]+figsize[1], y=1.01)
+                fig.suptitle(title, fontsize=figsize[0]*figsize[1], y=1.01)
                 fig.supxlabel(supxlabel, fontsize=figsize[0]+figsize[1], x=0.5, y=-0.03)
                 fig.align_xlabels()
                 fig.supylabel(supylabel, fontsize=figsize[0]*figsize[1], x=-0.02, y=0.5)
@@ -2768,13 +2768,16 @@ class Vizualizer:
                     "jensen-shannon",
                     "energy",
                     "mahalanobis",
+                    "cosine",
+                    "overlap",
+                    "cross_entropy",
                 ]:
                     vmin = 0
-                elif name in ["correlation", "cosine"]:
-                    vmin = -1
-                    vmax = 1
-                elif name in ["overlap", "cross_entropy"]:
+                elif name in ["cosine", "overlap", "cross_entropy"]:
                     vmin = 0
+                    vmax = 1
+                elif name in ["correlation"]:
+                    vmin = -1
                     vmax = 1
 
                 if vmax is None:

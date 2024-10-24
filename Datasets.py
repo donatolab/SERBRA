@@ -11,8 +11,6 @@ from Visualizer import Vizualizer
 # calculations
 import numpy as np
 from scipy.signal import butter, filtfilt  # , lfilter, freqz
-from sklearn.preprocessing import OneHotEncoder
-
 
 # load data
 import cebra
@@ -531,14 +529,19 @@ class NeuralDataset(Dataset):
 
     def get_data(self, use_embedding=False, model=None, idx_to_keep=None):
         if use_embedding:
-            if model is None and self.embedding is None:
-                raise (f"Embedding was not generated. Model needed for embedding.")
-            if model:
+            if model is None:
+                if self.embedding is None:
+                    raise (f"Embedding was not generated. Model needed for embedding.")
+                else:
+                    data = self.embedding
+            else:
                 if self.embedding is not None:
                     print(f"Recalculated Embedding based on given model")
-                self.embedd_data(model)
-
-        data = self.embedding if use_embedding or model is not None else self.data
+                data = self.embedd_data(model)
+        else:
+            if model is not None:
+                print(f"Model given but embedding not requested. Using raw data.")
+            data = self.data
         filtered_neural_data = self.filter_by_idx(data, idx_to_keep=idx_to_keep)
         return filtered_neural_data
 
@@ -596,7 +599,7 @@ class NeuralDataset(Dataset):
                     as_array=True,
                 )
                 title = "Similarity Inside Binned Features"
-                title += f" Embedded" if use_embedding or model is not None else ""
+                title += f" Embedded" if use_embedding else ""
                 unique_bins = np.array(list(category_map.keys()))
                 xticks = np.unique(unique_bins[:, 0])
                 yticks = np.unique(unique_bins[:, 1])
@@ -651,6 +654,7 @@ class NeuralDataset(Dataset):
                     yticks = ticks[1] if len(ticks) > 1 else None
                 else:
                     xticks = bins
+                additional_title += f" Embedded" if use_embedding else ""
                 additional_title += f" from and to each Bin {self.metadata['task_id']}"
         else:
             # No binned features, calculate similarity directly
@@ -965,7 +969,7 @@ class Data_Position(BehaviorDataset):
         binned_data = bin_array(
             data, bin_size=bin_size, min_bin=min_bins, max_bin=max_bins
         )
-        self.max_bin = np.array(np.array(dimensions) / np.array(bin_size), dtype=int)
+        self.max_bin = np.ceil(np.array(dimensions) / np.array(bin_size)).astype(int)
         encoded_data = self.create_1d_discrete_labels(binned_data)
         if return_category_map:
             return encoded_data, self.category_map

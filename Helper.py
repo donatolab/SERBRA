@@ -122,42 +122,6 @@ def yield_animal_session_task(animals_dict):
         for task_id, task in session.tasks.items():
             yield animal, session, task
 
-
-#### directory, file search
-def dir_exist_create(directory):
-    """
-    Checks if a directory exists and creates it if it doesn't.
-
-    Parameters:
-    dir (str): Path of the directory to check and create.
-
-    Returns:
-    None
-    """
-    # Check if the directory exists
-    directory = Path(directory)
-    if not directory.exists():
-        # Create the directory
-        directory.mkdir()
-
-
-def create_dirs(dirs):
-    """
-    Create a new directory hierarchy.
-
-    Args:
-        dirs (list): A list of strings representing the path to the new directory.
-
-    Returns:
-        str: The path to the newly created directory.
-    """
-    new_path = dirs[0]
-    for path_part in dirs[1:]:
-        new_path = os.path.join(new_path, path_part)
-        dir_exist_create(new_path)
-    return new_path
-
-
 def get_directories(directory, regex_search=""):
     """
     This function returns a list of directories from the specified directory that match the regular expression search pattern.
@@ -1859,6 +1823,25 @@ def load_yaml(path, mode="r"):
         dictionary = yaml.safe_load(file)
     return dictionary
 
+def load_yaml_data_into_class(cls, yaml_path:Union[str, Path] = None,  name_parts:Union[str, List]=None, needed_attributes: List[str] = None):
+    yaml_path = yaml_path or cls.yaml_path
+    name_parts = name_parts or cls.id.split("_")[-1]
+    string_to_check = yaml_path.stem if isinstance(yaml_path, Path) else yaml_path
+    success = check_correct_metadata(
+        string_or_list=string_to_check, name_parts=name_parts
+    )
+
+    if success:
+        metadata_dict = load_yaml(yaml_path)
+        # Load any additional metadata into session object
+        set_attributes_check_presents(
+            propertie_name_list=metadata_dict.keys(),
+            set_object=cls,
+            propertie_values=metadata_dict.values(),
+            needed_attributes=needed_attributes,
+        )
+    else:
+        raise ValueError(f"Animal {cls.id} does not correspond to metadata in {yaml_path}")
 
 def get_str_from_dict(dictionary, keys):
     present_keys = dictionary.keys()
@@ -2030,7 +2013,7 @@ def set_attributes_check_presents(
             raise NameError(
                 f"Variable {present} is not defined in yaml file for {set_object.id}"
             )
-
+    return set_object
 
 # matlab
 def load_matlab_metadata(mat_fpath):
@@ -2112,40 +2095,6 @@ def generate_linspace_samples(bounds, num):
     
     return samples
 
-# misc
-
-def split():
-    # loading Fluorescence data
-    npz_fpath = Path(r"d:\Experiments\Nathalie\box\DON-021472\DON-021472_2024-06-25-14-49-36_video_sched_0_binarized_traces_V3_curated.npz")
-    data = np.load(npz_fpath)
-    full_F_upphase = data["F_upphase"]
-
-    # loading the corresponding timestamps
-    yaml_fpath = Path(r"d:\Experiments\Nathalie\box\DON-021472\DON-021472_20240625_frames_per_session.yaml")
-    yaml_data = yaml.safe_load(open(yaml_fpath, "r"))
-    timestamp_strings = [key for key in yaml_data.keys() if key != "Frames"]
-
-    # converting the timestamps to list of tuples with start and end times
-    timestamps = []
-    for timestamp_string in timestamp_strings:
-        start_time, end_time = timestamp_string.split("-")
-        start_time = int(start_time)-1
-        end_time = int(end_time)-1
-        timestamps.append((start_time, end_time))
-
-    # splitting the fluorescence data into sessions
-    sessions = []
-    for start_time, end_time in timestamps:
-        session = full_F_upphase[:, start_time:end_time]
-        sessions.append(session)
-
-    # saving the sessions
-    output_dir = npz_fpath.parent / "sessions"
-    output_dir.mkdir(exist_ok=True)
-    session_names = [value for key, value in yaml_data.items() if key != "Frames"]
-    for session_name, session in zip(session_names, sessions):
-        np.save(output_dir / f"{session_name}.npy", session)
-
 # decorator functions
 def timer(func):
     # This function shows the execution time of
@@ -2189,3 +2138,59 @@ def profile_function(file_name="profile_output"):
         return wrap_func
     return decorator
 
+
+# misc
+def reorder(path, pre_task_name):
+    """
+    Reorder the files in a directory.
+    """
+    path = Path(path)
+    # search for .npz file in the directory
+    npz_fpath = next(path.rglob("*.npz"))
+    npz_stem = npz_fpath.stem
+    # loading Fluorescence data
+    data = np.load(npz_fpath)
+    full_F_upphase = data["F_upphase"]
+
+    # loading the corresponding yaml file
+    yaml_fpath = next(path.rglob("*.yaml"))
+    # loading the corresponding timestamps
+    yaml_data = yaml.safe_load(open(yaml_fpath, "r"))
+    timestamp_strings = [key for key in yaml_data.keys() if key != "Frames"]
+
+    # converting the timestamps to list of tuples with start and end times
+    timestamps = []
+    for timestamp_string in timestamp_strings:
+        start_time, end_time = timestamp_string.split("-")
+        start_time = int(start_time)-1
+        end_time = int(end_time)-1
+        timestamps.append((start_time, end_time))
+
+    # splitting the fluorescence data into sessions
+    sessions = []
+    for start_time, end_time in timestamps:
+        session = full_F_upphase[:, start_time:end_time]
+        sessions.append(session)
+
+    # saving the sessions in corresponding folders
+    output_dir = npz_fpath.parent
+    session_names = [value for key, value in yaml_data.items() if key != "Frames"]
+    for session_name, session in zip(session_names, sessions):
+        session_output_dir_path = output_dir.joinpath(session_name, "001P-I")
+        session_output_dir_path.mkdir(exist_ok=True)
+        # define session npy name
+        # npz_stem_part = npz_stem.split("_")
+        fname = "".join([pre_task_name, session_name, "_photon"])
+        session_file_path = session_output_dir_path.joinpath(f"{fname}.npy")
+        np.save(session_file_path, session)
+
+        # move csv files to the corresponding folder
+        csv_files = list(session_output_dir_path.parent.glob("*.csv"))
+        for csv_file in csv_files:
+            if session_name in csv_file.stem:
+                # move using path
+                new_csv_file_path = session_output_dir_path.parent.joinpath("TR-BSL", csv_file.name)
+                new_csv_file_path.parent.mkdir(parents=True, exist_ok=True)
+                csv_file.rename(new_csv_file_path)
+                
+    

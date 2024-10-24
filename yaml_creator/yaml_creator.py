@@ -421,25 +421,26 @@ def get_recording_munits(
 
 def move_mesc_to_session_folder(directory=None):
     directory = None if directory == "" else directory
+    directory = Path(directory)
     for fname in get_files(directory, ending=".mesc"):
         splitted_fname = fname.split("_")
         if splitted_fname[0][:3] != "DON":  # not animal
             continue
         animal_id = splitted_fname[0]
         session_id = splitted_fname[1].split(".")[0]
-        session_path = create_folder(
-            [str(animal_id), str(session_id)], directory=directory
-        )
+        session_path = directory.joinpath(animal_id, session_id)
+        session_path.mkdir(parents=True, exist_ok=True)
         # move_file
         fpath = os.path.join(directory, fname)
         shutil.move(fpath, session_path)
 
 def create_folders_for_animals(animals, directory=None, save_yamls=True):
     directory = None if directory == "" else directory
+    directory = Path(directory)
     for animal_id, animal_metadata in animals.items():
-        animal_path = create_folder(animal_id, directory=directory)
+        animal_path = directory.joinpath(animal_id)
         for session_date, session_metadata in animal_metadata["sessions"].items():
-            session_path = create_folder(session_date, directory=animal_path)
+            session_path = animal_path.joinpath(session_date)
             if save_yamls:
                 fpath = os.path.join(session_path, f"{session_date}.yaml")
                 with open(fpath, "w") as file:
@@ -450,30 +451,6 @@ def create_folders_for_animals(animals, directory=None, save_yamls=True):
             only_animal_metadata.pop("sessions")
             with open(fpath, "w") as file:
                 yaml.dump(only_animal_metadata, file)
-
-def dir_exist_create(directory):
-    """
-    Checks if a directory exists and creates it if it doesn't.
-
-    Parameters:
-    dir (str): Path of the directory to check and create.
-
-    Returns:
-    None
-    """
-    # Check if the directory exists
-    if not os.path.exists(directory):
-        # Create the directory
-        os.makedirs(directory)
-
-
-def create_folder(folder_names, directory=None):
-    folder_names = make_list_ifnot(folder_names)
-    folder_dir = directory if directory else ""
-    for folder_name in folder_names:
-        folder_dir = os.path.join(folder_dir, folder_name)
-        dir_exist_create(folder_dir)
-    return folder_dir
 
 def update_excel_by_yaml(excel_animals, yaml_animals):
     pass

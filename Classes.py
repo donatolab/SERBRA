@@ -307,6 +307,9 @@ class Multi:
 
 
 class Animal:
+    """Represents an animal in the dataset."""
+    needed_attributes = ["animal_id", "dob"]
+
     def __init__(
         self, animal_id, root_dir, animal_dir=None, model_settings=None, **kwargs
     ):
@@ -319,28 +322,13 @@ class Animal:
         self.yaml_path = self.dir.joinpath(f"{animal_id}.yaml")
         self.sessions: List[Session] = {}
         self.model_settings = model_settings or kwargs
-        success = self.load_metadata()
-        if not success:
-            return None
+        self.load_metadata()
 
     def load_metadata(self, yaml_path=None, name_parts=None):
-        yaml_path = yaml_path or self.yaml_path
-        name_parts = name_parts or self.id
-        needed_attributes = None
-        success = check_correct_metadata(
-            string_or_list=yaml_path, name_parts=name_parts
-        )
-
-        if success:
-            animal_metadata_dict = load_yaml(yaml_path)
-            # Load any additional metadata into session object
-            set_attributes_check_presents(
-                propertie_name_list=animal_metadata_dict.keys(),
-                set_object=self,
-                propertie_values=animal_metadata_dict.values(),
-                needed_attributes=needed_attributes,
-            )
-        return success
+        load_yaml_data_into_class(cls=self, 
+                                  yaml_path=yaml_path, 
+                                  name_parts=name_parts,
+                                  needed_attributes=Animal.needed_attributes)
 
     def add_session(
         self,
@@ -387,8 +375,9 @@ class Animal:
             model_settings = kwargs if len(kwargs) > 0 else self.model_settings
         # Search for Sessions
         sessions_root_path = self.root_dir.joinpath(self.id)
+        # search for directories with in date format
         present_session_dates = get_directories(
-            sessions_root_path, regex_search="202[A-Za-z0-9-_]*"
+            sessions_root_path, regex_search="[0-9]{8}"
         )
         for date in present_session_dates:
             if date in wanted_dates or "all" in wanted_dates:
@@ -435,7 +424,7 @@ class Animal:
 
 class Session:
     """Represents a session in the dataset."""
-
+    needed_attributes = ["tasks_infos"]
     def __init__(
         self,
         animal_id,
@@ -465,9 +454,7 @@ class Session:
         self.yaml_path = self.dir.joinpath(f"{self.date}.yaml")
         self.tasks_infos = None  # loaded from yaml
         self.tasks: List[Task] = {}
-        success = self.load_metadata()
-        if not success:
-            return
+        self.load_metadata()
         if behavior_datas:
             self.add_all_tasks(model_settings=self.model_settings, **kwargs)
             self.load_all_data(
@@ -477,22 +464,10 @@ class Session:
             )
 
     def load_metadata(self, yaml_path=None, name_parts=None):
-        name_parts = name_parts or self.date
-        yaml_path = yaml_path or self.yaml_path
-        success = check_correct_metadata(
-            string_or_list=yaml_path, name_parts=name_parts
-        )
-        if success:
-            # Load any additional metadata into session object
-            session_metadata_dict = load_yaml(yaml_path)
-            needed_attributes = ["tasks_infos"]
-            set_attributes_check_presents(
-                propertie_name_list=session_metadata_dict.keys(),
-                set_object=self,
-                propertie_values=session_metadata_dict.values(),
-                needed_attributes=needed_attributes,
-            )
-        return success
+        load_yaml_data_into_class(cls=self, 
+                                    yaml_path=yaml_path, 
+                                    name_parts=name_parts,
+                                    needed_attributes=Session.needed_attributes)
 
     def add_task(self, task_name, metadata=None, model_settings=None, **kwargs):
         success = check_correct_metadata(
@@ -783,7 +758,7 @@ class Session:
 
 class Task:
     """Represents a task in the dataset."""
-
+    needed_attributes = ["neural_metadata", "behavior_metadata"]
     def __init__(
         self,
         session_id,
@@ -819,12 +794,11 @@ class Task:
         return data_dir
 
     def load_metadata(self, metadata: dict = {}):
-        needed_attributes = ["neural_metadata", "behavior_metadata"]
         set_attributes_check_presents(
             propertie_name_list=metadata.keys(),
             set_object=self,
             propertie_values=metadata.values(),
-            needed_attributes=needed_attributes,
+            needed_attributes=Task.needed_attributes,
         )
         self.neural_metadata["task_id"] = self.id
         self.behavior_metadata["task_id"] = self.id
