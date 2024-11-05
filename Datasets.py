@@ -32,6 +32,8 @@ from Setups import (
 
 
 class Dataset:
+    needed_keys = ["setup"]
+
     def __init__(
         self,
         key,
@@ -54,10 +56,11 @@ class Dataset:
         self.raw_data_object = raw_data_object
         self.metadata = metadata
         self.fps = None if "fps" not in self.metadata.keys() else self.metadata["fps"]
-        check_needed_keys(metadata, ["setup"])
+        check_needed_keys(metadata, Dataset.needed_keys)
         self.setup = self.get_setup(self.metadata["setup"])
         self.plot_attributes = Vizualizer.default_plot_attributes()
         self.category_map = None
+        self.refine_metadata()
 
     def get_setup(self, setup_name, preprocessing_name, method_name):
         raise NotImplementedError(
@@ -108,8 +111,17 @@ class Dataset:
         self.data = self.correct_data(self.data)
         if plot:
             self.plot(regenerate_plot=regenerate_plot)
+        self.refine_metadata()
         self.binned_data = self.bin_data(self.data)
         return self.data
+
+    def refine_metadata(self):
+        self.define_plot_attributes()
+
+    def define_plot_attributes(self):
+        raise NotImplementedError(
+            f"Function define_plot_attributes is not defined for {self.__class__}."
+        )
 
     def create_dataset(self, raw_data_object=None, save=True):
         raw_data_object = raw_data_object or self.raw_data_object
@@ -180,7 +192,7 @@ class Dataset:
         )
 
         descriptive_metadata_keys = [
-            "area", 
+            "area",
             "stimulus_type",
             "method",
             "preprocessing_software",
@@ -223,9 +235,8 @@ class Dataset:
         self.refine_plot_attributes(
             title=title, ylable=ylable, xlimits=xlimits, save_path=save_path
         )
-        if regenerate_plot or not save_file_present(
-            fpath=self.plot_attributes["save_path"],
-        ):
+        plot_present = save_file_present(fpath=self.plot_attributes["save_path"])
+        if regenerate_plot or not plot_present:
             self.plot_attributes = Vizualizer.default_plot_start(
                 plot_attributes=self.plot_attributes,
                 figsize=figsize,
@@ -240,7 +251,7 @@ class Dataset:
             self.plot_data()
             Vizualizer.default_plot_ending(
                 plot_attributes=self.plot_attributes,
-                regenerate_plot=regenerate_plot,
+                regenerate_plot=True,
                 show=show,
                 dpi=dpi,
                 as_pdf=as_pdf,
@@ -313,34 +324,34 @@ class Dataset:
     @staticmethod
     def manipulate_data(data, idx_to_keep=None, shuffle=False, split_ratio=None):
         """
-        Manipulates the input data by applying filtering, shuffling, splitting, 
+        Manipulates the input data by applying filtering, shuffling, splitting,
         and enforcing a 2D structure on the resulting subsets.
 
         Parameters:
         -----------
         data : list or any type
             The input data to be manipulated. If not a list, the data is first converted into a list.
-        
+
         idx_to_keep : list or None, optional
-            A list of indices to filter the data. Only data at these indices will be retained. 
+            A list of indices to filter the data. Only data at these indices will be retained.
             If None, no filtering is applied. Default is None.
-        
+
         shuffle : bool, optional
-            If True, the filtered data will be shuffled before splitting. 
+            If True, the filtered data will be shuffled before splitting.
             If False, the data remains in its original order. Default is False.
-        
+
         split_ratio : float or None, optional
-            The ratio used to split the data into training and testing subsets. 
+            The ratio used to split the data into training and testing subsets.
             If None, no splitting is applied and the entire dataset is considered training data. Default is None.
 
         Returns:
         --------
         data_train : list
-            A list containing the training subsets of the input data. 
+            A list containing the training subsets of the input data.
             Each subset has been filtered, shuffled (if requested), split, and enforced to be 2D.
 
         data_test : list
-            A list containing the testing subsets of the input data. 
+            A list containing the testing subsets of the input data.
             Each subset has been filtered, shuffled (if requested), split, and enforced to be 2D.
 
         Notes:
@@ -365,6 +376,8 @@ class Dataset:
             data_train.append(data_train_i)
             data_test.append(data_test_i)
         return data_train, data_test
+
+
 class BehaviorDataset(Dataset):
     def __init__(
         self,
@@ -385,8 +398,6 @@ class BehaviorDataset(Dataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        needed_attributes = ["setup"]
-        check_needed_keys(metadata, needed_attributes)
         self.plot_attributes["fps"] = (
             self.metadata["imaging_fps"]
             if "imaging_fps" in self.metadata.keys()
@@ -411,7 +422,7 @@ class BehaviorDataset(Dataset):
         save_dir=None,
         save_plot=False,
     ):
-        
+
         data = data if data is not None else self.binned_data
         filtered_data = self.filter_by_idx(data, idx_to_keep)
         if "max_bin" not in self.__dict__.keys():
@@ -496,6 +507,8 @@ class BehaviorDataset(Dataset):
 
 
 class NeuralDataset(Dataset):
+    needed_keys = ["method", "preprocessing", "processing", "setup"]
+
     def __init__(
         self,
         key,
@@ -515,8 +528,7 @@ class NeuralDataset(Dataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        needed_attributes = ["method", "preprocessing", "processing", "setup"]
-        check_needed_keys(metadata, needed_attributes)
+        check_needed_keys(metadata, NeuralDataset.needed_keys)
         self.embedding = None
 
     def create_dataset(self, raw_data_object=None, save=True):
@@ -569,7 +581,7 @@ class NeuralDataset(Dataset):
         figsize=(6, 5),
         plot: bool = False,
         save_plot: bool = False,
-        save_dir = None,
+        save_dir=None,
     ):
         """
         metrics: euclidean, wasserstein, kolmogorov-smirnov, chi2, kullback-leibler, jensen-shannon, energy, mahalanobis, cosine
@@ -617,14 +629,16 @@ class NeuralDataset(Dataset):
                 )
                 max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
                 max_bin = max_bin.astype(int)
-                
+
                 # This is a heuristic to determine the distance between two distributions, needed for density based outlier detection
                 # based on the amount of space every bin has on the surface of a sphere
-                neighbor_distance = np.sqrt(4/len(group_vectors)) 
-                
-                if out_det_method == "density" and use_embedding==False:
-                    print("WARNING: Density based outlier detection is not recommended for high dimensional data. Euclidean distance is used for samples distance calculation.")
-                
+                neighbor_distance = np.sqrt(4 / len(group_vectors))
+
+                if out_det_method == "density" and use_embedding == False:
+                    print(
+                        "WARNING: Density based outlier detection is not recommended for high dimensional data. Euclidean distance is used for samples distance calculation."
+                    )
+
                 if similarities is None:
                     similarities = compare_distribution_groups(
                         group_vectors=group_vectors,
@@ -637,10 +651,13 @@ class NeuralDataset(Dataset):
                     )
                 else:
                     if not isinstance(similarities, dict):
-                        raise ValueError("Similarities should be dictionary. For plotting similarities in 2D")
+                        raise ValueError(
+                            "Similarities should be dictionary. For plotting similarities in 2D"
+                        )
                     if not isinstance(list(similarities.values())[0], np.ndarray):
-                        raise ValueError("Similarities inside dict should be numpy array.")
-                    
+                        raise ValueError(
+                            "Similarities inside dict should be numpy array."
+                        )
 
                 bins = np.array(bins)
                 plot_bins = xticks or bins
@@ -662,12 +679,14 @@ class NeuralDataset(Dataset):
                 similarities = correlate_vectors(filtered_neural_data, metric=metric)
             else:
                 if not isinstance(similarities, np.ndarray):
-                    raise ValueError("Similarities should be numpy array. For inside bin similarity plotting.")
+                    raise ValueError(
+                        "Similarities should be numpy array. For inside bin similarity plotting."
+                    )
                 if similarities.ndim != 2:
                     raise ValueError(
                         "Similarities should be 2D array. For plotting similarities in 2D"
                     )
-                
+
             inside_bin_similarity = True
             to_show_similarities = (
                 similarities[:show_frames, :show_frames]
@@ -682,7 +701,7 @@ class NeuralDataset(Dataset):
 
         if plot:
             if save_plot:
-                save_dir = save_dir or self.plot_attributes["save_path"].parent 
+                save_dir = save_dir or self.plot_attributes["save_path"].parent
             if inside_bin_similarity:
                 title += f" {self.metadata['task_id']}"
                 Vizualizer.plot_heatmap(
@@ -713,25 +732,25 @@ class NeuralDataset(Dataset):
         return similarities
 
     def information_content(
-            self,
-            method="kde",
-            model=None,
-            additional_title="",
-            idx_to_keep: np.ndarray = None,
-            use_embedding: bool = False,
-            binned_features: np.ndarray = None,
-            category_map: Dict = None,
-            max_bin: List[int] = None,
-            remove_outliers: bool = True,
-            outlier_threshold: float = 0.2,
-            plot=False,
-            plot_density=False,
-            use_alpha=False,
-            plot_legend=False,
-            figsize=(6, 5),
-            save_plot: bool = False,
-            save_dir = None,
-            ):
+        self,
+        method="kde",
+        model=None,
+        additional_title="",
+        idx_to_keep: np.ndarray = None,
+        use_embedding: bool = False,
+        binned_features: np.ndarray = None,
+        category_map: Dict = None,
+        max_bin: List[int] = None,
+        remove_outliers: bool = True,
+        outlier_threshold: float = 0.2,
+        plot=False,
+        plot_density=False,
+        use_alpha=False,
+        plot_legend=False,
+        figsize=(6, 5),
+        save_plot: bool = False,
+        save_dir=None,
+    ):
         """
         Evaluates the amount of information in the neural data. Based on the distribution of samples labeld by the binned features.
         Outlier are always removed based on the density of the samples in the feature space.
@@ -775,18 +794,20 @@ class NeuralDataset(Dataset):
             group_densities = data["values"]
             # calculate entropy
             if method == "entropy":
-                inf_content = calc_entropy(group_densities, convert_to_probabilities=True)
+                inf_content = calc_entropy(
+                    group_densities, convert_to_probabilities=True
+                )
             elif method == "kde":
                 inf_content = calc_kde_entropy(locations, bandwidth=None)
             else:
                 raise ValueError(f"Method {method} not supported.")
 
             inf_contents[group_name] = inf_content
-        
+
         if plot:
             # convert entropies dict to array for heatmap plotting
             unique_bins = np.unique(list(densities.keys()), axis=0)
-            max_bins = np.max(unique_bins, axis=0)+1
+            max_bins = np.max(unique_bins, axis=0) + 1
             heatmap_data = np.zeros(max_bins)
             for group_name, entropy in inf_contents.items():
                 heatmap_data[group_name[0], group_name[1]] = entropy
@@ -797,47 +818,49 @@ class NeuralDataset(Dataset):
             title += " filtered" if remove_outliers else ""
 
             if save_plot:
-                save_dir = save_dir or self.plot_attributes["save_path"].parent 
+                save_dir = save_dir or self.plot_attributes["save_path"].parent
             else:
                 save_dir = None
             xticks = np.unique(unique_bins[:, 0])
             yticks = np.unique(unique_bins[:, 1])
             xticks_pos = xticks
             yticks_pos = yticks
-            Vizualizer.plot_heatmap(heatmap_data, 
-                                    title=title, 
-                                    additional_title=additional_title, 
-                                    xticks=xticks,
-                                    yticks=yticks,
-                                    xticks_pos=xticks_pos,
-                                    yticks_pos=yticks_pos,
-                                    xlabel="Position Bin X", 
-                                    ylabel="Position Bin Y", 
-                                    colorbar_label="Entropy", 
-                                    save_dir=save_dir)
+            Vizualizer.plot_heatmap(
+                heatmap_data,
+                title=title,
+                additional_title=additional_title,
+                xticks=xticks,
+                yticks=yticks,
+                xticks_pos=xticks_pos,
+                yticks_pos=yticks_pos,
+                xlabel="Position Bin X",
+                ylabel="Position Bin Y",
+                colorbar_label="Entropy",
+                save_dir=save_dir,
+            )
         return inf_contents
-        
+
     def density(
-           self,
-            model=None,
-            additional_title="",
-            idx_to_keep: np.ndarray = None,
-            use_embedding: bool = False,
-            binned_features: np.ndarray = None,
-            category_map: Dict = None,
-            max_bin: List[int] = None,
-            remove_outliers: bool = True,
-            outlier_threshold: float = 0.2,
-            plot=False,
-            plot_legend=False,
-            use_alpha=False,      
-            save_plot: bool = False,
-            save_dir = None,
+        self,
+        model=None,
+        additional_title="",
+        idx_to_keep: np.ndarray = None,
+        use_embedding: bool = False,
+        binned_features: np.ndarray = None,
+        category_map: Dict = None,
+        max_bin: List[int] = None,
+        remove_outliers: bool = True,
+        outlier_threshold: float = 0.2,
+        plot=False,
+        plot_legend=False,
+        use_alpha=False,
+        save_plot: bool = False,
+        save_dir=None,
     ):
         filtered_neural_data = self.get_data(use_embedding, model, idx_to_keep)
         filtered_binned_features = self.filter_by_idx(
-                binned_features, idx_to_keep=idx_to_keep
-            )
+            binned_features, idx_to_keep=idx_to_keep
+        )
         group_vectors, bins = group_by_binned_data(
             data=filtered_neural_data,
             category_map=category_map,
@@ -850,16 +873,13 @@ class NeuralDataset(Dataset):
 
         # This is a heuristic to determine the distance between two distributions, needed for density based outlier detection
         # based on the amount of space every bin has on the surface of a sphere
-        neighbor_distance = np.sqrt(4/len(group_vectors)) 
-
+        neighbor_distance = np.sqrt(4 / len(group_vectors))
 
         usefull_idx = []
         densities = {}
         for group_name, locations in group_vectors.items():
             group_densities = compute_density(locations, neighbor_distance)
-            densities[group_name] = {"locations":locations,
-                                    "values": group_densities
-                                            }
+            densities[group_name] = {"locations": locations, "values": group_densities}
             if remove_outliers:
                 usefull_ids = np.where(group_densities > outlier_threshold)
                 usefull_idx.append(usefull_ids)
@@ -871,19 +891,37 @@ class NeuralDataset(Dataset):
                 save_dir = save_dir or self.plot_attributes["save_path"].parent
             else:
                 save_dir = None
-        if plot==True or plot=="2d":
-            Vizualizer.plot_2d_group_scatter(densities, additional_title=additional_title, plot_legend=plot_legend, use_alpha=use_alpha, filter_outlier=remove_outliers, outlier_threshold=outlier_threshold, save_dir=save_dir)
-        elif plot=="3d":
-            Vizualizer.plot_3D_group_scatter(densities, additional_title=additional_title, plot_legend=plot_legend, use_alpha=use_alpha, filter_outlier=remove_outliers, outlier_threshold=outlier_threshold, save_dir=save_dir)
-        
+        if plot == True or plot == "2d":
+            Vizualizer.plot_2d_group_scatter(
+                densities,
+                additional_title=additional_title,
+                plot_legend=plot_legend,
+                use_alpha=use_alpha,
+                filter_outlier=remove_outliers,
+                outlier_threshold=outlier_threshold,
+                save_dir=save_dir,
+            )
+        elif plot == "3d":
+            Vizualizer.plot_3D_group_scatter(
+                densities,
+                additional_title=additional_title,
+                plot_legend=plot_legend,
+                use_alpha=use_alpha,
+                filter_outlier=remove_outliers,
+                outlier_threshold=outlier_threshold,
+                save_dir=save_dir,
+            )
+
         if remove_outliers:
             densities_filtered = {}
             for (group_name, data), usefull_ids in zip(densities.items(), usefull_idx):
-                densities_filtered[group_name] = {"locations":data["locations"][usefull_ids],
-                                                    "values": data["values"][usefull_ids]
-                                                }
+                densities_filtered[group_name] = {
+                    "locations": data["locations"][usefull_ids],
+                    "values": data["values"][usefull_ids],
+                }
             densities = densities_filtered
         return densities
+
 
 class Data_Position(BehaviorDataset):
     """
@@ -906,27 +944,49 @@ class Data_Position(BehaviorDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        self.metadata["environment_dimensions"] = make_list_ifnot(
-            self.metadata["environment_dimensions"]
-        )
-        if not "binning_size" in self.metadata.keys():
-            self.binning_size = (
-                0.01  # meters in 1D
-                if len(self.metadata["environment_dimensions"]) == 1
-                else 0.05  # meters in 2D
-            )
-        else:
-            self.binning_size = self.metadata["binning_size"]
         self.max_bin = None
         self.raw_position = None
         self.lap_starts = None
+
+    def refine_metadata(self):
+        if self.metadata["environment_dimensions"] is None:
+            if self.data is not None:
+                global_logger.warning(
+                    f"No Environmental Data is provided. Defining environment dimensions based on position data."
+                )
+                self.metadata["environment_dimensions"] = (
+                    Environment.define_border_by_pos(self.data, use_clustering=False)
+                )
+        elif self.metadata["environment_dimensions"] is not None:
+            self.metadata["environment_dimensions"] = make_list_ifnot(
+                self.metadata["environment_dimensions"]
+            )
+
+        if not "binning_size" in self.metadata.keys():
+            if self.metadata["environment_dimensions"]:
+                self.binning_size = self.gues_binning_size()
+        else:
+            self.binning_size = self.metadata["binning_size"]
+
         self.define_plot_attributes()
 
+    def gues_binning_size(self):
+        environment_dimensions = len(self.metadata["environment_dimensions"])
+        # 1D environment
+        if environment_dimensions == 1:
+            return 0.01
+        # 2D environment
+        elif environment_dimensions == 2:
+            return 0.05
+        else:
+            return 0.01
+
     def define_plot_attributes(self):
-        if len(self.metadata["environment_dimensions"]) == 1:
-            self.plot_attributes["ylable"] = "position cm"
-        elif len(self.metadata["environment_dimensions"]) == 2:
-            self.plot_attributes["figsize"] = (12, 10)
+        if self.metadata["environment_dimensions"] is not None:
+            if len(self.metadata["environment_dimensions"]) == 1:
+                self.plot_attributes["ylable"] = "position cm"
+            elif len(self.metadata["environment_dimensions"]) == 2:
+                self.plot_attributes["figsize"] = (12, 10)
 
     def plot_data(self):
         if self.data.ndim == 1:
@@ -1000,13 +1060,15 @@ class Data_Position(BehaviorDataset):
                 old_idx = index
         return np.array(start_indices)
 
-    def categorical_to_bin_position(self, 
-                                    values:Union[Dict[tuple, Any], np.ndarray], 
-                                    additional_title="", 
-                                    figsize=(7,5),
-                                    plot=True,
-                                    save_dir=None,
-                                    as_pdf=False):
+    def categorical_to_bin_position(
+        self,
+        values: Union[Dict[tuple, Any], np.ndarray],
+        additional_title="",
+        figsize=(7, 5),
+        plot=True,
+        save_dir=None,
+        as_pdf=False,
+    ):
         """
         parameters:
             values: dict or np.ndarray
@@ -1019,47 +1081,54 @@ class Data_Position(BehaviorDataset):
 
         values_array = np.full(self.max_bin, np.nan)
 
-        if isinstance(values, dict): # if values are in dictionary with category as key
+        if isinstance(values, dict):  # if values are in dictionary with category as key
             key_example = list(values.keys())[0]
-            if isinstance(key_example, tuple) and len(key_example) == 2: # if key is already 2D positional coordinates
+            if (
+                isinstance(key_example, tuple) and len(key_example) == 2
+            ):  # if key is already 2D positional coordinates
                 for bin_pos, value in values.items():
                     values_array[bin_pos] = value
             else:
                 category_map_np = np.array(list(self.category_map.keys()))
                 category_map_dimensions = category_map_np.shape[1]
                 if category_map_dimensions != 2:
-                    raise NotImplementedError("Only 2D category maps are supported. For plotting values in 2D")
-                
+                    raise NotImplementedError(
+                        "Only 2D category maps are supported. For plotting values in 2D"
+                    )
+
                 uncode_values = uncode_categories(values, self.category_map)
                 for bin_pos, value in uncode_values.items():
                     values_array[bin_pos] = value
 
-        elif isinstance(values, np.ndarray): # if values are already in 2D
+        elif isinstance(values, np.ndarray):  # if values are already in 2D
             if values.ndim != 2:
                 raise ValueError("Values should be 2D array. For plotting values in 2D")
             if values.shape != values_array.shape:
-                raise ValueError(f"Values shape {values.shape} should be equal to category map shape {values_array.shape}")
-            values_array = values      
+                raise ValueError(
+                    f"Values shape {values.shape} should be equal to category map shape {values_array.shape}"
+                )
+            values_array = values
 
         if plot:
-            fig, ax = plt.subplots(1, 1, figsize=figsize)        
+            fig, ax = plt.subplots(1, 1, figsize=figsize)
             xticks_pos = list(range(self.max_bin[0]))
             yticks_pos = list(range(self.max_bin[1]))
-            xticks = [i if i%2==0 else "" for i in xticks_pos]
-            yticks = [i if i%2==0 else "" for i in yticks]
+            xticks = [i if i % 2 == 0 else "" for i in xticks_pos]
+            yticks = [i if i % 2 == 0 else "" for i in yticks]
             title = f"Accuracy for every class {additional_title} {self.task_id}"
-            Vizualizer.heatmap_subplot(values_array, 
-                                    ax=ax,
-                                    title=title,
-                                    title_size=figsize[0]*1.5,
-                                    xticks=xticks,
-                                    yticks=yticks,
-                                    xticks_pos = xticks_pos,
-                                    yticks_pos = yticks_pos,
-                                    xlabel="X Bin",
-                                    ylabel="Y Bin",
-                                    colorbar=True,
-                                    )
+            Vizualizer.heatmap_subplot(
+                values_array,
+                ax=ax,
+                title=title,
+                title_size=figsize[0] * 1.5,
+                xticks=xticks,
+                yticks=yticks,
+                xticks_pos=xticks_pos,
+                yticks_pos=yticks_pos,
+                xlabel="X Bin",
+                ylabel="Y Bin",
+                colorbar=True,
+            )
             # add colorbar
             plt.tight_layout()
             Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
@@ -1067,7 +1136,16 @@ class Data_Position(BehaviorDataset):
 
         return values_array
 
+
 class Data_Stimulus(BehaviorDataset):
+    optional_keys = [
+        "stimulus_dimensions",
+        "stimulus_sequence",
+        "stimulus_type",
+        "stimulus_by",
+        "fps",
+    ]
+
     def __init__(
         self, raw_data_object=None, metadata=None, root_dir=None, task_id=None
     ):
@@ -1078,26 +1156,24 @@ class Data_Stimulus(BehaviorDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-        optional_attributes = [
-            "stimulus_dimensions",
-            "stimulus_sequence",
-            "stimulus_type",
-            "stimulus_by",
-        ]
-        add_missing_keys(metadata, optional_attributes, fill_value=None)
 
+    def define_optional_attributes(self):
+        self.metadata = add_missing_keys(
+            self.metadata, Data_Stimulus.optional_keys, fill_value=None
+        )
         self.stimulus_sequence = self.metadata["stimulus_sequence"]
         self.stimulus_dimensions = self.metadata["stimulus_dimensions"]
         self.stimulus_type = self.metadata["stimulus_type"]
         self.stimulus_by = self.metadata["stimulus_by"] or "location"
         self.fps = self.metadata["fps"] if "fps" in self.metadata.keys() else None
-        self.define_plot_attributes()
 
     def define_plot_attributes(self):
-        if len(self.metadata["environment_dimensions"]) == 1:
-            self.plot_attributes["ylable"] = "position cm"
-        elif len(self.metadata["environment_dimensions"]) == 2:
-            self.plot_attributes["figsize"] = (12, 10)
+        self.define_optional_attributes()
+        if self.metadata["environment_dimensions"] is not None:
+            if len(self.metadata["environment_dimensions"]) == 1:
+                self.plot_attributes["ylable"] = "position cm"
+            elif len(self.metadata["environment_dimensions"]) == 2:
+                self.plot_attributes["figsize"] = (12, 10)
         if self.stimulus_by == "location":
             shapes, stimulus_type_at_frame = Environment.get_env_shapes_from_pos()
             self.plot_attributes["yticks"] = [range(len(shapes)), shapes]
@@ -1169,7 +1245,6 @@ class Data_Distance(BehaviorDataset):
             if not "binning_size" in self.metadata.keys()
             else self.metadata["binning_size"]
         )
-        self.define_plot_attributes()
 
     def define_plot_attributes(self):
         self.plot_attributes["ylable"] = "distance in m"
@@ -1208,12 +1283,12 @@ class Data_Velocity(BehaviorDataset):
         )
         self.raw_velocity = None
         self.binning_size = 0.005  # 0.005m/s
-        self.define_plot_attributes()
 
     def define_plot_attributes(self):
         self.plot_attributes["ylable"] = "velocity m/s"
-        if len(self.metadata["environment_dimensions"]) == 2:
-            self.plot_attributes["figsize"] = (10, 10)
+        if self.metadata["environment_dimensions"] is not None:
+            if len(self.metadata["environment_dimensions"]) == 2:
+                self.plot_attributes["figsize"] = (10, 10)
 
     def bin_data(self, data, bin_size=None, return_category_map=False):
         bin_size = bin_size or self.binning_size
@@ -1272,12 +1347,12 @@ class Data_Acceleration(BehaviorDataset):
         )
         self.raw_acceleration = None
         self.binning_size = 0.0005  # 0.0005m/s^2
-        self.define_plot_attributes()
 
     def define_plot_attributes(self):
         self.plot_attributes["ylable"] = "acceleration m/s^2"
-        if len(self.metadata["environment_dimensions"]) == 2:
-            self.plot_attributes["figsize"] = (10, 10)
+        if self.metadata["environment_dimensions"] is not None:
+            if len(self.metadata["environment_dimensions"]) == 2:
+                self.plot_attributes["figsize"] = (10, 10)
 
     def bin_data(self, data, bin_size=None, return_category_map=False):
         bin_size = bin_size or self.binning_size
@@ -1328,9 +1403,6 @@ class Data_Moving(BehaviorDataset):
             "S1": None,
             "V1": None,
         }
-        needed_attributes = ["setup"]
-        check_needed_keys(metadata, needed_attributes)
-        self.define_plot_attributes()
 
     def plot_data(self):
         Vizualizer.data_plot_1D(
@@ -1404,8 +1476,6 @@ class Data_Photon(NeuralDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
-
-        self.define_plot_attributes()
 
     def define_plot_attributes(self):
         self.plot_attributes["ylable"] = "Neuron ID"

@@ -1,15 +1,17 @@
-# import
+# type hints
+from __future__ import annotations
+from typing import List, Union, Dict, Any, Tuple, Optional
+
+# paths
 from pathlib import Path
 
 # setups and preprocessing software
 from Setups import *
 from Helper import *
 from Visualizer import *
-from Models import Models, PlaceCellDetectors, decode
-from Datasets import Datasets_Neural, Datasets_Behavior, Datasets, Dataset
+from Models import Models, PlaceCellDetectors
+from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
 
-# type hints
-from typing import List, Union, Dict, Any, Tuple, Optional
 
 # calculations
 import numpy as np
@@ -75,20 +77,32 @@ def load_all_animals(
     animals_dict = sort_dict(animals_dict)
     return animals_dict
 
+
 class Multi:
-    def __init__(self, animals_dict, name=None, wanted_properties=None, model_settings=None, **kwargs):
-        self.wanted_properties = wanted_properties
-        self.animals: Animal = animals_dict
-        self.filtered_tasks = self.animals if not wanted_properties else self.filter()
-        self.model_settings = model_settings or kwargs
-        self.name = self.define_name(name)
-        self.id = self.define_id(self.name)
-        self.model_dir = self.animals[list(self.animals.keys())[0]].dir.parent.joinpath("models")
-        self.models = self.init_models(model_settings=model_settings)
+    def __init__(
+        self,
+        animals_dict,
+        name=None,
+        wanted_properties=None,
+        model_settings=None,
+        **kwargs,
+    ):
+        self.wanted_properties: Optional[Dict[str, Any]] = wanted_properties
+        self.animals: Dict[str, Animal] = animals_dict
+        self.filtered_tasks: Dict[str, Task] = (
+            self.animals if not wanted_properties else self.filter()
+        )
+        self.model_settings: Dict[str, Any] = model_settings or kwargs
+        self.name: str = self.define_name(name)
+        self.id: str = self.define_id(self.name)
+        self.model_dir: Path = self.animals[
+            list(self.animals.keys())[0]
+        ].dir.parent.joinpath("models")
+        self.models: Models = self.init_models(model_settings=model_settings)
 
     def define_name(self, name):
         name = name if name else "UNDEFINED_NAME"
-        name = f"multi_set_{name}" 
+        name = f"multi_set_{name}"
         return name
 
     def define_id(self, name):
@@ -131,24 +145,25 @@ class Multi:
         )
         return models
 
-    def train_model(self, 
-                    model_type: str,  # types: time, behavior, hybrid
-                    tasks =None, 
-                    wanted_properties=None, 
-                    regenerate: bool = False,
-                    shuffle: bool = False,
-                    movement_state: str = "all",
-                    split_ratio: float = 1,
-                    model_name: str = None,
-                    neural_data: np.ndarray = None,
-                    behavior_data: np.ndarray = None,
-                    binned: bool = True,
-                    neural_data_types: List[str] = None,  #
-                    behavior_data_types: List[str] = None,  # ["position"],
-                    manifolds_pipeline: str = "cebra",
-                    model_settings: dict = None,
-                    create_embeddings: bool = True,
-                    ):
+    def train_model(
+        self,
+        model_type: str,  # types: time, behavior, hybrid
+        tasks=None,
+        wanted_properties=None,
+        regenerate: bool = False,
+        shuffle: bool = False,
+        movement_state: str = "all",
+        split_ratio: float = 1,
+        model_name: str = None,
+        neural_data: np.ndarray = None,
+        behavior_data: np.ndarray = None,
+        binned: bool = True,
+        neural_data_types: List[str] = None,  #
+        behavior_data_types: List[str] = None,  # ["position"],
+        manifolds_pipeline: str = "cebra",
+        model_settings: dict = None,
+        create_embeddings: bool = True,
+    ):
         if not tasks:
             tasks = self.filter(wanted_properties)
 
@@ -166,11 +181,11 @@ class Multi:
             # get behavior data
             if behavior_data_types:
                 behavior_data, _ = task.behavior.get_multi_data(
-                sources=behavior_data_types,  # e.g. ["position", "stimulus"]
-                idx_to_keep=idx_to_keep,
-                binned=binned,
-            )
-            
+                    sources=behavior_data_types,  # e.g. ["position", "stimulus"]
+                    idx_to_keep=idx_to_keep,
+                    binned=binned,
+                )
+
             datas.append(neural_data)
             labels.append(behavior_data)
 
@@ -188,7 +203,6 @@ class Multi:
             create_embeddings=create_embeddings,
             regenerate=regenerate,
         )
-
 
         return multi_model
 
@@ -212,12 +226,12 @@ class Multi:
         dpi: int = 300,
         as_pdf: bool = False,
     ):
-        #FIXME: merge this function with tasks plot_embeddings
+        # FIXME: merge this function with tasks plot_embeddings
 
-        #models = self.get_pipeline_models(manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude)
+        # models = self.get_pipeline_models(manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude)
 
         if not embeddings:
-            models_embeddings  = self.models.create_embeddings(
+            models_embeddings = self.models.create_embeddings(
                 to_transform_data=to_transform_data,
                 to_2d=to_2d,
                 model_naming_filter_include=model_naming_filter_include,
@@ -233,26 +247,44 @@ class Multi:
             embedding_labels_dict = {}
             all_embeddings = {}
             behavior_data_types = make_list_ifnot(behavior_data_types)
-            
+
             # create labels for all behavior data types
             for behavior_data_type in behavior_data_types:
 
                 for embedding_model_name, embeddings in models_embeddings.items():
-                    global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
+                    global_logger.warning(
+                        f"Using behavior_data_types: {behavior_data_types}"
+                    )
                     print(f"Using behavior_data_types: {behavior_data_types}")
 
                     # extract behavior labels from corresponding task
-                    for (task_id, task), (embedding_title, embedding) in zip(self.filtered_tasks.items(), embeddings.items()):
-                        task_behavior_labels_dict = task.get_behavior_labels([behavior_data_type], idx_to_keep=None)
-                        if not equal_number_entries(embedding, task_behavior_labels_dict):
-                            task_behavior_labels_dict = task.get_behavior_labels([behavior_data_type], movement_state="moving")
-                            if not equal_number_entries(embedding, task_behavior_labels_dict):
-                                task_behavior_labels_dict = task.get_behavior_labels([behavior_data_type], movement_state="stationary")
-                                if not equal_number_entries(embedding, task_behavior_labels_dict):
+                    for (task_id, task), (embedding_title, embedding) in zip(
+                        self.filtered_tasks.items(), embeddings.items()
+                    ):
+                        task_behavior_labels_dict = task.get_behavior_labels(
+                            [behavior_data_type], idx_to_keep=None
+                        )
+                        if not equal_number_entries(
+                            embedding, task_behavior_labels_dict
+                        ):
+                            task_behavior_labels_dict = task.get_behavior_labels(
+                                [behavior_data_type], movement_state="moving"
+                            )
+                            if not equal_number_entries(
+                                embedding, task_behavior_labels_dict
+                            ):
+                                task_behavior_labels_dict = task.get_behavior_labels(
+                                    [behavior_data_type], movement_state="stationary"
+                                )
+                                if not equal_number_entries(
+                                    embedding, task_behavior_labels_dict
+                                ):
                                     raise ValueError(
                                         f"Number of labels is not equal to all, moving or stationary number of frames."
                                     )
-                        behavior_label.append(task_behavior_labels_dict[behavior_data_type])
+                        behavior_label.append(
+                            task_behavior_labels_dict[behavior_data_type]
+                        )
                     all_embeddings.update(embeddings)
                 embedding_labels_dict[behavior_data_type] = behavior_label
         else:
@@ -261,12 +293,10 @@ class Multi:
             else:
                 embedding_labels_dict = embedding_labels
 
-
-
         # get ticks
         if len(behavior_data_types) == 1 and colorbar_ticks is None:
             dataset_object = getattr(task.behavior, behavior_data_types[0])
-            #TODO: ticks are not always equal for all tasks, so this is not a good solution
+            # TODO: ticks are not always equal for all tasks, so this is not a good solution
             colorbar_ticks = dataset_object.plot_attributes["yticks"]
 
         viz = Vizualizer(self.model_dir.parent)
@@ -308,27 +338,29 @@ class Multi:
 
 class Animal:
     """Represents an animal in the dataset."""
-    needed_attributes = ["animal_id", "dob"]
+
+    needed_attributes: List[str] = ["animal_id", "dob"]
 
     def __init__(
         self, animal_id, root_dir, animal_dir=None, model_settings=None, **kwargs
     ):
-        self.id = animal_id
-        self.cohort_year = None
-        self.dob = None
-        self.sex = None
-        self.root_dir = Path(root_dir)
-        self.dir = animal_dir or self.root_dir.joinpath(animal_id)
-        self.yaml_path = self.dir.joinpath(f"{animal_id}.yaml")
-        self.sessions: List[Session] = {}
-        self.model_settings = model_settings or kwargs
+        self.id: str = animal_id
+        self.dob: str = None
+        self.sex: str = None
+        self.root_dir: Path = Path(root_dir)
+        self.dir: Path = animal_dir or self.root_dir.joinpath(animal_id)
+        self.yaml_path: Path = self.dir.joinpath(f"{animal_id}.yaml")
+        self.sessions: Dict[str, Session] = {}
+        self.model_settings: Dict[str, Any] = model_settings or kwargs
         self.load_metadata()
 
     def load_metadata(self, yaml_path=None, name_parts=None):
-        load_yaml_data_into_class(cls=self, 
-                                  yaml_path=yaml_path, 
-                                  name_parts=name_parts,
-                                  needed_attributes=Animal.needed_attributes)
+        load_yaml_data_into_class(
+            cls=self,
+            yaml_path=yaml_path,
+            name_parts=name_parts,
+            needed_attributes=Animal.needed_attributes,
+        )
 
     def add_session(
         self,
@@ -411,20 +443,24 @@ class Animal:
             print("No wanted properties given. Returning tasks sessions")
             wanted_properties = {}
         filtered_tasks = {}
-        
+
         for session_date, session in self.sessions.items():
             wanted = True
             if "session" in wanted_properties:
                 wanted = wanted_object(session, wanted_properties["session"])
-            
+
             if wanted:
                 filtered_session_tasks = session.filter_tasks(wanted_properties)
                 filtered_tasks.update(filtered_session_tasks)
         return filtered_tasks
 
+
 class Session:
     """Represents a session in the dataset."""
-    needed_attributes = ["tasks_infos"]
+
+    tasks: Dict[str, Task]
+    needed_attributes: List[str] = ["tasks_infos"]
+
     def __init__(
         self,
         animal_id,
@@ -444,16 +480,16 @@ class Session:
                 f"No animal_dir or session_dir given. for {self.__class__}"
             )
 
-        self.animal_id = animal_id
-        self.date = date
-        self.id = f"{self.animal_id}_{self.date}"
-        self.dir = Path(session_dir or animal_dir.joinpath(date))
-        self.data_dir = data_dir or self.dir
-        self.model_dir = Path(model_dir or self.dir.joinpath("models"))
-        self.model_settings = model_settings
-        self.yaml_path = self.dir.joinpath(f"{self.date}.yaml")
-        self.tasks_infos = None  # loaded from yaml
-        self.tasks: List[Task] = {}
+        self.animal_id: str = animal_id
+        self.date: str = date
+        self.id: str = f"{self.animal_id}_{self.date}"
+        self.dir: Path = Path(session_dir or animal_dir.joinpath(date))
+        self.data_dir: Path = data_dir or self.dir
+        self.model_dir: Path = Path(model_dir or self.dir.joinpath("models"))
+        self.model_settings: Dict[str, Dict] = model_settings
+        self.yaml_path: Path = self.dir.joinpath(f"{self.date}.yaml")
+        self.tasks_infos: Dict[str, Dict] = None  # loaded from yaml
+        self.tasks: Dict[str, Task] = {}
         self.load_metadata()
         if behavior_datas:
             self.add_all_tasks(model_settings=self.model_settings, **kwargs)
@@ -464,10 +500,12 @@ class Session:
             )
 
     def load_metadata(self, yaml_path=None, name_parts=None):
-        load_yaml_data_into_class(cls=self, 
-                                    yaml_path=yaml_path, 
-                                    name_parts=name_parts,
-                                    needed_attributes=Session.needed_attributes)
+        load_yaml_data_into_class(
+            cls=self,
+            yaml_path=yaml_path,
+            name_parts=name_parts,
+            needed_attributes=Session.needed_attributes,
+        )
 
     def add_task(self, task_name, metadata=None, model_settings=None, **kwargs):
         success = check_correct_metadata(
@@ -751,14 +789,20 @@ class Session:
                     if not wanted:
                         break
                     if metadata_type in wanted_properties:
-                        wanted = wanted and wanted_object(getattr(task, metadata_type), wanted_properties[metadata_type])
+                        wanted = wanted and wanted_object(
+                            getattr(task, metadata_type),
+                            wanted_properties[metadata_type],
+                        )
             if wanted:
                 filtered_tasks[task.id] = task
         return filtered_tasks
 
+
 class Task:
     """Represents a task in the dataset."""
-    needed_attributes = ["neural_metadata", "behavior_metadata"]
+
+    needed_attributes: List[str] = ["neural_metadata", "behavior_metadata"]
+
     def __init__(
         self,
         session_id,
@@ -768,24 +812,25 @@ class Task:
         model_dir=None,
         metadata: dict = {},
     ):
-        self.session_id = session_id
-        self.id = f"{session_id}_{task_name}"
-        self.name = task_name
+        self.session_id: str = session_id
+        self.id: str = f"{session_id}_{task_name}"
+        self.name: str = task_name
 
+        self.neural_metadata: Dict[str, Dict]
+        self.behavior_metadata: Dict[str, Dict]
         self.neural_metadata, self.behavior_metadata = self.load_metadata(metadata)
 
-        self.data_dir = data_dir or self.define_data_dir(session_dir)
+        self.data_dir: Path = data_dir or self.define_data_dir(session_dir)
 
-        self.neural = Datasets_Neural(
+        self.neural: Datasets_Neural = Datasets_Neural(
             root_dir=self.data_dir, metadata=self.neural_metadata, task_id=self.id
         )
         self.behavior_metadata = self.fit_behavior_metadata(self.neural)
-        self.behavior = Datasets_Behavior(
+        self.behavior: Datasets_Behavior = Datasets_Behavior(
             root_dir=self.data_dir, metadata=self.behavior_metadata, task_id=self.id
         )
-        self.model_dir = model_dir or self.data_dir.joinpath("models")
-        self.models = None
-        self.embeddings = {}
+        self.model_dir: Path = model_dir or self.data_dir.joinpath("models")
+        self.models: Models = None
 
     def define_data_dir(self, session_dir):
         data_dir = session_dir
@@ -878,7 +923,7 @@ class Task:
         # get neural data
         idx_to_keep = self.behavior.moving.get_idx_to_keep(movement_state)
 
-        #neural_data_types = neural_data_types or self.neural_metadata["preprocessing"]
+        # neural_data_types = neural_data_types or self.neural_metadata["preprocessing"]
         if neural_data is None:
             neural_data, _ = self.neural.get_multi_data(
                 sources=self.neural.imaging_type,
@@ -913,7 +958,9 @@ class Task:
         )
         return model
 
-    def get_behavior_labels(self, behavior_data_types, binned=False, idx_to_keep=None, movement_state="all"):
+    def get_behavior_labels(
+        self, behavior_data_types, binned=False, idx_to_keep=None, movement_state="all"
+    ):
         if idx_to_keep is None and movement_state != "all":
             idx_to_keep = self.behavior.moving.get_idx_to_keep(movement_state)
         embedding_labels_dict = {}
@@ -960,11 +1007,17 @@ class Task:
             global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
             print(f"Using behavior_data_types: {behavior_data_types}")
 
-            embedding_labels_dict = self.get_behavior_labels(behavior_data_types, idx_to_keep=None)
+            embedding_labels_dict = self.get_behavior_labels(
+                behavior_data_types, idx_to_keep=None
+            )
             if not equal_number_entries(embeddings, embedding_labels_dict):
-                embedding_labels_dict = self.get_behavior_labels(behavior_data_types, movement_state="moving")
+                embedding_labels_dict = self.get_behavior_labels(
+                    behavior_data_types, movement_state="moving"
+                )
                 if not equal_number_entries(embeddings, embedding_labels_dict):
-                    embedding_labels_dict = self.get_behavior_labels(behavior_data_types, movement_state="stationary")
+                    embedding_labels_dict = self.get_behavior_labels(
+                        behavior_data_types, movement_state="stationary"
+                    )
                     if not equal_number_entries(embeddings, embedding_labels_dict):
                         raise ValueError(
                             f"Number of labels is not equal to all, moving or stationary number of frames."
@@ -1057,11 +1110,13 @@ class Task:
         alpha=0.8,
         figsize=(10, 10),
     ):
-        models_original, models_shuffled = self.models.get_models_splitted_original_shuffled(
-            models=models,
-            manifolds_pipeline=manifolds_pipeline,
-            model_naming_filter_include=model_naming_filter_include,
-            model_naming_filter_exclude=model_naming_filter_exclude,
+        models_original, models_shuffled = (
+            self.models.get_models_splitted_original_shuffled(
+                models=models,
+                manifolds_pipeline=manifolds_pipeline,
+                model_naming_filter_include=model_naming_filter_include,
+                model_naming_filter_exclude=model_naming_filter_exclude,
+            )
         )
         stimulus_type = (
             self.behavior_metadata["stimulus_type"]

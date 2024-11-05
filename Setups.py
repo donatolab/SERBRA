@@ -17,6 +17,10 @@ from scipy.interpolate import interp1d
 import cebra
 from itertools import product  # create all possible combinations of a list
 
+# clustering
+from sklearn.cluster import (
+    DBSCAN,
+)  # used for corner detection based on position in space
 
 # debugging
 import inspect
@@ -223,7 +227,7 @@ class BehavioralSetup(Setup):
             else:
                 error = True
         elif preprocess_name == "cam":
-            #TODO: create a proper cam usage for all behavioral setups
+            # TODO: create a proper cam usage for all behavioral setups
             if self.setup in ["openfield", "active_avoidance"]:
                 preprocess = Cam(
                     key=self.key, root_dir=self.data_dir, metadata=self.metadata
@@ -275,6 +279,7 @@ class NeuralSetup(Setup):
         else:
             fps = self.extract_fps()
         return fps
+
 
 ####################################################################################################
 #######################           Hardware            ##############################################
@@ -447,14 +452,16 @@ class Trackball_Setup(BehavioralSetup):
 
 
 class Openfield_Setup(BehavioralSetup):
+    # needed_attributes = ["environment_dimensions", "imaging_fps"]
+    needed_attributes = ["imaging_fps"]
+
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
         self.data_naming_scheme = "UNDEFINDE.noexisting"
 
         self.data_path = self.define_data_path()
-        needed_attributes = ["environment_dimensions", "imaging_fps"]
-        check_needed_keys(metadata, needed_attributes)
+        check_needed_keys(metadata, Openfield_Setup.needed_attributes)
 
         optional_attributes = [
             "stimulus_dimensions",
@@ -642,9 +649,11 @@ class Inscopix(NeuralSetup):
             )
         return binarized_data
 
+
 ####################################################################################################
 ##########################       Software         ##################################################
 ####################################################################################################
+
 
 #######################       Preprocessing         ############################################################
 class Preprocessing(Output):
@@ -1096,10 +1105,11 @@ class Cam(Behavior_Preprocessing):
             + f"{self.root_dir_name}"
             + "_{task_name}[-A-Za-z_0-9 ()]*locs.npy"
         )
+        self.csv_data_naming_scheme = self.data_naming_scheme.replace(".npy", ".csv")
 
         self.outputs = {
             self.root_dir: [self.raw_data_naming_scheme],
-            self.data_dir: [self.data_naming_scheme],
+            self.data_dir: [self.data_naming_scheme, self.csv_data_naming_scheme],
         }
 
         for output in self.own_outputs:
@@ -1115,22 +1125,35 @@ class Cam(Behavior_Preprocessing):
     def pixel_to_meter(self, pixel_data, pixel_per_meter):
         return pixel_data / pixel_per_meter
 
-
+    def extract_position(self):
+        raise NotImplementedError(
+            f"Extracting positions from cam data is not implemented yet for {self.__class__}."
+        )
+        return csv
 
     def run_cam_processing(self, cam_data, save=True, overwrite=False):
         raise NotImplementedError(
-            f"cam data processing not implemented for {self.__class__}"
+            f"Cam data processing not implemented for {self.__class__}"
         )
+        if not csv_data_path.exists():
+            position_in_pixel = self.extract_position(cam_data)
+            raise FileNotFoundError(
+                f"Cam data file {csv_data_path} not found. Needed for creation of npy file."
+            )
+        return position_in_pixel
 
     def preprocess_data(self, cam_data, save=True, overwrite=False):
         """
         Processes the camera data to extract the position of the animal.
-        If the data is already processed the data is loaded, pixels are converted to meters and 
+        If the data is already processed the data is loaded, pixels are converted to meters and
         the position is corrected to the real 0,0 position.
         """
         check_needed_keys(self.metadata, ["pixel_per_meter"])
 
         position_in_pixel = self.load_data(file_name=self.data_naming_scheme)
+        if position_in_pixel is None:
+            position_in_pixel = self.load_data(file_name=self.csv_data_naming_scheme)
+
         if position_in_pixel is None:
             position_in_pixel = self.run_cam_processing(
                 cam_data, save=save, overwrite=overwrite
@@ -1145,8 +1168,8 @@ class Cam(Behavior_Preprocessing):
         borders = Environment.define_border_by_pos(position)
         min_borders = borders[:, 0]
         for dim in range(position.shape[1]):
+            # TODO: Check if this is working robustly
             position[:, dim] = position[:, dim] - min_borders[dim]
-        raise NotImplementedError("Test position correction first")
 
         data = {"position": position}
 
@@ -1287,6 +1310,9 @@ class Neural_Processing(Processing):
 
 
 class Environment(Behavior_Processing):
+    # needed_attributes = ["environment_dimensions", "imaging_fps"]
+    needed_attributes = ["imaging_fps"]
+
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
         self.data_dir = self.root_dir
@@ -1294,16 +1320,19 @@ class Environment(Behavior_Processing):
         for output in self.own_outputs:
             self.outputs[self.data_dir].append(output)
 
-        needed_attributes = ["environment_dimensions", "imaging_fps"]
-        check_needed_keys(metadata, needed_attributes)
+        check_needed_keys(metadata, Environment.needed_attributes)
+        self.define_attributes(metadata)
+
+    def define_attributes(self, metadata):
         optional_attributes = [
+            "environment_dimensions",
             "stimulus_dimensions",
             "stimulus_sequence",
             "stimulus_type",
         ]
         add_missing_keys(metadata, optional_attributes, fill_value=None)
 
-        self.dimensions = make_list_ifnot(metadata["environment_dimensions"])  # in m
+        self.dimensions = make_list_ifnot(metadata["environment_dimensions"]) if metadata["environment_dimensions"] is not None else None  # in m
         self.segment_len = (
             make_list_ifnot(metadata["stimulus_dimensions"])
             if metadata["stimulus_dimensions"] is not None
@@ -1314,7 +1343,9 @@ class Environment(Behavior_Processing):
             if metadata["stimulus_sequence"] is not None
             else None
         )  # [1, 2, 3, 4, 5, 6],
-        self.type = type if type is not None else None  # "A",
+        self.type = (
+            metadata["stimulus_type"] if metadata["stimulus_type"] is not None else None
+        )  # "A",
 
     @staticmethod
     def get_position_from_cumdist(
@@ -1499,21 +1530,38 @@ class Environment(Behavior_Processing):
         return stimulus_type_at_frame
 
     @staticmethod
-    def define_border_by_pos(positions: np.ndarray, percentile: int = 1):
+    def define_border_by_pos(
+        positions: np.ndarray, percentile: int = 1, use_clustering=False
+    ):
         """
         Define borders of a Box the environment based on the positions of the animal.
         """
-        # detect borders with 99% of the data
-        borders = np.zeros((positions.shape[1], 2))
-        for dim in range(positions.shape[1]):
-            # filter 1% of the data
-            lower = positions[:, dim] > np.percentile(positions[:, dim], percentile)
-            upper = positions[:, dim] < np.percentile(
-                positions[:, dim], 100 - percentile
+        if not use_clustering:
+            """This method is only for square shaped environments"""
+            # detect borders with 99% of the data
+            borders = np.zeros((positions.shape[1], 2))
+            for dim in range(positions.shape[1]):
+                # filter 1% of the data
+                lower = positions[:, dim] > np.percentile(positions[:, dim], percentile)
+                upper = positions[:, dim] < np.percentile(
+                    positions[:, dim], 100 - percentile
+                )
+                min_pos = np.min(positions[lower, dim])
+                max_pos = np.max(positions[upper, dim])
+                borders[dim] = [min_pos, max_pos]
+        else:
+            corner_pos = Environment.detect_corners(positions)
+            # define borders based on detected corner position for
+
+            # 1. connect corners to form a box with the biggest area
+            # 2. create a map of the environment with -1 for outside, 0 for inside, 1 for border, 2 for corner
+            # 3. test if the map is correct, by eye. Color the map with the values
+            # 4. detect if a position is at the border or corner
+
+            raise NotImplementedError(
+                "Clustering based border detection not implemented yet."
             )
-            min_pos = np.min(positions[lower, dim])
-            max_pos = np.max(positions[upper, dim])
-            borders[dim] = [min_pos, max_pos]
+
         return borders
 
     @staticmethod
@@ -1539,14 +1587,6 @@ class Environment(Behavior_Processing):
             )
         n_dims = positions.shape[1]
         at_border = np.zeros(positions.shape[0], dtype=bool)
-        #TODO: Corner (based on degree? - autodetection stimulus)
-        #TODO: Corner (based on degree? - autodetection stimulus)
-        #TODO: Corner (based on degree? - autodetection stimulus)
-        #TODO: Corner (based on degree? - autodetection stimulus)
-        #TODO: Corner (based on degree? - autodetection stimulus)
-        #TODO: Corner (based on degree? - autodetection stimulus)
-        #TODO: Corner (based on degree? - autodetection stimulus) penis
-        raise NotImplementedError("Corner detection not implemented yet")
         at_corners = np.zeros(positions.shape[0], dtype=bool)
 
         # Calculate corner radius (same for all dimensions)
@@ -1575,6 +1615,27 @@ class Environment(Behavior_Processing):
         return at_corners, at_border
 
     @staticmethod
+    def detect_corners(positions: np.ndarray, eps: float = 0.1, min_samples: int = 5):
+        """
+        Detect corners in the position data using DBSCAN clustering.
+
+        Args:
+            positions (np.ndarray): The position data.
+            eps (float): The maximum distance between two samples for one to be considered as in the neighborhood of the other.
+            min_samples (int): The number of samples in a neighborhood for a point to be considered as a core point.
+
+        Returns:
+            int: The number of detected corners.
+        """
+        clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(positions)
+        labels = clustering.labels_
+
+        # Count the number of clusters (excluding noise points labeled as -1)
+        num_corners = len(set(labels)) - (1 if -1 in labels else 0)
+
+        return num_corners
+
+    @staticmethod
     def get_env_shapes_from_pos(
         positions: np.ndarray = None, border_thr=0.1  # percentage of the box
     ):
@@ -1591,13 +1652,16 @@ class Environment(Behavior_Processing):
         else:
             in_shape_at_frame = np.zeros(positions.shape[0], dtype=int)
             if positions.ndim == 2:
-                borders = Environment.define_border_by_pos(positions)
+                # FIXME: change to multi corner detection
+                borders = Environment.define_border_by_pos(
+                    positions, use_clustering=False
+                )
                 at_corners, at_border = Environment.at_corner_border(
                     positions, borders, border_thr=border_thr
                 )
 
                 in_shape_at_frame[at_corners] = shapes["corner"]
-                #in_shape_at_frame[at_corners] = shapes["border"]
+                # in_shape_at_frame[at_corners] = shapes["corner"]
                 in_shape_at_frame[at_border] = shapes["border"]
 
                 # at_corner_or_border = at_corners | at_border

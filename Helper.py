@@ -19,7 +19,13 @@ from sklearn.metrics import (
     rand_score,
     adjusted_rand_score,
 )
-from scipy.stats import wasserstein_distance, ks_2samp, entropy, energy_distance, gaussian_kde
+from scipy.stats import (
+    wasserstein_distance,
+    ks_2samp,
+    entropy,
+    energy_distance,
+    gaussian_kde,
+)
 from scipy.spatial.distance import cdist, mahalanobis
 from scipy.spatial import distance, ConvexHull
 from sklearn.covariance import EllipticEnvelope
@@ -37,6 +43,7 @@ from datetime import datetime
 import logging
 from time import time
 from pyinstrument import Profiler
+
 
 class GlobalLogger:
     def __init__(self, save_dir=""):
@@ -122,6 +129,7 @@ def yield_animal_session_task(animals_dict):
         for task_id, task in session.tasks.items():
             yield animal, session, task
 
+
 def get_directories(directory, regex_search=""):
     """
     This function returns a list of directories from the specified directory that match the regular expression search pattern.
@@ -194,10 +202,18 @@ def search_file(directory, filename):
     return None
 
 
-def make_list_ifnot(string_or_list):
-    if isinstance(string_or_list, np.ndarray):
-        return string_or_list.tolist()
-    return [string_or_list] if type(string_or_list) != list else string_or_list
+def make_list_ifnot(var):
+    """
+    This function converts a variable to a list if it is not already a list or numpy array.
+    """
+    output = None
+    if isinstance(var, np.ndarray):
+        output = var.tolist()
+    elif isinstance(var, list):
+        output = var
+    elif var is not None:
+        output = [var]
+    return output
 
 
 def save_file_present(fpath, show_print=False):
@@ -322,13 +338,14 @@ def may_butter_lowpass_filter(data, smooth=True, cutoff=2, fps=None, order=2):
                 )
     return data_smoothed
 
+
 @njit(nopython=True)
 def cosine_similarity(v1, v2):
     """
     A cosine similarity can be seen as the correlation between two vectors or point distributions.
     Returns:
         float: The cosine similarity between the two vectors.
-    """   
+    """
     dot_product = np.dot(v1, v2)
     norm_product = np.linalg.norm(v1) * np.linalg.norm(v2)
     return dot_product / norm_product
@@ -407,16 +424,16 @@ def same_distribution(points1, points2):
         return False
     return np.allclose(points1, points2)
 
+
 def compare_distribution_groups(
-        max_bin,
-        group_vectors,
-        metric="cosine",
-        neighbor_distance=0.1,
-        filter_outliers=True,
-        parallel=True,
-        out_det_method="density",
-    ):
-    
+    max_bin,
+    group_vectors,
+    metric="cosine",
+    neighbor_distance=0.1,
+    filter_outliers=True,
+    parallel=True,
+    out_det_method="density",
+):
     """
     Compare distributions between groups using the specified metric.
     Parameters:
@@ -426,16 +443,14 @@ def compare_distribution_groups(
     Returns:
         - similarities: dict, dictionary of similarities between each group
     """
-    
+
     similarities = {}
     # Compare distributions between each group (bin)
     for group_i, (group_name, group1) in enumerate(group_vectors.items()):
-        
+
         similarities_to_groupi = np.zeros(max_bin)
 
-        for group_j, (group_name2, group2) in enumerate(
-            group_vectors.items()
-        ):
+        for group_j, (group_name2, group2) in enumerate(group_vectors.items()):
             print(f"Comparing {group_name} to {group_name2}")
             dist = compare_distributions(
                 group1,
@@ -446,19 +461,24 @@ def compare_distribution_groups(
                 parallel=parallel,
                 out_det_method=out_det_method,
             )
-            group_position = (
-                group_j if isinstance(group_name2, str) else group_name2
-            )
+            group_position = group_j if isinstance(group_name2, str) else group_name2
             similarities_to_groupi[group_position] = dist
 
         similarities[group_name] = similarities_to_groupi
     return similarities
 
+
 def compare_distributions(
-    points1, points2, metric="cosine", filter_outliers=True, parallel=True, neighbor_distance=None, out_det_method="density"
+    points1,
+    points2,
+    metric="cosine",
+    filter_outliers=True,
+    parallel=True,
+    neighbor_distance=None,
+    out_det_method="density",
 ):
     """
-    Compare two distributions using the specified metric. 
+    Compare two distributions using the specified metric.
     CAUTION: Not all metric calculations are optimized with numba
 
     Parameters:
@@ -515,17 +535,17 @@ def compare_distributions(
     ), "Distributions must have the same number of dimensions"
 
     similarity_range = {
-        "euclidean": {"lowest": np.inf,"highest": 0.0},
-        "wasserstein": {"lowest": np.inf,"highest": 0.0},
-        "kolmogorov-smirnov": {"lowest": np.inf,"highest": 0.0},
-        "chi2": {"lowest": np.inf,"highest": 0.0},
-        "kullback-leibler": {"lowest": np.inf,"highest": 0.0},
-        "jensen-shannon": {"lowest": np.inf,"highest": 0.0},
-        "energy": {"lowest": np.inf,"highest": 0.0},
-        "mahalanobis": {"lowest": np.inf,"highest": 0.0},
-        "cosine": {"lowest": 0.0,"highest": 1.0},
-        "overlap": {"lowest": 0.0,"highest": 1.0},
-        "cross_entropy": {"lowest": 0.0,"highest": 1.0},
+        "euclidean": {"lowest": np.inf, "highest": 0.0},
+        "wasserstein": {"lowest": np.inf, "highest": 0.0},
+        "kolmogorov-smirnov": {"lowest": np.inf, "highest": 0.0},
+        "chi2": {"lowest": np.inf, "highest": 0.0},
+        "kullback-leibler": {"lowest": np.inf, "highest": 0.0},
+        "jensen-shannon": {"lowest": np.inf, "highest": 0.0},
+        "energy": {"lowest": np.inf, "highest": 0.0},
+        "mahalanobis": {"lowest": np.inf, "highest": 0.0},
+        "cosine": {"lowest": 0.0, "highest": 1.0},
+        "overlap": {"lowest": 0.0, "highest": 1.0},
+        "cross_entropy": {"lowest": 0.0, "highest": 1.0},
     }
 
     if same_distribution(points1, points2):
@@ -545,8 +565,12 @@ def compare_distributions(
     # Filter out outliers from the distributions
     if filter_outliers:
         if parallel:
-            points1 = filter_outlier_numba(points1, method=out_det_method, neighbor_distance=neighbor_distance)
-            points2 = filter_outlier_numba(points2, method=out_det_method, neighbor_distance=neighbor_distance)
+            points1 = filter_outlier_numba(
+                points1, method=out_det_method, neighbor_distance=neighbor_distance
+            )
+            points2 = filter_outlier_numba(
+                points2, method=out_det_method, neighbor_distance=neighbor_distance
+            )
         else:
             points1 = filter_outlier(points1, method=out_det_method)
             points2 = filter_outlier(points2, method=out_det_method)
@@ -608,7 +632,7 @@ def compare_distributions(
         kde2 = gaussian_kde(points2.T)
         overlap = normalized_kde_overlap(kde1, kde2)
         return overlap
-    
+
     elif metric == "cross_entropy":
         # Cross entropy: H(p, q) = -sum(p * log(q))
         kde1 = gaussian_kde(points1.T)
@@ -619,6 +643,7 @@ def compare_distributions(
 
     else:
         raise ValueError(f"Unsupported metric: {metric}")
+
 
 def normalized_kde_overlap(kde1, kde2):
     """
@@ -642,29 +667,34 @@ def normalized_kde_overlap(kde1, kde2):
     normalized_overlap = I12 / np.sqrt(I11 * I22)
     return normalized_overlap
 
+
 def calc_kde_entropy(data, bandwidth=None, samples=1000):
     """
     Calculate entropy of a 2D distribution using Kernel Density Estimation.
-    
+
     Parameters:
     data : array-like
         should have positional data in the form of (n_samples, n_dimensions)
     bandwidth : float, optional
         The bandwidth of the kernel
-        It is also possible to use the 
+        It is also possible to use the
             - "scott" to use Scott's Rule of Thumb for bandwidth selection ( default )
             - "silverman" to use Silverman's Rule of Thumb for bandwidth selection
     num_samples : int, optional
         Number of samples to use for Monte Carlo integration
-    
+
     Returns:
     float
         The estimated entropy
     """
     # The density array now contains the KDE values at each grid point in 3D space
-    kde = gaussian_kde(data.T) if bandwidth is None else gaussian_kde(data.T, bw_method=bandwidth)
-    
-    # get the probability density estimates at each data point 
+    kde = (
+        gaussian_kde(data.T)
+        if bandwidth is None
+        else gaussian_kde(data.T, bw_method=bandwidth)
+    )
+
+    # get the probability density estimates at each data point
     # densities = kde.evaluate(data.T)
 
     # Draw samples from the KDE
@@ -679,24 +709,28 @@ def calc_kde_entropy(data, bandwidth=None, samples=1000):
 
     return sample_entropy
 
+
 def calc_entropy(data, convert_to_probabilities=True):
     """
     Calculate entropy given probabilities or a distribution of states that is converted to probabilities.
     """
     ## convert filtered_group_densities to probabilities
-    probabilities = data/sum(data) if convert_to_probabilities else data
+    probabilities = data / sum(data) if convert_to_probabilities else data
     ## calculate shannon entropy
-    entropy = -sum(probabilities*np.log(probabilities + 1e-10))
+    entropy = -sum(probabilities * np.log(probabilities + 1e-10))
     return entropy
+
 
 @njit(nopython=True)
 def get_covariance_matrix(data: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
     cov = np.cov(data, rowvar=False)
     return regularized_covariance(cov, epsilon=epsilon)
 
+
 @njit(nopython=True)
 def regularized_covariance(cov_matrix, epsilon=1e-6):
     return cov_matrix + np.eye(cov_matrix.shape[0]) * epsilon
+
 
 @njit(nopython=True)
 def pca_numba(data, n_components=2):
@@ -707,7 +741,7 @@ def pca_numba(data, n_components=2):
     data (np.ndarray): Input data, shape (n_samples, n_features)
     n_components (int): Number of components to keep
 
-    Returns: 
+    Returns:
         data_pca (np.ndarray): Transformed data, shape (n_samples, n_components)
     """
     # Compute the covariance matrix
@@ -715,9 +749,12 @@ def pca_numba(data, n_components=2):
     # Compute the eigenvectors and eigenvalues
     eigvals, eigvecs = np.linalg.eigh(cov)
     idx = np.argsort(eigvals)[::-1]
-    eigvecs = eigvecs[:, idx[:n_components]]  # extract only the first n_components principal components
+    eigvecs = eigvecs[
+        :, idx[:n_components]
+    ]  # extract only the first n_components principal components
     data_pca = np.dot(data, eigvecs)
     return data_pca
+
 
 @njit(nopython=True)
 def sphere_to_plane(points: np.ndarray):
@@ -779,6 +816,7 @@ def is_positive_definite(A):
     except:
         return False
 
+
 @njit(nopython=True)
 def mahalanobis_distance_between_distributions(points1, points2):
     # Mahalanobis Distance
@@ -794,7 +832,7 @@ def mahalanobis_distance_between_distributions(points1, points2):
     # Manually compute the mean along axis=0
     mean1 = np.zeros(points1.shape[1])
     mean2 = np.zeros(points2.shape[1])
-    
+
     for i in range(points1.shape[1]):
         mean1[i] = np.sum(points1[:, i]) / points1.shape[0]
         mean2[i] = np.sum(points2[:, i]) / points2.shape[0]
@@ -803,6 +841,7 @@ def mahalanobis_distance_between_distributions(points1, points2):
     cov_inv_sum = cov_inv1 + cov_inv2
 
     return mahalanobis_distance(mean1, mean2, cov_inv_sum)
+
 
 @njit(nopython=True, parallel=True)
 def compute_mahalanobis_distances(points, mean, inv_cov):
@@ -822,12 +861,15 @@ def compute_mahalanobis_distances(points, mean, inv_cov):
         distances[i] = mahalanobis_distance(points[i], mean, inv_cov)
     return distances
 
+
 @njit(nopython=True)
-def euclidean_distance_between_distributions(points1: np.ndarray, points2: np.ndarray) -> float:
+def euclidean_distance_between_distributions(
+    points1: np.ndarray, points2: np.ndarray
+) -> float:
     """
-    Computes a distance metric between two distributions using pairwise Euclidean distances. 
+    Computes a distance metric between two distributions using pairwise Euclidean distances.
     This is done by computing the pairwise Euclidean distances between all points in the two distributions,
-    and then taking the mean of these distances. 
+    and then taking the mean of these distances.
 
     Args:
         points1 (np.ndarray): A 2D array of shape (n_samples1, n_features) representing the first distribution.
@@ -843,6 +885,7 @@ def euclidean_distance_between_distributions(points1: np.ndarray, points2: np.nd
     d2 = pairwise_euclidean_distance(points2, points2)
     d3 = pairwise_euclidean_distance(points1, points2)
     return np.abs(np.mean(d1) + np.mean(d2) - 2 * np.mean(d3))
+
 
 @njit(nopython=True, parallel=True)
 def pairwise_euclidean_distance(points1, points2):
@@ -861,8 +904,9 @@ def pairwise_euclidean_distance(points1, points2):
     distances = np.zeros((n1, n2))
     for i in prange(n1):
         for j in range(n2):
-            distances[i, j] = euclidean_distance(points1[i], points2[j])        
+            distances[i, j] = euclidean_distance(points1[i], points2[j])
     return distances
+
 
 @njit(nopython=True)
 def euclidean_distance(x, y):
@@ -879,6 +923,7 @@ def euclidean_distance(x, y):
     diff = x - y
     distances = np.sqrt(np.dot(diff, diff))
     return distances
+
 
 @njit(nopython=True)
 def mahalanobis_distance(x, mean, inv_cov):
@@ -899,6 +944,7 @@ def mahalanobis_distance(x, mean, inv_cov):
     diff = x - mean
     distance = np.sqrt(diff.dot(inv_cov).dot(diff))
     return distance
+
 
 @njit(nopython=True, parallel=True)
 def compute_density(points, neighbor_distance, inv_cov=None):
@@ -928,7 +974,7 @@ def compute_density(points, neighbor_distance, inv_cov=None):
                     count += 1
 
         densities[i] = count
-    
+
     densities = densities / np.max(densities)
     # remove nan
     densities = np.nan_to_num(densities, nan=0.0)
@@ -937,8 +983,11 @@ def compute_density(points, neighbor_distance, inv_cov=None):
         print("No inliers found")
     return densities
 
+
 @njit(nopython=True)
-def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, method="contamination"):
+def get_outlier_mask_numba(
+    points, contamination=0.2, neighbor_distance=None, method="contamination"
+):
     n, d = points.shape
 
     # Remove any rows with NaN or inf
@@ -951,10 +1000,9 @@ def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, me
         # Not enough valid points to compute covariance
         return np.ones(len(valid_points), dtype=np.bool_)
 
-
     # Create mask for non-outlier points
     mask_inliers = np.zeros(len(valid_points), dtype=np.bool_)
-    if method=="contamination":
+    if method == "contamination":
         # Compute mean and covariance
         mean, cov = compute_mean_and_cov(valid_points)
 
@@ -968,38 +1016,47 @@ def get_outlier_mask_numba(points, contamination=0.2, neighbor_distance=None, me
         except:
             # If inversion fails, return valid points
             return np.ones(len(valid_points), dtype=np.bool_)
-        
+
         distances = compute_mahalanobis_distances(valid_points, mean, inv_cov)
 
         # Determine threshold based on contamination (percentage of outliers)
         threshold = np.percentile(distances, 100 * (1 - contamination))
         mask_inliers = distances <= threshold
 
-    elif method=="density":
+    elif method == "density":
         # Determine threshold based on density estimation
         # Compute densities for each point
         if neighbor_distance is None:
-            raise ValueError("neighbor_distance must be specified for density-based outlier detection")
+            raise ValueError(
+                "neighbor_distance must be specified for density-based outlier detection"
+            )
         densities = compute_density(valid_points, neighbor_distance)
-        
+
         # Determine threshold based on contamination (percentage of lowest density points)
-        threshold = np.percentile(densities, 100 * contamination) if sum(densities) > 0 else np.inf
+        threshold = (
+            np.percentile(densities, 100 * contamination)
+            if sum(densities) > 0
+            else np.inf
+        )
         mask_inliers = densities > threshold
 
     return mask_inliers
 
+
 def points_to_histogram(points1, points2, bins=None):
     eps = 1e-10  # Small value to avoid division by zero and log(0)
-    
+
     # Determine number of bins using Sturges' rule
     n1, n2 = len(points1), len(points2)
     num_bins = int(np.ceil(np.log2(max(n1, n2)) + 1))
-    
+
     # Compute histograms with consistent bins
     bin_range = (min(min(points1), min(points2)), max(max(points1), max(points2)))
-    hist1, bin_edges = np.histogram(points1, bins=num_bins, range=bin_range, density=True)
+    hist1, bin_edges = np.histogram(
+        points1, bins=num_bins, range=bin_range, density=True
+    )
     hist2, _ = np.histogram(points2, bins=bin_edges, density=True)
-    
+
     # Add small value and normalize
     hist1 = hist1 + eps
     hist2 = hist2 + eps
@@ -1007,8 +1064,11 @@ def points_to_histogram(points1, points2, bins=None):
     hist2 /= np.sum(hist2)
     return hist1, hist2
 
+
 @njit(nopython=True)
-def filter_outlier_numba(points, contamination=0.2, neighbor_distance=None, method="contamination"):
+def filter_outlier_numba(
+    points, contamination=0.2, neighbor_distance=None, method="contamination"
+):
     """
     Filter out outliers from a set of points using a simplified Elliptic Envelope method.
 
@@ -1033,8 +1093,11 @@ def filter_outlier_numba(points, contamination=0.2, neighbor_distance=None, meth
         mask_valid[i] = all_finite(points[i])
     valid_points = points[mask_valid]
 
-    mask_inliers = get_outlier_mask_numba(points, contamination, neighbor_distance=neighbor_distance, method=method)
+    mask_inliers = get_outlier_mask_numba(
+        points, contamination, neighbor_distance=neighbor_distance, method=method
+    )
     return valid_points[mask_inliers]
+
 
 def filter_outlier(points, contamination=0.2, only_mask=False, method="contamination"):
     """
@@ -1046,9 +1109,13 @@ def filter_outlier(points, contamination=0.2, only_mask=False, method="contamina
         - Points with a Mahalanobis distance above a certain threshold (determined by the contamination parameter) are considered outliers.
     """
     if method == "density":
-        raise NotImplementedError(f"Method 'density' not implemented for not parallel filter_outlier")
+        raise NotImplementedError(
+            f"Method 'density' not implemented for not parallel filter_outlier"
+        )
     elif method == "contamination":
-        outlier_detector = EllipticEnvelope(contamination=contamination, random_state=42)
+        outlier_detector = EllipticEnvelope(
+            contamination=contamination, random_state=42
+        )
     else:
         raise ValueError(f"Method {method} not supported")
     num_points = points.shape[0]
@@ -1060,6 +1127,7 @@ def filter_outlier(points, contamination=0.2, only_mask=False, method="contamina
     if only_mask:
         return mask
     return points[mask]
+
 
 @njit(nopython=True)
 def numba_cross(a, b):
@@ -1132,6 +1200,7 @@ def intersect_segments(seg1, seg2):
         return tuple(intersection_point)
     else:
         return None
+
 
 def area_of_intersection(hull1, hull2):
     """
@@ -1319,6 +1388,7 @@ def check_correct_metadata(string_or_list, name_parts):
                 )
     return success
 
+
 def clean_filename(fname):
     """
     Clean a filename by replacing special characters with underscores.
@@ -1328,11 +1398,12 @@ def clean_filename(fname):
         nice = nice.replace(char, "_")
     nice = nice.replace(">", "bigger")
     nice = nice.replace("<", "smaller")
-    for special_char in ["<", ">", ":", "\"", "/", "\\", "|", "?", "*"]:
+    for special_char in ["<", ">", ":", '"', "/", "\\", "|", "?", "*"]:
         nice = nice.replace(special_char, "")
     for char in ["(", ")", "[", "]", "{", "}"]:
         nice = nice.replace(special_char, "")
     return nice
+
 
 # array
 def encode_categorical(data, categories=None, return_category_map=False):
@@ -1356,16 +1427,19 @@ def encode_categorical(data, categories=None, return_category_map=False):
         categories = np.unique(data, axis=0)
         if categories[0].shape[0] == 1:
             # Single-dimensional categories
-            category_map = {category:category for category in categories}
+            category_map = {category: category for category in categories}
             encoded_data = np.array([category_map[category] for category in data])
         elif categories[0].shape[0] > 1:
             # Multi-dimensional categories
             category_map = {tuple(category): i for i, category in enumerate(categories)}
-            encoded_data = np.array([category_map[tuple(category)] for category in data])
+            encoded_data = np.array(
+                [category_map[tuple(category)] for category in data]
+            )
     if return_category_map:
         return encoded_data, category_map
     else:
         return encoded_data
+
 
 def is_rgba(value):
     if isinstance(value, list) or isinstance(value, np.ndarray):
@@ -1439,12 +1513,14 @@ def is_integer(array: np.ndarray) -> bool:
 def is_floating(array: np.ndarray) -> bool:
     return np.issubdtype(array.dtype, np.floating)
 
+
 def is_list_of_ndarrays(variable):
     # Check if the variable is a list
     if isinstance(variable, list):
         # Check if every element in the list is an instance of np.ndarray
         return all(isinstance(element, np.ndarray) for element in variable)
     return False
+
 
 def force_1_dim_larger(data: np.ndarray):
     if len(data.shape) == 1 or data.shape[0] < data.shape[1]:
@@ -1579,6 +1655,30 @@ def bin_array(
 
 
 def fill_continuous_array(data_array, fps, time_gap):
+    """
+    Fills gaps in a continuous array where values remain the same for a specified time gap.
+
+    Parameters:
+    data_array (numpy.ndarray): The input array containing continuous data.
+    fps (int): Frames per second, used to calculate the frame gap.
+    time_gap (float): The time gap in seconds to consider for filling gaps.
+
+    Returns:
+    numpy.ndarray: The array with gaps filled where values remain the same for the specified time gap.
+
+    Description:
+    This function identifies indices in the `data_array` where the values change. It then fills the gaps
+    between these indices if the gap is less than or equal to the specified `time_gap` (converted to frames
+    using `fps`) and the values before and after the gap are the same. This is useful for ensuring continuity
+    in data where small gaps may exist due to missing or noisy data points.
+
+    Example:
+    >>> data_array = np.array([1, 1, 1, 0, 0, 1, 1, 1, 1])
+    >>> fps = 30
+    >>> time_gap = 2
+    >>> fill_continuous_array(data_array, fps, time_gap)
+    array([1, 1, 1, 1, 1, 1, 1, 1, 1])
+    """
     frame_gap = fps * time_gap
     # Find indices where values change
     value_changes = np.where(np.abs(np.diff(data_array)) > np.finfo(float).eps)[0] + 1
@@ -1587,11 +1687,11 @@ def fill_continuous_array(data_array, fps, time_gap):
     for i in range(len(value_changes) - 1):
         start = value_changes[i]
         end = value_changes[i + 1]
-        if (
-            end - start <= frame_gap
-            and filled_array[start - 1] == filled_array[end + 1]
-        ):
-            filled_array[start:end] = [filled_array[start - 1]] * (end - start)
+        if end - start <= frame_gap:
+            value_before = filled_array[start - 1]
+            value_after = filled_array[end]
+            if filled_array[start - 1] == filled_array[end]:
+                filled_array[start:end] = [filled_array[start - 1]] * (end - start)
     return filled_array
 
 
@@ -1674,8 +1774,10 @@ def dict_value_keylist(dict, keylist):
         dict = dict[key]
     return dict
 
+
 def is_dict_of_dicts(dict):
     return all(type(value) == type(dict) for value in dict.values())
+
 
 def equal_number_entries(embeddings, embedding_labels):
     # check if number labels is the same as number of embedded frames
@@ -1686,6 +1788,7 @@ def equal_number_entries(embeddings, embedding_labels):
             if labels.shape[0] != embedding.shape[0]:
                 return False
     return True
+
 
 def group_by_binned_data(
     binned_data: np.ndarray,
@@ -1753,16 +1856,19 @@ def group_by_binned_data(
             groups_array[coordinates] = values
         return groups_array, bins
     return groups, bins
- 
+
+
 def uncode_categories(data: Union[dict, np.ndarray, list], category_map: dict):
     """
     Converts a dictionary with categorical keys to a dictionary with tuple keys.
     """
-    rev_category_map = {v: k for k, v in category_map.items()}        
+    rev_category_map = {v: k for k, v in category_map.items()}
     if isinstance(data, dict):
-        uncoded = {rev_category_map[key] : value for key, value in data.items()}
+        uncoded = {rev_category_map[key]: value for key, value in data.items()}
     elif isinstance(data, np.ndarray) or isinstance(data, list):
-        uncoded = np.array([rev_category_map[encoded_category] for encoded_category in data.flatten()])
+        uncoded = np.array(
+            [rev_category_map[encoded_category] for encoded_category in data.flatten()]
+        )
     return uncoded
 
 
@@ -1784,18 +1890,19 @@ def filter_dict_by_properties(
     filtered_dict = {key: dictionary[key] for key in dict_keys}
     return filtered_dict
 
+
 def wanted_object(obj, wanted_keys_values):
     """
     Check if an object has the wanted keys and values.
     """
     if isinstance(obj, dict):
-        dictionary = obj 
+        dictionary = obj
     else:
         if hasattr(obj, "__dict__"):
             dictionary = obj.__dict__
         else:
             raise ValueError("Object has no dictionary")
-        
+
     for key, value in wanted_keys_values.items():
         if key not in dictionary:
             return False
@@ -1807,6 +1914,7 @@ def wanted_object(obj, wanted_keys_values):
             elif obj_val != value:
                 return False
     return True
+
 
 def sort_dict(dictionary, reverse=False):
     return dict(sorted(dictionary.items(), reverse=reverse))
@@ -1823,7 +1931,13 @@ def load_yaml(path, mode="r"):
         dictionary = yaml.safe_load(file)
     return dictionary
 
-def load_yaml_data_into_class(cls, yaml_path:Union[str, Path] = None,  name_parts:Union[str, List]=None, needed_attributes: List[str] = None):
+
+def load_yaml_data_into_class(
+    cls,
+    yaml_path: Union[str, Path] = None,
+    name_parts: Union[str, List] = None,
+    needed_attributes: List[str] = None,
+):
     yaml_path = yaml_path or cls.yaml_path
     name_parts = name_parts or cls.id.split("_")[-1]
     string_to_check = yaml_path.stem if isinstance(yaml_path, Path) else yaml_path
@@ -1841,7 +1955,10 @@ def load_yaml_data_into_class(cls, yaml_path:Union[str, Path] = None,  name_part
             needed_attributes=needed_attributes,
         )
     else:
-        raise ValueError(f"Animal {cls.id} does not correspond to metadata in {yaml_path}")
+        raise ValueError(
+            f"Animal {cls.id} does not correspond to metadata in {yaml_path}"
+        )
+
 
 def get_str_from_dict(dictionary, keys):
     present_keys = dictionary.keys()
@@ -2015,6 +2132,7 @@ def set_attributes_check_presents(
             )
     return set_object
 
+
 # matlab
 def load_matlab_metadata(mat_fpath):
     import scipy.io as sio
@@ -2082,18 +2200,20 @@ def range_to_times_xlables_xpos(
             xpos.append(i + 1)
     return xticks, xpos
 
+
 # generators
 def generate_linspace_samples(bounds, num):
     # Generate a list of linspace arrays for each dimension
     linspaces = [np.linspace(start, stop, num) for start, stop in bounds]
-    
+
     # Create the meshgrid for all combinations
-    meshgrids = np.meshgrid(*linspaces, indexing='ij')
-    
+    meshgrids = np.meshgrid(*linspaces, indexing="ij")
+
     # Combine the grids into a single (N, dimensions) array of points
     samples = np.vstack([grid.ravel() for grid in meshgrids]).T
-    
+
     return samples
+
 
 # decorator functions
 def timer(func):
@@ -2108,10 +2228,11 @@ def timer(func):
 
     return wrap_func
 
+
 def profile_function(file_name="profile_output"):
     """
     Run a function and profile it using the Profiler class.
-    
+
     Example:
         @profile_function(file_name="profile_output_parallel")
         def do_parallel(output_fname):
@@ -2119,6 +2240,7 @@ def profile_function(file_name="profile_output"):
 
         do_parallel()
     """
+
     def decorator(func):
         def wrap_func(*args, **kwargs):
             profiler = Profiler()
@@ -2132,10 +2254,12 @@ def profile_function(file_name="profile_output"):
             output_text = profiler.output_text(unicode=True, color=True)
             print(output_text)
             # Save the output to an HTML file
-            with open(f'./logs/{file_name}.html', 'w') as f:
+            with open(f"./logs/{file_name}.html", "w") as f:
                 f.write(profiler.output_html())
             return result
+
         return wrap_func
+
     return decorator
 
 
@@ -2162,8 +2286,8 @@ def reorder(path, pre_task_name):
     timestamps = []
     for timestamp_string in timestamp_strings:
         start_time, end_time = timestamp_string.split("-")
-        start_time = int(start_time)-1
-        end_time = int(end_time)-1
+        start_time = int(start_time) - 1
+        end_time = int(end_time) - 1
         timestamps.append((start_time, end_time))
 
     # splitting the fluorescence data into sessions
@@ -2189,8 +2313,8 @@ def reorder(path, pre_task_name):
         for csv_file in csv_files:
             if session_name in csv_file.stem:
                 # move using path
-                new_csv_file_path = session_output_dir_path.parent.joinpath("TR-BSL", csv_file.name)
+                new_csv_file_path = session_output_dir_path.parent.joinpath(
+                    "TR-BSL", csv_file.name
+                )
                 new_csv_file_path.parent.mkdir(parents=True, exist_ok=True)
                 csv_file.rename(new_csv_file_path)
-                
-    
