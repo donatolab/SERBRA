@@ -1332,7 +1332,11 @@ class Environment(Behavior_Processing):
         ]
         add_missing_keys(metadata, optional_attributes, fill_value=None)
 
-        self.dimensions = make_list_ifnot(metadata["environment_dimensions"]) if metadata["environment_dimensions"] is not None else None  # in m
+        self.dimensions = (
+            make_list_ifnot(metadata["environment_dimensions"])
+            if metadata["environment_dimensions"] is not None
+            else None
+        )  # in m
         self.segment_len = (
             make_list_ifnot(metadata["stimulus_dimensions"])
             if metadata["stimulus_dimensions"] is not None
@@ -1536,7 +1540,19 @@ class Environment(Behavior_Processing):
         """
         Define borders of a Box the environment based on the positions of the animal.
         """
-        if not use_clustering:
+        if use_clustering:
+            # define borders based on detected corner position for
+            .... continue here
+            # 0. detect corners in 2d environment
+            # 1. connect corners to form a box with the biggest area
+            # 2. create a map of the environment with -1 for outside, 0 for inside, 1 for border, 2 for corner
+            # 3. test if the map is correct, by eye. Color the map with the values
+            # 4. detect if a position is at the border or corner
+
+            raise NotImplementedError(
+                "Clustering based border detection not implemented yet."
+            )
+        else:
             """This method is only for square shaped environments"""
             # detect borders with 99% of the data
             borders = np.zeros((positions.shape[1], 2))
@@ -1549,18 +1565,6 @@ class Environment(Behavior_Processing):
                 min_pos = np.min(positions[lower, dim])
                 max_pos = np.max(positions[upper, dim])
                 borders[dim] = [min_pos, max_pos]
-        else:
-            corner_pos = Environment.detect_corners(positions)
-            # define borders based on detected corner position for
-
-            # 1. connect corners to form a box with the biggest area
-            # 2. create a map of the environment with -1 for outside, 0 for inside, 1 for border, 2 for corner
-            # 3. test if the map is correct, by eye. Color the map with the values
-            # 4. detect if a position is at the border or corner
-
-            raise NotImplementedError(
-                "Clustering based border detection not implemented yet."
-            )
 
         return borders
 
@@ -1615,27 +1619,6 @@ class Environment(Behavior_Processing):
         return at_corners, at_border
 
     @staticmethod
-    def detect_corners(positions: np.ndarray, eps: float = 0.1, min_samples: int = 5):
-        """
-        Detect corners in the position data using DBSCAN clustering.
-
-        Args:
-            positions (np.ndarray): The position data.
-            eps (float): The maximum distance between two samples for one to be considered as in the neighborhood of the other.
-            min_samples (int): The number of samples in a neighborhood for a point to be considered as a core point.
-
-        Returns:
-            int: The number of detected corners.
-        """
-        clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(positions)
-        labels = clustering.labels_
-
-        # Count the number of clusters (excluding noise points labeled as -1)
-        num_corners = len(set(labels)) - (1 if -1 in labels else 0)
-
-        return num_corners
-
-    @staticmethod
     def get_env_shapes_from_pos(
         positions: np.ndarray = None, border_thr=0.1  # percentage of the box
     ):
@@ -1654,7 +1637,7 @@ class Environment(Behavior_Processing):
             if positions.ndim == 2:
                 # FIXME: change to multi corner detection
                 borders = Environment.define_border_by_pos(
-                    positions, use_clustering=False
+                    positions, use_clustering=True
                 )
                 at_corners, at_border = Environment.at_corner_border(
                     positions, borders, border_thr=border_thr

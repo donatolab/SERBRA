@@ -340,7 +340,9 @@ class Vizualizer:
         if data.ndim == 1:
             data = data.reshape(-1, 1)
         # Convert coordinates to a numpy array if it's not already
-        coordinates = np.array(position_data) * 100  # Convert to cm
+        # Convert to cm for better visualization in plot
+        coordinates = np.array(position_data) * 100
+        border_limits = border_limits * 100 if border_limits is not None else None
 
         # Extract x and y coordinates
         x_coords = coordinates[:, 0]
@@ -386,9 +388,9 @@ class Vizualizer:
         if border_limits is not None:
             # Add border lines
             plt.axvline(x=0, color="r", linestyle="--", alpha=0.5)
-            plt.axvline(x=border_limits[0], color="r", linestyle="--", alpha=0.5)
+            plt.axvline(x=border_limits[0][1], color="r", linestyle="--", alpha=0.5)
             plt.axhline(y=0, color="r", linestyle="--", alpha=0.5)
-            plt.axhline(y=border_limits[1], color="r", linestyle="--", alpha=0.5)
+            plt.axhline(y=border_limits[1][1], color="r", linestyle="--", alpha=0.5)
 
         x_data_range = max(coordinates[:, 0]) - min(coordinates[:, 0])
         y_data_range = max(coordinates[:, 1]) - min(coordinates[:, 1])
@@ -854,13 +856,18 @@ class Vizualizer:
         for i, (subplot_title, embedding) in enumerate(embeddings.items()):
             # Get the labels for the current subplot
             labels_list = labels["labels"]
-            labels_list = [labels_list] if not isinstance(labels_list, list) else labels_list
-            
+            labels_list = (
+                [labels_list] if not isinstance(labels_list, list) else labels_list
+            )
+
             # get number of session for labels list of multi-session model
             session_number = 0
             subplot_title_parts = subplot_title.split("_")
             if len(subplot_title_parts) > 1:
-                if subplot_title_parts[-2] == "task" and subplot_title_parts[-1].isdigit():
+                if (
+                    subplot_title_parts[-2] == "task"
+                    and subplot_title_parts[-1].isdigit()
+                ):
                     session_number = int(subplot_title_parts[-1])
             session_labels = labels_list[session_number]
 
@@ -1421,7 +1428,7 @@ class Vizualizer:
     def plot_ending(self, title, title_size=20, save=True, as_pdf=False):
         plt.suptitle(title, fontsize=title_size)
         plt.tight_layout()  # Ensure subplots fit within figure area
-        
+
         if save:
             Vizualizer.save_plot(self.save_dir, title, "pdf" if as_pdf else "png")
 
@@ -2585,7 +2592,7 @@ class Vizualizer:
             matrix = correlations_df.sort_values(by=0, axis=1, ascending=False)
 
         tick_size = tick_size or title_size * 1.2
-        label_size = tick_size * .9
+        label_size = tick_size * 0.9
         title_size = title_size or label_size * 1.5
 
         # Creating a heatmap with sort correlations
@@ -2606,7 +2613,7 @@ class Vizualizer:
             if yticks_pos is not None:
                 ax.set_yticks(yticks_pos)
             ax.set_yticklabels(yticks)
-            
+
         # Set tick sizes
         ax.tick_params(axis="x", which="major", labelsize=tick_size)
         ax.tick_params(axis="y", which="major", labelsize=tick_size)
@@ -2670,7 +2677,7 @@ class Vizualizer:
             fig.colorbar(cax, ax=ax, label=colorbar_label)
 
         Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
-        
+
         if show:
             plt.show()
 
@@ -2705,7 +2712,7 @@ class Vizualizer:
             tick_steps[i] = 1 if tick_step == 0 else tick_step
         if len(tick_steps) != len(max_bins):
             tick_steps = [tick_steps[0]] * len(max_bins)
-        
+
         max_value = {}
         for name, group_similarities in similarities.items():
             if name not in max_value.keys():
@@ -2730,23 +2737,27 @@ class Vizualizer:
                     1,
                     figsize=(figsize[0], figsize[1]),
                 )
-                fig.suptitle(title, fontsize=figsize[0]*figsize[1], y=1.01)
-                fig.supxlabel(supxlabel, fontsize=figsize[0]+figsize[1], x=0.5, y=-0.03)
+                fig.suptitle(title, fontsize=figsize[0] * figsize[1], y=1.01)
+                fig.supxlabel(
+                    supxlabel, fontsize=figsize[0] + figsize[1], x=0.5, y=-0.03
+                )
                 fig.align_xlabels()
-                fig.supylabel(supylabel, fontsize=figsize[0]*figsize[1], x=-0.02, y=0.5)
+                fig.supylabel(
+                    supylabel, fontsize=figsize[0] * figsize[1], x=-0.02, y=0.5
+                )
             elif max_bins.ndim == 1:
                 fig, axes = plt.subplots(
                     int(max_bins[0]),
                     int(max_bins[1]),
                     figsize=(max_bins[0] * figsize[0], max_bins[1] * figsize[1]),
                 )
-                fig.suptitle(title, fontsize=figsize[0]*figsize[1], y=1.01)
+                fig.suptitle(title, fontsize=figsize[0] * figsize[1], y=1.01)
                 fig.supxlabel(
-                    supxlabel, fontsize=figsize[0]*figsize[1], x=0.5, y=-0.03
+                    supxlabel, fontsize=figsize[0] * figsize[1], x=0.5, y=-0.03
                 )
                 fig.align_xlabels()
                 fig.supylabel(
-                    supylabel, fontsize=figsize[0]*figsize[1], x=-0.02, y=0.5
+                    supylabel, fontsize=figsize[0] * figsize[1], x=-0.02, y=0.5
                 )
             fig.tight_layout()
 
@@ -2988,25 +2999,22 @@ class Vizualizer:
             # clean title
             title = clean_filename(title)
             save_path = os.path.join(save_dir, f"{title}.{format}")
-            plt.savefig(save_path, 
-                        dpi=300, 
-                        bbox_inches="tight", 
-                        format=format)
+            plt.savefig(save_path, dpi=300, bbox_inches="tight", format=format)
 
     @staticmethod
     def barplot_from_dict_of_dicts(
         data: Dict[str, Dict[str, Union[float, int]]],
-        title: str = 'Decoding of Positon from Adapted Models',
-        legend_title: str = 'Source: Mean RMSE',
+        title: str = "Decoding of Positon from Adapted Models",
+        legend_title: str = "Source: Mean RMSE",
         data_labels: List[str] = None,
-        xlabel: str = 'Model Based on Source and adapted to Task',
-        ylabel: str = 'RMSE (m)',
+        xlabel: str = "Model Based on Source and adapted to Task",
+        ylabel: str = "RMSE (m)",
         figsize=(10, 6),
         save_dir=None,
         as_pdf=False,
     ):
         # Flatten the dictionary for plotting
-        color_map = matplotlib.cm.get_cmap('tab20')
+        color_map = matplotlib.cm.get_cmap("tab20")
 
         plt.figure(figsize=figsize)
 
@@ -3017,24 +3025,32 @@ class Vizualizer:
                 if not data_labels:
                     label = f"{source}: {task.split('_')[-3][-3:]}"
                 else:
-                    label = data_labels[source_num+task_num]
+                    label = data_labels[source_num + task_num]
                 tasks.append(label)
                 values.append(value)
             color = color_map(source_num)
-            
-            bars = plt.bar(tasks, values, color=color, label=f"{source}: {np.mean(values):.4f}")
+
+            bars = plt.bar(
+                tasks, values, color=color, label=f"{source}: {np.mean(values):.4f}"
+            )
             for bar, value in zip(bars, values):
                 # Adding labels to each bar
-                plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f'{value:.4f}',
-                        ha='center', va='bottom', fontsize=9)
+                plt.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height(),
+                    f"{value:.4f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=9,
+                )
 
         # Plotting
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.title(title)
-        plt.xticks(rotation=45, ha='right')
+        plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
-        plt.legend(title=legend_title, bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.legend(title=legend_title, bbox_to_anchor=(1.05, 1), loc="upper left")
 
         Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
 
@@ -3044,29 +3060,31 @@ class Vizualizer:
     @staticmethod
     def plot_3D_group_scatter(
         gropu_data: np.ndarray,
-        additional_title: str = '',
-        xlabel: str = 'X',
-        ylabel: str = 'Y',
-        zlabel: str = 'Z',
+        additional_title: str = "",
+        xlabel: str = "X",
+        ylabel: str = "Y",
+        zlabel: str = "Z",
         cmap="rainbow",
         figsize=(20, 20),
         use_alpha=True,
         filter_outlier: bool = False,
         outlier_threshold: float = 0.2,
-        specific_group: Tuple[int, int]=None,
+        specific_group: Tuple[int, int] = None,
         plot_legend=True,
         save_dir=None,
         as_pdf=False,
     ):
         fig = plt.figure(figsize=figsize)
-        ax = fig.add_subplot(111, projection='3d')
-        title = '3D Scatter'
+        ax = fig.add_subplot(111, projection="3d")
+        title = "3D Scatter"
         title += f" {additional_title}" if additional_title else ""
         title += f" {specific_group}" if specific_group else ""
         title += f" w/o alpha" if not use_alpha else ""
 
         # Define unique colors for each group
-        group_colors = plt.cm.get_cmap(cmap, len(gropu_data))  # Get a colormap with distinct colors
+        group_colors = plt.cm.get_cmap(
+            cmap, len(gropu_data)
+        )  # Get a colormap with distinct colors
 
         # Plot each group with its unique color and density-based transparency
         c_outliers = 0
@@ -3079,20 +3097,20 @@ class Vizualizer:
             locations_raw = data["locations"]
             values_raw = data["values"]
             c_samples += len(values_raw)
-            c_outliers += np.sum(values_raw<outlier_threshold)
-            usefull_idx = values_raw>outlier_threshold
+            c_outliers += np.sum(values_raw < outlier_threshold)
+            usefull_idx = values_raw > outlier_threshold
 
             if sum(usefull_idx) == 0:
                 continue
             locations = locations_raw[usefull_idx] if filter_outlier else locations_raw
             values = values_raw[usefull_idx] if filter_outlier else values_raw
-            
+
             # Normalize the density values to be between 0 and 1 for alpha
-            #norm = mcolors.Normalize(vmin=min(values), vmax=max(values))
-            #alphas = norm(values)
+            # norm = mcolors.Normalize(vmin=min(values), vmax=max(values))
+            # alphas = norm(values)
             norm = mcolors.Normalize(vmin=0, vmax=max(values))
             alphas = norm(values) if use_alpha else np.ones_like(values)
-            
+
             # Convert RGB color to RGBA with alpha
             rgba_colors = np.zeros((locations.shape[0], 4))
             rgba_colors[:, :3] = group_colors(i)[:3]  # Assign the unique color
@@ -3101,22 +3119,29 @@ class Vizualizer:
             steps = 1
             part_locations = locations[::steps]
             rgba_colors = rgba_colors[::steps]
-            ax.scatter(part_locations[:, 0], part_locations[:, 1], part_locations[:, 2], 
-                    color=rgba_colors, label=group_name, edgecolor=None, s=10)
-            
+            ax.scatter(
+                part_locations[:, 0],
+                part_locations[:, 1],
+                part_locations[:, 2],
+                color=rgba_colors,
+                label=group_name,
+                edgecolor=None,
+                s=10,
+            )
+
         if filter_outlier:
             title += f" {c_outliers/c_samples:.2%} outliers"
 
         # Add labels and legend
-        ax.set_xlabel('X axis')
-        ax.set_ylabel('Y axis')
-        ax.set_zlabel('Z axis')
+        ax.set_xlabel("X axis")
+        ax.set_ylabel("Y axis")
+        ax.set_zlabel("Z axis")
 
         ax.grid(False)
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
-        ax.spines['bottom'].set_visible(False)
-        ax.spines['left'].set_visible(False)
+        ax.spines["bottom"].set_visible(False)
+        ax.spines["left"].set_visible(False)
         ax.xaxis.pane.fill = False
         ax.yaxis.pane.fill = False
         ax.zaxis.pane.fill = False
@@ -3139,11 +3164,11 @@ class Vizualizer:
         filter_outlier: bool = False,
         outlier_threshold: float = 0.2,
         additional_title=None,
-        supxlabel: str = 'Bin X',
-        supylabel: str = 'Bin Y',
+        supxlabel: str = "Bin X",
+        supylabel: str = "Bin Y",
         figsize=(2, 2),
         plot_legend=False,
-        cmap='rainbow',
+        cmap="rainbow",
         save_dir=None,
         as_pdf=False,
         use_alpha=True,
@@ -3151,7 +3176,7 @@ class Vizualizer:
         """
         group data is expected to have x, y coordinates as group_name
         """
-        title = 'Point Distributions in 2D'
+        title = "Point Distributions in 2D"
         title += f" {additional_title}" if additional_title else ""
         title += f" pca" if use_pca else ""
         title += f" w/o alpha" if not use_alpha else ""
@@ -3159,7 +3184,7 @@ class Vizualizer:
 
         # Determine the number of subplots
         unique_bins = np.unique(list(group_data.keys()), axis=0)
-        max_bins = np.max(unique_bins, axis=0)+1
+        max_bins = np.max(unique_bins, axis=0) + 1
         figsize = (figsize[0] * max_bins[0], figsize[1] * max_bins[1])
         fig, axes = plt.subplots(max_bins[0], max_bins[1], figsize=figsize)
 
@@ -3177,14 +3202,14 @@ class Vizualizer:
             axes[loc_x, loc_y].set_yticks([])
 
             # Optionally, add axis labels
-            #axes[loc_x, loc_y].set_xlabel('X axis')
-            #axes[loc_x, loc_y].set_ylabel('Y axis')
+            # axes[loc_x, loc_y].set_xlabel('X axis')
+            # axes[loc_x, loc_y].set_ylabel('Y axis')
 
             locations_raw = data["locations"]
             values_raw = data["values"]
             c_samples += len(values_raw)
-            c_outliers += np.sum(values_raw<outlier_threshold)
-            usefull_idx = values_raw>outlier_threshold
+            c_outliers += np.sum(values_raw < outlier_threshold)
+            usefull_idx = values_raw > outlier_threshold
 
             if sum(usefull_idx) == 0:
                 continue
@@ -3209,16 +3234,24 @@ class Vizualizer:
             rgba_colors = rgba_colors[::steps]
 
             # Plot in 2D
-            axes[loc_x, loc_y].scatter(part_locations[:, 0], part_locations[:, 1], 
-                        color=rgba_colors, label=group_name, edgecolor=None, s=10)
-            axes[loc_x, loc_y].set_title(group_name, fontsize=max_bins[0]/3 ,pad=figsize[0]/max_bins[0])
+            axes[loc_x, loc_y].scatter(
+                part_locations[:, 0],
+                part_locations[:, 1],
+                color=rgba_colors,
+                label=group_name,
+                edgecolor=None,
+                s=10,
+            )
+            axes[loc_x, loc_y].set_title(
+                group_name, fontsize=max_bins[0] / 3, pad=figsize[0] / max_bins[0]
+            )
 
         if filter_outlier:
             title += f" {c_outliers/c_samples:.2%} outliers"
-        fig.suptitle(title, fontsize=figsize[0]+figsize[1], y=1.01)
-        fig.supxlabel(supxlabel, fontsize=figsize[0]+figsize[1], x=0.5, y=-0.03)
+        fig.suptitle(title, fontsize=figsize[0] + figsize[1], y=1.01)
+        fig.supxlabel(supxlabel, fontsize=figsize[0] + figsize[1], x=0.5, y=-0.03)
         fig.align_xlabels()
-        fig.supylabel(supylabel, fontsize=figsize[0]+figsize[1], x=-0.02, y=0.5)
+        fig.supylabel(supylabel, fontsize=figsize[0] + figsize[1], x=-0.02, y=0.5)
 
         if plot_legend:
             plt.legend()

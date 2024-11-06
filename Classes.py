@@ -67,7 +67,7 @@ def load_all_animals(
             animal = Animal(
                 animal_id=animal_id, root_dir=root_dir, model_settings=model_settings
             )
-            animal.add_all_sessions(
+            animal.add_sessions(
                 wanted_dates=wanted_dates,
                 behavior_datas=behavior_datas,
                 regenerate=regenerate,
@@ -394,7 +394,7 @@ class Animal:
             print(f"Skipping {self.animal_id} {date}")
         return
 
-    def add_all_sessions(
+    def add_sessions(
         self,
         wanted_dates=["all"],
         behavior_datas=None,
@@ -492,7 +492,7 @@ class Session:
         self.tasks: Dict[str, Task] = {}
         self.load_metadata()
         if behavior_datas:
-            self.add_all_tasks(model_settings=self.model_settings, **kwargs)
+            self.add_tasks(model_settings=self.model_settings, **kwargs)
             self.load_all_data(
                 behavior_datas=behavior_datas,
                 regenerate=regenerate,
@@ -528,12 +528,20 @@ class Session:
             global_logger
             print(f"Skipping Task {task_name}")
 
-    def add_all_tasks(self, model_settings=None, **kwargs):
+    def add_tasks(
+        self, model_settings=None, task_name_list: List[str] = None, **kwargs
+    ):
+        if not task_name_list:
+            global_logger.warning("No task_name_list given. Adding all tasks.")
+            task_name_list = self.tasks_infos.keys()
         for task_name, metadata in self.tasks_infos.items():
-            if not model_settings:
-                model_settings = kwargs if len(kwargs) > 0 else self.model_settings
-            self.add_task(task_name, metadata=metadata, model_settings=model_settings)
-        return self.tasks[task_name]
+            if task_name in task_name_list:
+                if not model_settings:
+                    model_settings = kwargs if len(kwargs) > 0 else self.model_settings
+                self.add_task(
+                    task_name, metadata=metadata, model_settings=model_settings
+                )
+        return self.tasks
 
     def load_all_data(
         self, behavior_datas=["position"], regenerate=False, regenerate_plots=False

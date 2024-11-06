@@ -109,9 +109,9 @@ class Dataset:
                 if save and not self.path.exists():
                     np.save(self.path, self.data)
         self.data = self.correct_data(self.data)
+        self.refine_metadata()
         if plot:
             self.plot(regenerate_plot=regenerate_plot)
-        self.refine_metadata()
         self.binned_data = self.bin_data(self.data)
         return self.data
 
@@ -963,7 +963,7 @@ class Data_Position(BehaviorDataset):
             )
 
         if not "binning_size" in self.metadata.keys():
-            if self.metadata["environment_dimensions"]:
+            if self.metadata["environment_dimensions"] is not None:
                 self.binning_size = self.gues_binning_size()
         else:
             self.binning_size = self.metadata["binning_size"]
@@ -1025,7 +1025,7 @@ class Data_Position(BehaviorDataset):
         elif len(dimensions) == 2:
             borders = Environment.define_border_by_pos(data)
             min_bins = borders[:, 0]
-            max_bins = min_bins + dimensions
+            max_bins = borders[:, 1]
         binned_data = bin_array(
             data, bin_size=bin_size, min_bin=min_bins, max_bin=max_bins
         )
