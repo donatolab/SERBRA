@@ -1535,14 +1535,13 @@ class Environment(Behavior_Processing):
 
     @staticmethod
     def define_border_by_pos(
-        positions: np.ndarray, percentile: int = 1, use_clustering=False
+        positions: np.ndarray, percentile: int = 1, map=False
     ):
         """
         Define borders of a Box the environment based on the positions of the animal.
         """
-        if use_clustering:
-            # define borders based on detected corner position for
-            .... continue here
+        if map:
+            # TODO: Implement position map for detecting position types of the animal (e.g. corner, border, center) even if object are present
             # 0. detect corners in 2d environment
             # 1. connect corners to form a box with the biggest area
             # 2. create a map of the environment with -1 for outside, 0 for inside, 1 for border, 2 for corner
@@ -1637,7 +1636,7 @@ class Environment(Behavior_Processing):
             if positions.ndim == 2:
                 # FIXME: change to multi corner detection
                 borders = Environment.define_border_by_pos(
-                    positions, use_clustering=True
+                    positions, map=False
                 )
                 at_corners, at_border = Environment.at_corner_border(
                     positions, borders, border_thr=border_thr

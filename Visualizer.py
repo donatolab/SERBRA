@@ -1693,8 +1693,8 @@ class Vizualizer:
         # min_max_rmse=(0, 1),
         additional_title="",
     ):
-        raise NotImplementedError(
-            f"This function can be used, but is not suiteable for the data structure used in this project. Only a single line is used for each task."
+        print(
+            f"WARNING: This function can be used, but is not suiteable for the data structure used in this project. Only a single line is used for each task."
         )
         # TODO: change this funciton to plotting bars based on model?????? may use function plot_decoding_statistics for this?
         # Plot decodings
@@ -3013,6 +3013,9 @@ class Vizualizer:
         save_dir=None,
         as_pdf=False,
     ):
+        """
+        data: {source: {task: value}}
+        """
         # Flatten the dictionary for plotting
         color_map = matplotlib.cm.get_cmap("tab20")
 
@@ -3021,17 +3024,20 @@ class Vizualizer:
         for source_num, (source, task_dict) in enumerate(data.items()):
             tasks = []
             values = []
+            colors = []
             for task_num, (task, value) in enumerate(task_dict.items()):
                 if not data_labels:
                     label = f"{source}: {task.split('_')[-3][-3:]}"
                 else:
-                    label = data_labels[source_num + task_num]
+                    label = str(data_labels[source_num + task_num])
                 tasks.append(label)
                 values.append(value)
-            color = color_map(source_num)
+                colors.append(
+                    mcolors.to_rgba(color_map(source_num), alpha=1 - 0.1 * task_num)
+                )
 
             bars = plt.bar(
-                tasks, values, color=color, label=f"{source}: {np.mean(values):.4f}"
+                tasks, values, color=colors, label=f"{source}: {np.mean(values):.4f}"
             )
             for bar, value in zip(bars, values):
                 # Adding labels to each bar

@@ -1649,10 +1649,10 @@ def bin_array(
     binned_array = np.zeros_like(np_arr, dtype=int)
     for i in range(np_arr.shape[1]):
         binned_array[:, i] = bin_array_1d(
-            arr=np_arr[:, i], 
-            bin_size=bin_size[i], 
-            min_bin=min_bin[i], 
-            max_bin=max_bin[i]
+            arr=np_arr[:, i],
+            bin_size=bin_size[i],
+            min_bin=min_bin[i],
+            max_bin=max_bin[i],
         )
 
     return binned_array

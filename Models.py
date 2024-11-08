@@ -153,7 +153,9 @@ class Models:
         return_labels=False,
     ):
         if not type(to_transform_data) == np.ndarray:
-            global_logger.warning(f"No data to transform given. Using model training data.")
+            global_logger.warning(
+                f"No data to transform given. Using model training data."
+            )
             print(f"No data to transform given. Using model training data.")
 
         model_class = self.get_model_class(manifolds_pipeline)
@@ -173,7 +175,7 @@ class Models:
             for model_name, model in models.items():
                 labels.append(model_name)
             return embeddings, labels
-        
+
         return embeddings
 
     def define_decoding_statistics(
@@ -200,7 +202,7 @@ class Models:
                 to_delete_models_key_list.append(keys_list)
             else:
                 model = dict_value_keylist(models, keys_list)
-                #if True:
+                # if True:
                 if model.decoding_statistics is None:
                     model.decoding_statistics = decode(model=model)
 
@@ -211,7 +213,8 @@ class Models:
     def is_model_fitted(self, model, pipeline="cebra"):
         return self.get_model_class(pipeline).is_fitted(model)
 
-    def train_model(self,
+    def train_model(
+        self,
         neural_data,
         model=None,
         behavior_data=None,
@@ -225,7 +228,7 @@ class Models:
         model_settings=None,
         create_embeddings=False,
         regenerate=False,
-              ):
+    ):
         if not is_dict_of_dicts(model_settings):
             model_settings = {pipeline: model_settings}
         model_name = self.define_model_name(
@@ -244,21 +247,24 @@ class Models:
             model_settings=model_settings,
         )
 
-        neural_data_train, neural_data_test = Dataset.manipulate_data(neural_data, 
-                                                                      idx_to_keep=idx_to_keep,
-                                                                      shuffle=shuffle,
-                                                                      split_ratio=split_ratio)
-        
-        if behavior_data is not None:
-            behavior_data_train, behavior_data_test = Dataset.manipulate_data(behavior_data, 
-                                                                              idx_to_keep=idx_to_keep,
-                                                                              shuffle=shuffle,
-                                                                              split_ratio=split_ratio)
+        neural_data_train, neural_data_test = Dataset.manipulate_data(
+            neural_data,
+            idx_to_keep=idx_to_keep,
+            shuffle=shuffle,
+            split_ratio=split_ratio,
+        )
 
+        if behavior_data is not None:
+            behavior_data_train, behavior_data_test = Dataset.manipulate_data(
+                behavior_data,
+                idx_to_keep=idx_to_keep,
+                shuffle=shuffle,
+                split_ratio=split_ratio,
+            )
 
         model_class = self.get_model_class(pipeline)
-        
-        model  = model_class.train(
+
+        model = model_class.train(
             model=model,
             model_type=model_type,
             neural_data_train=neural_data_train,
@@ -279,16 +285,19 @@ class Models:
                 "embedding": None,
             },
         }
-        
+
         if create_embeddings:
-            train_embedding = model_class.create_embedding(model, to_transform_data=neural_data_train)
-            test_embedding = model_class.create_embedding(model, to_transform_data=neural_data_test)
-        
-        model.data["train"]["embedding"] = train_embedding,
-        model.data["test"]["embedding"] = test_embedding,
+            train_embedding = model_class.create_embedding(
+                model, to_transform_data=neural_data_train
+            )
+            test_embedding = model_class.create_embedding(
+                model, to_transform_data=neural_data_test
+            )
+
+        model.data["train"]["embedding"] = train_embedding
+        model.data["test"]["embedding"] = test_embedding
 
         return model
-
 
     def get_model_class(self, pipeline="cebra"):
         if pipeline == "cebra":
@@ -296,6 +305,7 @@ class Models:
         else:
             raise ValueError(f"Pipeline {pipeline} not supported. Choose 'cebra'.")
         return models_class
+
 
 class ModelsWrapper:
     """
@@ -362,8 +372,8 @@ class Model:
         model = self.load_fitted_model(model)
         return model
 
-
         return model
+
 
 class PlaceCellDetectors(ModelsWrapper):
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
@@ -562,7 +572,7 @@ class PlaceCellDetectors(ModelsWrapper):
         )
         rate_map_occupancy = spike_map / time_map
         rate_map_occupancy = np.nan_to_num(rate_map_occupancy, nan=0.0)
-        
+
         # normalize by activity
         rate_map = rate_map_occupancy / np.sum(rate_map_occupancy)
 
@@ -667,7 +677,7 @@ class SpatialInformation(Model):
 
         Returns: self
         """
-        #FIXME : implement default model loading part
+        # FIXME : implement default model loading part
         self.si_formula = "skaags"
         return self
 
@@ -1004,7 +1014,10 @@ class Cebras(ModelsWrapper, Model):
 
         if not model.fitted or regenerate:
             # skip if no neural data available
-            if isinstance(neural_data_train, np.ndarray) and neural_data_train.shape[0] < 10:
+            if (
+                isinstance(neural_data_train, np.ndarray)
+                and neural_data_train.shape[0] < 10
+            ):
                 global_logger.error(
                     f"Not enough frames to use for {model.name}. At least 10 are needed. Skipping"
                 )
@@ -1029,14 +1042,18 @@ class Cebras(ModelsWrapper, Model):
                 model.fitted = self.is_fitted(model)
                 model.save(model.save_path)
         else:
-            global_logger.info(
-                f"{model.name} model already trained. Skipping."
-            )
+            global_logger.info(f"{model.name} model already trained. Skipping.")
             print(f"{model.name} model already trained. Skipping.")
         return model
 
     def create_embedding(
-        self, model, session_id=None, to_transform_data=None, to_2d=False, save=False, return_labels=False
+        self,
+        model,
+        session_id=None,
+        to_transform_data=None,
+        to_2d=False,
+        save=False,
+        return_labels=False,
     ):
         embedding = None
         labels = None
@@ -1044,16 +1061,24 @@ class Cebras(ModelsWrapper, Model):
             if to_transform_data is None:
                 to_transform_data = model.data["train"]["neural"]
                 label = model.data["train"]["behavior"]
-            
+
             if isinstance(to_transform_data, list) and len(to_transform_data) == 1:
                 to_transform_data = to_transform_data[0]
-            
+
             if isinstance(to_transform_data, np.ndarray):
                 if session_id is not None:
                     # single session embedding from multi-session model
-                    embedding = model.transform(to_transform_data, session_id=session_id) if to_transform_data.shape[0] > 10 else None
+                    embedding = (
+                        model.transform(to_transform_data, session_id=session_id)
+                        if to_transform_data.shape[0] > 10
+                        else None
+                    )
                 else:
-                    embedding = model.transform(to_transform_data) if to_transform_data.shape[0] > 10 else None
+                    embedding = (
+                        model.transform(to_transform_data)
+                        if to_transform_data.shape[0] > 10
+                        else None
+                    )
 
                 if to_2d:
                     if embedding.shape[1] > 2:
@@ -1063,59 +1088,71 @@ class Cebras(ModelsWrapper, Model):
                 if save:
                     raise NotImplementedError("Saving embeddings not implemented yet.")
                     import pickle
-                    with open('multi_embeddings.pkl', 'wb') as f:
+
+                    with open("multi_embeddings.pkl", "wb") as f:
                         pickle.dump(embedding, f)
             else:
-                    embedding = {}
-                    # multi-session embedding
-                    for i, data in enumerate(to_transform_data):
-                        embedding_title = f"{model.name}_task_{i}"
-                        if return_labels:
-                            session_embedding, label = self.create_embedding(model, i, data, to_2d, save, return_labels)
-                            if session_embedding is not None:
-                                embedding[embedding_title] = session_embedding
-                                labels[embedding_title] = label
-                        else:
-                            session_embedding = self.create_embedding(model, i, data, to_2d, save)
-                            if session_embedding is not None:
-                                embedding[embedding_title] = session_embedding
+                embedding = {}
+                # multi-session embedding
+                for i, data in enumerate(to_transform_data):
+                    embedding_title = f"{model.name}_task_{i}"
+                    if return_labels:
+                        session_embedding, label = self.create_embedding(
+                            model, i, data, to_2d, save, return_labels
+                        )
+                        if session_embedding is not None:
+                            embedding[embedding_title] = session_embedding
+                            labels[embedding_title] = label
+                    else:
+                        session_embedding = self.create_embedding(
+                            model, i, data, to_2d, save
+                        )
+                        if session_embedding is not None:
+                            embedding[embedding_title] = session_embedding
 
         else:
             global_logger.error(f"{model.name} model. Not fitted.")
-            global_logger.warning(
-                f"Skipping {model.name} model"
-            )
+            global_logger.warning(f"Skipping {model.name} model")
             print(f"{model.name} model. Not fitted.")
-            print(
-                f"Skipping {model.name} model"
-            )
+            print(f"Skipping {model.name} model")
         if return_labels:
             return embedding, labels
         return embedding
 
-    def create_embeddings(self, 
-                          models: Dict[str, Model],
-                          to_transform_data: Union[np.ndarray, List[np.ndarray]]=None, 
-                          to_2d=False,
-                          save=False,
-                          return_labels=False):
+    def create_embeddings(
+        self,
+        models: Dict[str, Model],
+        to_transform_data: Union[np.ndarray, List[np.ndarray]] = None,
+        to_2d=False,
+        save=False,
+        return_labels=False,
+    ):
 
         embeddings = {}
         labels = {}
         for model_name, model in models.items():
             embedding_title = f"{model_name}"
             if return_labels:
-                embedding, label = self.create_embedding(model, to_transform_data=to_transform_data, to_2d=to_2d, save=save, return_labels=return_labels)
+                embedding, label = self.create_embedding(
+                    model,
+                    to_transform_data=to_transform_data,
+                    to_2d=to_2d,
+                    save=save,
+                    return_labels=return_labels,
+                )
             else:
-                embedding = self.create_embedding(model, to_transform_data=to_transform_data, to_2d=to_2d, save=save)
+                embedding = self.create_embedding(
+                    model, to_transform_data=to_transform_data, to_2d=to_2d, save=save
+                )
             if embedding is not None:
                 embeddings[embedding_title] = embedding
                 if return_labels:
                     labels[embedding_title] = label
-        
+
         if return_labels:
             return embeddings, labels
         return embeddings
+
 
 def decode(
     model=None,
@@ -1130,31 +1167,47 @@ def decode(
     detailed_accuracy=False,
 ):
     if model is None and (
-                        embedding_train is None or
-                        embedding_test is None or
-                        labels_train is None or
-                        labels_test is None
-                        ):
-        raise ValueError("Model and embedding or neural_data to embedd is required to decode.")
+        embedding_train is None
+        or embedding_test is None
+        or labels_train is None
+        or labels_test is None
+    ):
+        raise ValueError(
+            "Model and embedding or neural_data to embedd is required to decode."
+        )
 
-    if embedding_train is not None and neural_data_train_to_embedd is not None or embedding_test is not None and neural_data_test_to_embedd is not None:
+    if (
+        embedding_train is not None
+        and neural_data_train_to_embedd is not None
+        or embedding_test is not None
+        and neural_data_test_to_embedd is not None
+    ):
         raise ValueError("Only one embedding or to embedd variables is required.")
 
     if neural_data_train_to_embedd is None:
         if embedding_train is None:
             neural_data_train_to_embedd = model.data["train"]["neural"]
-            embedding_train = model.data["train"]["embedding"] if model.data["train"]["embedding"] is not None else model.transform(neural_data_train_to_embedd)
+            if model.data["train"]["embedding"] is not None:
+                embedding_train = model.data["train"]["embedding"]
+            else:
+                embedding_train = model.transform(neural_data_train_to_embedd)
     else:
         embedding_train = model.transform(neural_data_train_to_embedd)
 
     if neural_data_test_to_embedd is None:
         if embedding_test is None:
             neural_data_test_to_embedd = model.data["test"]["neural"]
-            embedding_test = model.data["test"]["embedding"] if model.data["test"]["embedding"] is not None else model.transform(neural_data_test_to_embedd)
+            if model.data["test"]["embedding"] is not None:
+                embedding_test = model.data["test"]["embedding"]
+            else:
+                embedding_test = model.transform(neural_data_test_to_embedd)
     else:
         embedding_test = model.transform(neural_data_test_to_embedd)
 
-    labels_train = model.data["train"]["behavior"] if labels_train is None else labels_train
+    # TODO: behavior data should be dictionary?
+    labels_train = (
+        model.data["train"]["behavior"] if labels_train is None else labels_train
+    )
     labels_test = model.data["test"]["behavior"] if labels_test is None else labels_test
 
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
@@ -1217,10 +1270,12 @@ def decode(
                     label_test_class_idx = labels_test[:, i] == class_
                     labels_test_class = labels_test[label_test_class_idx, i]
                     labels_pred_class = labels_pred[label_test_class_idx, i]
-                    accuracy[class_] = accuracy_score(labels_test_class, labels_pred_class)
+                    accuracy[class_] = accuracy_score(
+                        labels_test_class, labels_pred_class
+                    )
             else:
                 accuracy = accuracy_score(labels_test[:, i], labels_pred[:, i])
-            
+
             precision = precision_score(
                 labels_test[:, i],
                 labels_pred[:, i],

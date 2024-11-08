@@ -31,6 +31,7 @@ from Setups import (
 )
 
 
+
 class Dataset:
     needed_keys = ["setup"]
 
@@ -322,7 +323,7 @@ class Dataset:
         return data_2d
 
     @staticmethod
-    def manipulate_data(data, idx_to_keep=None, shuffle=False, split_ratio=None):
+    def manipulate_data(data, idx_to_keep=None, shuffle=False, split_ratio=None, as_list=False):
         """
         Manipulates the input data by applying filtering, shuffling, splitting,
         and enforcing a 2D structure on the resulting subsets.
@@ -361,20 +362,27 @@ class Dataset:
             - `shuffle(data)`: Shuffles the input data.
             - `split(data, split_ratio)`: Splits the data into training and testing subsets based on the `split_ratio`.
             - `force_2d(data)`: Ensures that the data has a 2D structure.
-        - The `make_list_ifnot` function is assumed to convert the input into a list if it is not already a list.
         """
-        if not is_list_of_ndarrays(data):
-            data = [data]
-        data_train = []
-        data_test = []
-        for i, data_i in enumerate(data):
-            data_filtered = Dataset.filter_by_idx(data_i, idx_to_keep=idx_to_keep)
+        if as_list:
+            if not is_list_of_ndarrays(data):
+                data = [data]
+            data_train = []
+            data_test = []
+            for i, data_i in enumerate(data):
+                data_filtered = Dataset.filter_by_idx(data_i, idx_to_keep=idx_to_keep)
+                data_shuffled = Dataset.shuffle(data_filtered) if shuffle else data_filtered
+                data_train_i, data_test_i = Dataset.split(data_shuffled, split_ratio)
+                data_train_i = Dataset.force_2d(data_train_i)
+                data_test_i = Dataset.force_2d(data_test_i)
+                data_train.append(data_train_i)
+                data_test.append(data_test_i)
+        else:
+            #TODO: is this correct? verything working fine?
+            data_filtered = Dataset.filter_by_idx(data, idx_to_keep=idx_to_keep)
             data_shuffled = Dataset.shuffle(data_filtered) if shuffle else data_filtered
-            data_train_i, data_test_i = Dataset.split(data_shuffled, split_ratio)
-            data_train_i = Dataset.force_2d(data_train_i)
-            data_test_i = Dataset.force_2d(data_test_i)
-            data_train.append(data_train_i)
-            data_test.append(data_test_i)
+            data_train, data_test = Dataset.split(data_shuffled, split_ratio)
+            data_train = Dataset.force_2d(data_train)
+            data_test = Dataset.force_2d(data_test)
         return data_train, data_test
 
 
@@ -955,7 +963,7 @@ class Data_Position(BehaviorDataset):
                     f"No Environmental Data is provided. Defining environment dimensions based on position data."
                 )
                 self.metadata["environment_dimensions"] = (
-                    Environment.define_border_by_pos(self.data, use_clustering=False)
+                    Environment.define_border_by_pos(self.data, map=False)
                 )
         elif self.metadata["environment_dimensions"] is not None:
             self.metadata["environment_dimensions"] = make_list_ifnot(
