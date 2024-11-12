@@ -1166,6 +1166,9 @@ def decode(
     metric="cosine",
     detailed_accuracy=False,
 ):
+    """
+    Decodes the neural data using the kNN decoder.
+    """
     if model is None and (
         embedding_train is None
         or embedding_test is None

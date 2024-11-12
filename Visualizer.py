@@ -3004,27 +3004,45 @@ class Vizualizer:
     @staticmethod
     def barplot_from_dict_of_dicts(
         data: Dict[str, Dict[str, Union[float, int]]],
-        title: str = "Decoding of Positon from Adapted Models",
+        title: str = "Decoding of Position",
+        additional_title: str = "",
         legend_title: str = "Source: Mean RMSE",
         data_labels: List[str] = None,
-        xlabel: str = "Model Based on Source and adapted to Task",
+        xlabel: str = "Model Based on Source and compared to Task",
         ylabel: str = "RMSE (m)",
+        base_bar_width=1,
+        distance_between_bars=0,
+        distace_between_sources=None,
         figsize=(10, 6),
         save_dir=None,
         as_pdf=False,
     ):
         """
-        data: {source: {task: value}}
+        
+        Attributes:
+            data: {source: {task: value}}
+
         """
         # Flatten the dictionary for plotting
         color_map = matplotlib.cm.get_cmap("tab20")
 
         plt.figure(figsize=figsize)
 
+        num_sources = len(data)
+        bar_width = base_bar_width / num_sources  # Width of each bar
+        distace_between_sources = (
+            bar_width * 2
+            if distace_between_sources is None
+            else distace_between_sources
+        )
+
+        position = 0
+        all_positions = []
         for source_num, (source, task_dict) in enumerate(data.items()):
             tasks = []
             values = []
             colors = []
+            positions = []
             for task_num, (task, value) in enumerate(task_dict.items()):
                 if not data_labels:
                     label = f"{source}: {task.split('_')[-3][-3:]}"
@@ -3035,26 +3053,39 @@ class Vizualizer:
                 colors.append(
                     mcolors.to_rgba(color_map(source_num), alpha=1 - 0.1 * task_num)
                 )
+                positions.append(position)
+                position += bar_width + distance_between_bars
+
+            position += distace_between_sources
+            all_positions += positions
 
             bars = plt.bar(
-                tasks, values, color=colors, label=f"{source}: {np.mean(values):.4f}"
+                positions,
+                height=values,
+                width=bar_width,
+                color=colors,
+                label=f"{source}: {np.mean(values):.2%}",
             )
             for bar, value in zip(bars, values):
                 # Adding labels to each bar
                 plt.text(
                     bar.get_x() + bar.get_width() / 2,
                     bar.get_height(),
-                    f"{value:.4f}",
+                    f"{value:.0%}"[:-1],
                     ha="center",
                     va="bottom",
                     fontsize=9,
                 )
 
+        title = f"{title} {additional_title}" if additional_title else title
+
         # Plotting
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.title(title)
-        plt.xticks(rotation=45, ha="right")
+        plt.xticks(
+            all_positions, data_labels[: len(all_positions)], rotation=45, ha="right"
+        )
         plt.tight_layout()
         plt.legend(title=legend_title, bbox_to_anchor=(1.05, 1), loc="upper left")
 
