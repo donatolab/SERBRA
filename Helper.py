@@ -669,7 +669,7 @@ def normalized_kde_overlap(kde1, kde2):
     return normalized_overlap
 
 
-def calc_kde_entropy(data, bandwidth=None, samples=1000):
+def calc_kde_entropy(data, bandwidth=None, samples=1000, normalize=False):
     """
     Calculate entropy of a 2D distribution using Kernel Density Estimation.
 
@@ -689,6 +689,13 @@ def calc_kde_entropy(data, bandwidth=None, samples=1000):
         The estimated entropy
     """
     # The density array now contains the KDE values at each grid point in 3D space
+    data_samples = data.shape[0]
+    features = data.shape[1]
+    if data_samples < features:
+        global_logger.warning(
+            f"WARNING: Data samples {data_samples} < features {features}. Returning None"
+        )
+        return None
     kde = (
         gaussian_kde(data.T)
         if bandwidth is None
@@ -706,20 +713,47 @@ def calc_kde_entropy(data, bandwidth=None, samples=1000):
     # log_dens = kde.logpdf(samples)
 
     # Estimate entropy of the samples
-    sample_entropy = calc_entropy(densities, convert_to_probabilities=True)
+    sample_entropy = calc_entropy(
+        densities, convert_to_probabilities=True, normalize=normalize
+    )
 
     return sample_entropy
 
 
-def calc_entropy(data, convert_to_probabilities=True):
+def calc_entropy(data, convert_to_probabilities=True, normalize=False, base=None):
     """
-    Calculate entropy given probabilities or a distribution of states that is converted to probabilities.
+    Calculate entropy given probabilities or a distribution of numbers that represent a value
+
+    Parameters:
+        data : array-like
+            Densities to calculate entropy for.
+        convert_to_probabilities : bool, optional
+            If True, convert the data to probabilities before calculating entropy.
+        normalize : bool, optional
+            If True, normalize the entropy to be between 0 and 1. By
     """
-    ## convert filtered_group_densities to probabilities
+
+    ## convert data to probabilities
     probabilities = data / sum(data) if convert_to_probabilities else data
     ## calculate shannon entropy
-    entropy = -sum(probabilities * np.log(probabilities + 1e-10))
-    return entropy
+    data_entropy = entropy(probabilities + 1e-100, base=base)
+    if normalize:
+        data_entropy /= calc_max_entropy(len(data))
+    return data_entropy
+
+
+def calc_max_entropy(num_classes, base=None):
+    """
+    Calculate the maximum entropy for a given number of classes.
+
+    Parameters:
+        - num_classes: int, the number of classes
+        - base: str, the base of the logarithm (default is 'e')
+
+    Returns:
+        - float, the maximum entropy
+    """
+    return np.log(num_classes) / np.log(base) if base else np.log(num_classes)
 
 
 @njit(nopython=True)

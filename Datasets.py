@@ -31,7 +31,6 @@ from Setups import (
 )
 
 
-
 class Dataset:
     needed_keys = ["setup"]
 
@@ -323,7 +322,9 @@ class Dataset:
         return data_2d
 
     @staticmethod
-    def manipulate_data(data, idx_to_keep=None, shuffle=False, split_ratio=None, as_list=False):
+    def manipulate_data(
+        data, idx_to_keep=None, shuffle=False, split_ratio=None, as_list=False
+    ):
         """
         Manipulates the input data by applying filtering, shuffling, splitting,
         and enforcing a 2D structure on the resulting subsets.
@@ -370,14 +371,16 @@ class Dataset:
             data_test = []
             for i, data_i in enumerate(data):
                 data_filtered = Dataset.filter_by_idx(data_i, idx_to_keep=idx_to_keep)
-                data_shuffled = Dataset.shuffle(data_filtered) if shuffle else data_filtered
+                data_shuffled = (
+                    Dataset.shuffle(data_filtered) if shuffle else data_filtered
+                )
                 data_train_i, data_test_i = Dataset.split(data_shuffled, split_ratio)
                 data_train_i = Dataset.force_2d(data_train_i)
                 data_test_i = Dataset.force_2d(data_test_i)
                 data_train.append(data_train_i)
                 data_test.append(data_test_i)
         else:
-            #TODO: is this correct? verything working fine?
+            # TODO: is this correct? verything working fine?
             data_filtered = Dataset.filter_by_idx(data, idx_to_keep=idx_to_keep)
             data_shuffled = Dataset.shuffle(data_filtered) if shuffle else data_filtered
             data_train, data_test = Dataset.split(data_shuffled, split_ratio)
@@ -758,6 +761,8 @@ class NeuralDataset(Dataset):
         figsize=(6, 5),
         save_plot: bool = False,
         save_dir=None,
+        normalize=True,
+        normalize_by_occupancy=False,
     ):
         """
         Evaluates the amount of information in the neural data. Based on the distribution of samples labeld by the binned features.
@@ -783,7 +788,30 @@ class NeuralDataset(Dataset):
                 The threshold used to determine outliers. Default is 0.2.
             - plot: bool
                 If True, the information content is plotted. Default is False.
+            - plot_density: bool
+                If True, the density of the samples in the feature space is plotted. Default is False.
+            - use_alpha: bool
+                If True, the alpha value is used for plotting. Default is False.
+            - plot_legend: bool
+                If True, the legend is plotted. Default is False.
+            - figsize: Tuple[int, int]
+                The size of the figure. Default is (6, 5).
+            - save_plot: bool
+                If True, the plot is saved. Default is False.
+            - save_dir: Path
+                The directory where the plot is saved. Default is None.
+            - normalize: bool
+                If True, the entropy is normalized. Default is True.
         """
+        if not use_embedding:
+            print(
+                f"WARNING: information content of raw data may be unusefull, since the number of features is high."
+            )
+            global_logger.warning(
+                f"WARNING: information content of raw data may be unusefull, since the number of features is high."
+            )
+
+        # calculate density of samples in feature space
         densities = self.density(
             model=model,
             idx_to_keep=idx_to_keep,
@@ -796,21 +824,35 @@ class NeuralDataset(Dataset):
             plot=plot_density,
             use_alpha=False,
         )
+
         inf_contents = {}
+        max_inf_content = 0
         for group_name, data in densities.items():
             locations = data["locations"]
             group_densities = data["values"]
             # calculate entropy
             if method == "entropy":
                 inf_content = calc_entropy(
-                    group_densities, convert_to_probabilities=True
+                    group_densities, convert_to_probabilities=True, normalize=normalize
                 )
             elif method == "kde":
-                inf_content = calc_kde_entropy(locations, bandwidth=None)
+                inf_content = calc_kde_entropy(
+                    locations, bandwidth=None, normalize=normalize
+                )
             else:
                 raise ValueError(f"Method {method} not supported.")
 
+            # normalize by occupancy
+            if normalize_by_occupancy:
+                occupancy = len(group_densities)
+                inf_content /= occupancy
+                max_inf_content = max(max_inf_content, inf_content)
+
             inf_contents[group_name] = inf_content
+
+        if normalize_by_occupancy:
+            for group_name, entropy in inf_contents.items():
+                inf_contents[group_name] = entropy / max_inf_content
 
         if plot:
             # convert entropies dict to array for heatmap plotting
@@ -822,8 +864,10 @@ class NeuralDataset(Dataset):
 
             title = "KDE based Entropy" if method == "kde" else "Entropy"
             title += f" of density distributions {self.metadata['task_id']}"
-            title += "embedded" if use_embedding else ""
+            title += " embedded" if use_embedding else ""
             title += " filtered" if remove_outliers else ""
+            colorbar_label = "Entropy" if not normalize else "% of Maximum Entropy"
+            colorbar_label += " per Occupancy" if normalize_by_occupancy else ""
 
             if save_plot:
                 save_dir = save_dir or self.plot_attributes["save_path"].parent
@@ -843,7 +887,7 @@ class NeuralDataset(Dataset):
                 yticks_pos=yticks_pos,
                 xlabel="Position Bin X",
                 ylabel="Position Bin Y",
-                colorbar_label="Entropy",
+                colorbar_label=colorbar_label,
                 save_dir=save_dir,
             )
         return inf_contents
@@ -908,6 +952,7 @@ class NeuralDataset(Dataset):
                 filter_outlier=remove_outliers,
                 outlier_threshold=outlier_threshold,
                 save_dir=save_dir,
+                same_subplot_range=True,
             )
         elif plot == "3d":
             Vizualizer.plot_3D_group_scatter(

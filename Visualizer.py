@@ -3009,7 +3009,7 @@ class Vizualizer:
         legend_title: str = "Source: Mean RMSE",
         data_labels: List[str] = None,
         xlabel: str = "Model Based on Source and compared to Task",
-        ylabel: str = "RMSE (m)",
+        ylabel: str = "RMSE (cm)",
         base_bar_width=1,
         distance_between_bars=0,
         distace_between_sources=None,
@@ -3018,9 +3018,11 @@ class Vizualizer:
         as_pdf=False,
     ):
         """
-        
+        Plots a group of bars per source with different tasks as subgroups. Values in the dictionary will be multiplied by 100 to create a RMSE value in cm.
+
         Attributes:
             data: {source: {task: value}}
+                values are RMSE values in m
 
         """
         # Flatten the dictionary for plotting
@@ -3041,15 +3043,20 @@ class Vizualizer:
         for source_num, (source, task_dict) in enumerate(data.items()):
             tasks = []
             values = []
+            variances = []
             colors = []
             positions = []
             for task_num, (task, value) in enumerate(task_dict.items()):
+                if isinstance(value, dict):
+                    variance = value["variance"]
+                    value = value["mean"]
                 if not data_labels:
                     label = f"{source}: {task.split('_')[-3][-3:]}"
                 else:
                     label = str(data_labels[source_num + task_num])
                 tasks.append(label)
-                values.append(value)
+                values.append(value * 100)
+                variances.append(variance * 100)
                 colors.append(
                     mcolors.to_rgba(color_map(source_num), alpha=1 - 0.1 * task_num)
                 )
@@ -3064,14 +3071,24 @@ class Vizualizer:
                 height=values,
                 width=bar_width,
                 color=colors,
-                label=f"{source}: {np.mean(values):.2%}",
+                label=f"{source}: {np.mean(values):.2f}",
+            )
+            # Adding error bars using plt.errorbar
+            plt.errorbar(
+                positions,
+                values,
+                yerr=variances,
+                fmt="none",  # No connecting line
+                ecolor="white",  # Color of the error bars
+                capsize=5,  # Adding caps to the error bars
+                alpha=0.3,  # Transparency of the error bars
             )
             for bar, value in zip(bars, values):
                 # Adding labels to each bar
                 plt.text(
                     bar.get_x() + bar.get_width() / 2,
                     bar.get_height(),
-                    f"{value:.0%}"[:-1],
+                    f"{int(value)}",
                     ha="center",
                     va="bottom",
                     fontsize=9,
@@ -3082,7 +3099,7 @@ class Vizualizer:
         # Plotting
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
-        plt.title(title)
+        plt.title(title, fontsize=figsize[0])
         plt.xticks(
             all_positions, data_labels[: len(all_positions)], rotation=45, ha="right"
         )
@@ -3190,7 +3207,6 @@ class Vizualizer:
         ax.set_ylabel(ylabel)
         ax.set_zlabel(zlabel)
         ax.set_title(title)
-
         Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
 
         plt.show()
@@ -3209,6 +3225,7 @@ class Vizualizer:
         save_dir=None,
         as_pdf=False,
         use_alpha=True,
+        same_subplot_range=False,
     ):
         """
         group data is expected to have x, y coordinates as group_name
@@ -3232,6 +3249,8 @@ class Vizualizer:
         # Plot each group in its respective subplot
         c_outliers = 0
         c_samples = 0
+        min_max_subplot_x = [0, 0]
+        min_max_subplot_y = [0, 0]
         for i, (group_name, data) in enumerate(group_data.items()):
             loc_x, loc_y = group_name
             # remove axis labels
@@ -3282,6 +3301,19 @@ class Vizualizer:
             axes[loc_x, loc_y].set_title(
                 group_name, fontsize=max_bins[0] / 3, pad=figsize[0] / max_bins[0]
             )
+
+            # check min max for subplot
+            if same_subplot_range:
+                min_max_subplot_x[0] = min(min_max_subplot_x[0], np.min(part_locations[:, 0]))
+                min_max_subplot_x[1] = max(min_max_subplot_x[1], np.max(part_locations[:, 0]))
+                min_max_subplot_y[0] = min(min_max_subplot_y[0], np.min(part_locations[:, 1]))
+                min_max_subplot_y[1] = max(min_max_subplot_y[1], np.max(part_locations[:, 1]))
+
+        # resize subplots to have the same range
+        if same_subplot_range:
+            for ax in axes.flat:
+                ax.set_xlim(min_max_subplot_x)
+                ax.set_ylim(min_max_subplot_y)
 
         if filter_outlier:
             title += f" {c_outliers/c_samples:.2%} outliers"
