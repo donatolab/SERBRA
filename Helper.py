@@ -1728,8 +1728,8 @@ def fill_continuous_array(data_array, fps, time_gap):
         if end - start <= frame_gap:
             value_before = filled_array[start - 1]
             value_after = filled_array[end]
-            if filled_array[start - 1] == filled_array[end]:
-                filled_array[start:end] = [filled_array[start - 1]] * (end - start)
+            if value_before == value_after:
+                filled_array[start:end] = [value_before] * (end - start)
     return filled_array
 
 
