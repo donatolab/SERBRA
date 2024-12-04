@@ -2,5 +2,7 @@
 *.pt
 *.pdf
 Demo*
-**.log
+*.log
 logs*
+*.egg-info
+*.egg

@@ -1,0 +1,19 @@
+# General libraries
+matplotlib
+numpy
+scipy
+scikit-learn
+pyyaml
+tqdm
+numba
+pandas
+h5py
+plotly
+cebra
+
+# the following packages should fit to you Graphics card and CUDA version
+torch==2.1.0+cu121
+torchaudio==2.1.0+cu121
+torchvision==0.16.0+cu121
+
+# -f https://download.pytorch.org/whl/torch_stable.html
