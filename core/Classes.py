@@ -6,11 +6,11 @@ from typing import List, Union, Dict, Any, Tuple, Optional
 from pathlib import Path
 
 # setups and preprocessing software
-from core.Setups import *
-from core.Helper import *
-from core.Visualizer import *
-from core.Models import Models, PlaceCellDetectors
-from core.Datasets import Datasets_Neural, Datasets_Behavior, Dataset
+from Setups import *
+from Helper import *
+from Visualizer import *
+from Models import Models, PlaceCellDetectors, decode
+from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
 
 
 # calculations
@@ -109,7 +109,39 @@ class Multi:
             id = id.replace(char, "")
         return id
 
-    def filter(self, wanted_properties=None):
+    def filter(self, wanted_properties: Dict[str, Dict[str, Union[str, List]]] = None):
+        """
+        Filters the tasks based on the wanted properties.
+
+        Parameters
+        ----------
+        wanted_properties : dict, optional
+            A dictionary containing the properties to filter by. The dictionary should have the following structure:
+            Example:
+                wanted_properties = {  # "animal": {
+                    "animal_id": ["DON-007021"],
+                    "sex": "male",
+                    },
+                    "session": {
+                        # "date": ["20211022", "20211030", "20211031"],
+                    },
+                    "task": {
+                        "name": ["FS1"],
+                    },
+                    "neural_metadata": {
+                        "area": "CA3",
+                        "method": "1P",
+                    },
+                    "behavior_metadata": {
+                        "setup": "openfield",
+                    },
+                }
+
+        Returns
+        -------
+        filtered_tasks : dict
+            dict containing the filtered tasks based on the wanted properties with the task id as key and the task object as value.
+        """
         if not wanted_properties:
             if self.wanted_properties:
                 wanted_properties = self.wanted_properties
@@ -155,6 +187,7 @@ class Multi:
         neural_data: np.ndarray = None,
         behavior_data: np.ndarray = None,
         binned: bool = True,
+        relative: bool = False,
         neural_data_types: List[str] = None,  #
         behavior_data_types: List[str] = None,  # ["position"],
         manifolds_pipeline: str = "cebra",
@@ -194,6 +227,8 @@ class Multi:
             model_name=model_name,
             movement_state=movement_state,
             shuffle=shuffle,
+            binned=binned,
+            relative=relative,
             split_ratio=split_ratio,
             model_settings=model_settings,
             pipeline=manifolds_pipeline,
@@ -226,15 +261,33 @@ class Multi:
         # FIXME: merge this function with tasks plot_embeddings
 
         # models = self.get_pipeline_models(manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude)
-
-        if not embeddings:
-            models_embeddings = self.models.create_embeddings(
+        if embeddings is not None and to_transform_data is not None:
+            global_logger.error(
+                "Either provide embeddings or to_transform_data, not both."
+            )
+            raise ValueError(
+                "Either provide embeddings or to_transform_data, not both."
+            )
+        if to_transform_data is not None:
+            embeddings = self.models.create_embeddings(
                 to_transform_data=to_transform_data,
                 to_2d=to_2d,
                 model_naming_filter_include=model_naming_filter_include,
                 model_naming_filter_exclude=model_naming_filter_exclude,
                 manifolds_pipeline="cebra",
             )
+
+        if not embeddings:
+            models = self.models.get_pipeline_models(
+                manifolds_pipeline=manifolds_pipeline,
+                model_naming_filter_include=model_naming_filter_include,
+                model_naming_filter_exclude=model_naming_filter_exclude,
+            )
+            embeddings = {}
+            embedding_labels_dict = {}
+            for model_name, model in models.items():
+                embeddings[model_name] = model.data["train"]["embedding"]
+                embedding_labels_dict[model_name] = model.data["train"]["behavior"]
 
         # get embedding lables
         if not isinstance(embedding_labels, np.ndarray) and not isinstance(
@@ -435,7 +488,39 @@ class Animal:
             models[session_date] = session_models
         return models
 
-    def filter_sessions(self, wanted_properties=None):
+    def filter_sessions(
+        self, wanted_properties: Dict[str, Dict[str, Union[str, List]]] = None
+    ):
+        """
+
+        Filter the available session tasks based on the wanted properties.
+
+        Parameters
+        ----------
+        wanted_properties : dict, optional
+            A dictionary containing the properties to filter by. The dictionary should have the following structure:
+            Example:
+                wanted_properties = {
+                    "session": {
+                        # "date": ["20211022", "20211030", "20211031"],
+                    },
+                    "task": {
+                        "name": ["FS1"],
+                    },
+                    "neural_metadata": {
+                        "area": "CA3",
+                        "method": "1P",
+                    },
+                    "behavior_metadata": {
+                        "setup": "openfield",
+                    },
+                }
+
+        Returns
+        -------
+        filtered_tasks : dict
+            dict containing the filtered tasks based on the wanted properties with the task id as key and the task object as value.
+        """
         if not wanted_properties:
             print("No wanted properties given. Returning tasks sessions")
             wanted_properties = {}
@@ -579,6 +664,152 @@ class Session:
     ):
         # TODO: implement consistency session plot
         pass
+
+    def filter_tasks(self, wanted_properties=None):
+        """
+        Filters the tasks based on the wanted properties.
+
+        Parameters
+        ----------
+        wanted_properties : dict, optional
+            A dictionary containing the properties to filter by. The dictionary should have the following structure:
+            Example:
+                wanted_properties = {
+                    "task": {
+                        "name": ["FS1"],
+                    },
+                    "neural_metadata": {
+                        "area": "CA3",
+                        "method": "1P",
+                    },
+                    "behavior_metadata": {
+                        "setup": "openfield",
+                    },
+                }
+
+        Returns
+        -------
+        filtered_tasks : dict
+            dict containing the filtered tasks based on the wanted properties with the task id as key and the task object as value.
+        """
+        if not wanted_properties:
+            print("No wanted properties given. Returning tasks sessions")
+            wanted_properties = {}
+
+        filtered_tasks = {}
+        for task_name, task in self.tasks.items():
+            # check if task has all wanted properties
+            wanted = True
+            if "task" in wanted_properties:
+                wanted = wanted_object(task, wanted_properties["task"])
+                for metadata_type in ["behavior_metadata", "neural_metadata"]:
+                    if not wanted:
+                        break
+                    if metadata_type in wanted_properties:
+                        wanted = wanted and wanted_object(
+                            getattr(task, metadata_type),
+                            wanted_properties[metadata_type],
+                        )
+            if wanted:
+                filtered_tasks[task.id] = task
+        return filtered_tasks
+
+    def task_model_cross_decode(self,
+            manifolds_pipeline: str = "cebra",
+            model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+            model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+    ):
+        """
+        Calculates the decoding performance between models from all tasks based on the wanted model names.
+
+        Parameters
+        ----------
+        manifolds_pipeline : str, optional
+            The name of the manifolds pipeline to use for decoding (default is "cebra").
+        model_naming_filter_include : list, optional
+            A list of lists containing the model naming parts to include (default is None). 
+            If None, all models will be included.
+        model_naming_filter_exclude : list, optional
+            A list of lists containing the model naming parts to exclude (default is None).
+            If None, no models will be excluded.
+
+        Returns
+        -------
+        task_decoding_statistics : dict
+            A dictionary containing the decoding statistics between models based on the wanted model names.
+        """
+        session_models = self.get_pipeline_models(
+            manifolds_pipeline="cebra",
+            model_naming_filter_include=["12800", "0.8"],
+            model_naming_filter_exclude=["relative"],
+        )
+
+        for task_name, task in self.tasks.items():
+            task.models.define_decoding_statistics(
+                manifolds_pipeline="cebra",
+                model_naming_filter_include=["12800", "0.8"],
+                model_naming_filter_exclude=["relative"],
+            )
+
+        data_labels = []
+        task_decoding_statistics = {}
+        for task_name, task_models in session_models.items():
+            model.define_decoding_statistics(
+
+            print(task_name)
+            stimulus_type = self.tasks[task_name].behavior_metadata["stimulus_type"]
+            task_name_type = f"{task_name} ({stimulus_type})"
+            task_decoding_statistics[task_name_type] = {}
+            data_labels.append(task_name_type)
+            model = task_models[list(task_models.keys())[0]]
+            mean = model.decoding_statistics["rmse"]["mean"]
+            variance = model.decoding_statistics["rmse"]["variance"]
+            task_decoding_statistics[task_name_type][stimulus_type] = {
+                "mean": mean,
+                "variance": variance,
+            }
+
+            for task_name2, task_models2 in session_models.items():
+                if task_name == task_name2:
+
+                    continue
+                stimulus_type2 = self.tasks[task_name2].behavior_metadata["stimulus_type"]
+                model2 = task_models2[list(task_models2.keys())[0]]
+                stimulus_decoding = f"{task_name_type}_{stimulus_type2}"
+
+                neural_data_test_to_embedd = np.concatenate(
+                    (model2.data["train"]["neural"], model2.data["test"]["neural"])
+                )
+                labels_test = np.concatenate(
+                    (model2.data["train"]["behavior"], model2.data["test"]["behavior"])
+                )
+
+                decoding_of_other_task = decode(
+                    model=model,
+                    neural_data_test_to_embedd=neural_data_test_to_embedd,
+                    labels_test=labels_test,
+                )
+
+                mean = decoding_of_other_task["rmse"]["mean"]
+                variance = decoding_of_other_task["rmse"]["variance"]
+
+                if stimulus_decoding in task_decoding_statistics[task_name_type]:
+                    stimulus_decoding = f"{stimulus_decoding}_2"
+                task_decoding_statistics[task_name_type][stimulus_decoding] = {
+                    "mean": mean,
+                    "variance": variance,
+                }
+                data_labels.append(stimulus_decoding)
+
+        print(task_decoding_statistics)
+
+        Vizualizer.barplot_from_dict_of_dicts(
+            task_decoding_statistics,
+            data_labels=data_labels,
+            figsize=(20, 6),
+            additional_title="- Decoding perfomance between Models based on Environments (moving)",
+        )
+        return task_decoding_statistics
 
     # Place Cells for all sessions
     def plot_cell_activity_pos_by_time(
@@ -779,29 +1010,6 @@ class Session:
                 for fig in figures:
                     pdf.savefig(fig)
 
-    def filter_tasks(self, wanted_properties=None):
-        if not wanted_properties:
-            print("No wanted properties given. Returning tasks sessions")
-            wanted_properties = {}
-
-        filtered_tasks = {}
-        for task_name, task in self.tasks.items():
-            # check if task has all wanted properties
-            wanted = True
-            if "task" in wanted_properties:
-                wanted = wanted_object(task, wanted_properties["task"])
-                for metadata_type in ["behavior_metadata", "neural_metadata"]:
-                    if not wanted:
-                        break
-                    if metadata_type in wanted_properties:
-                        wanted = wanted and wanted_object(
-                            getattr(task, metadata_type),
-                            wanted_properties[metadata_type],
-                        )
-            if wanted:
-                filtered_tasks[task.id] = task
-        return filtered_tasks
-
 
 class Task:
     """Represents a task in the dataset."""
@@ -921,14 +1129,59 @@ class Task:
         model_name: str = None,
         neural_data: np.ndarray = None,
         behavior_data: np.ndarray = None,
-        binned: bool = True,
+        transformation: str = None,
         behavior_data_types: List[str] = None,  # ["position"],
         manifolds_pipeline: str = "cebra",
         model_settings: dict = None,
         create_embeddings: bool = True,
     ):
         """
-        available model_types are: time, behavior, hybrid
+        Train a model for a task using neural, behavior data and the choosen pipeline.
+
+        A created model will inherit the train and test data as well as the embedded data.
+
+        Parameters
+        ----------
+        model_type : str
+            The type of model to train. The available model_types are: time, behavior, hybrid
+            time: models the neural data over time
+            behavior: models the neural data over behavior data
+            hybrid: models the neural data over time and behavior data
+        regenerate : bool, optional
+            Whether to regenerate and overwrite the model (default is False).
+        shuffle : bool, optional
+            Whether to shuffle the data before training (default is False).
+        movement_state : str, optional
+            The movement state to filter by (default is "all").
+            The available movement_states are: "all", "moving", "stationary"
+        split_ratio : float, optional
+            The ratio to data used for training the model, the rest is used for the testing sets. (default is 1).
+        model_name : str, optional
+            The name of the model (default is None). The name is modified by other parameters to create a more unique name.
+        neural_data : np.ndarray, optional
+            The neural data to use for training the model (default is None). If None, the neural data is loaded from the task.
+            The shape of the neural data should be (n_samples, n_features).
+        behavior_data : np.ndarray, optional
+            The behavior data to use for training the model (default is None). If None, the behavior data is loaded from the task.
+            The shape of the behavior data should be (n_samples, n_features).
+        transformation : str, optional
+            Whether the behavior data should be transformed.
+            Transformation types: "binned", "relative" (default is None).
+        behavior_data_types : list, optional
+            The types of behavior data to use for training the model (default is None).
+            Available types are: "position", "velocity", "stimulus", "moving", "acceleration"
+        manifolds_pipeline : str, optional
+            The pipeline to use for creating the embeddings (default is "cebra").
+        model_settings : dict, optional
+            The settings for the model (default is None). If not defined the default settings of the pipeline are used
+            The dictionary should contain a key for the model type and the corresponding settings.
+        create_embeddings : bool, optional
+            Whether to create embeddings for the model (default is True).
+
+        Returns
+        -------
+        Model
+            The trained model.
         """
         # get neural data
         idx_to_keep = self.behavior.moving.get_idx_to_keep(movement_state)
@@ -937,7 +1190,6 @@ class Task:
         if neural_data is None:
             neural_data, _ = self.neural.get_multi_data(
                 sources=self.neural.imaging_type,
-                binned=binned,
             )
         elif not isinstance(neural_data, np.ndarray):
             raise ValueError("neural_data must be a numpy array.")
@@ -945,8 +1197,8 @@ class Task:
         # get behavior data
         if behavior_data is None:
             behavior_data, _ = self.behavior.get_multi_data(
-                sources=behavior_data_types,  # e.g. ["position", "stimulus"]
-                binned=binned,
+                sources=behavior_data_types,
+                transformation=transformation,
             )
         elif not isinstance(behavior_data, np.ndarray):
             raise ValueError("behavior_data must be a numpy array.")
@@ -960,6 +1212,7 @@ class Task:
             model_name=model_name,
             movement_state=movement_state,
             shuffle=shuffle,
+            transformation=transformation,
             split_ratio=split_ratio,
             model_settings=model_settings,
             pipeline=manifolds_pipeline,
@@ -969,14 +1222,20 @@ class Task:
         return model
 
     def get_behavior_labels(
-        self, behavior_data_types, binned=False, idx_to_keep=None, movement_state="all"
+        self,
+        behavior_data_types,
+        transformation: str = None,
+        idx_to_keep: np.ndarray = None,
+        movement_state="all",
     ):
         if idx_to_keep is None and movement_state != "all":
             idx_to_keep = self.behavior.moving.get_idx_to_keep(movement_state)
         embedding_labels_dict = {}
         for behavior_data_type in behavior_data_types:
             behavior_data, _ = self.behavior.get_multi_data(
-                behavior_data_type, binned=binned, idx_to_keep=idx_to_keep
+                behavior_data_type,
+                transformation=transformation,
+                idx_to_keep=idx_to_keep,
             )
             embedding_labels_dict[behavior_data_type] = behavior_data
         return embedding_labels_dict
@@ -1001,7 +1260,18 @@ class Task:
         dpi: int = 300,
         as_pdf: bool = False,
     ):
-        if not embeddings:
+        """
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        """
+        if embeddings is not None and to_transform_data is not None:
+            global_logger.error(
+                "Either provide embeddings or to_transform_data, not both."
+            )
+            raise ValueError(
+                "Either provide embeddings or to_transform_data, not both."
+            )
+        if to_transform_data is not None:
             embeddings = self.models.create_embeddings(
                 to_transform_data=to_transform_data,
                 to_2d=to_2d,
@@ -1009,6 +1279,18 @@ class Task:
                 model_naming_filter_exclude=model_naming_filter_exclude,
                 manifolds_pipeline="cebra",
             )
+
+        if not embeddings:
+            models = self.models.get_pipeline_models(
+                manifolds_pipeline=manifolds_pipeline,
+                model_naming_filter_include=model_naming_filter_include,
+                model_naming_filter_exclude=model_naming_filter_exclude,
+            )
+            embeddings = {}
+            embedding_labels_dict = {}
+            for model_name, model in models.items():
+                embeddings[model_name] = model.data["train"]["embedding"]
+                embedding_labels_dict[model_name] = model.data["train"]["behavior"]
 
         # get embedding lables
         if not isinstance(embedding_labels, np.ndarray) and not isinstance(

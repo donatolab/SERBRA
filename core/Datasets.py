@@ -9,16 +9,39 @@ import matplotlib.pyplot as plt
 
 # calculations
 import numpy as np
+from sklearn.utils import shuffle
 
 # load data
 import cebra
 from cebra import CEBRA
 
 # own
-from core.Helper import *
-from core.Visualizer import Vizualizer
-from core.Setups import Femtonics, Thorlabs, Inscopix, Environment
-from core.Setups import (
+from Helper import (
+    normalize_01,
+    check_needed_keys,
+    get_str_from_dict,
+    global_logger,
+    force_1_dim_larger,
+    force_equal_dimensions,
+    encode_categorical,
+    is_list_of_ndarrays,
+    group_by_binned_data,
+    correlate_vectors,
+    compare_distribution_groups,
+    calc_entropy,
+    calc_kde_entropy,
+    compute_density,
+    bin_array,
+    uncode_categories,
+    save_file_present,
+    make_list_ifnot,
+    add_missing_keys,
+    may_butter_lowpass_filter,
+    fill_continuous_array,
+)
+from Visualizer import Vizualizer
+from Setups import Femtonics, Thorlabs, Inscopix, Environment
+from Setups import (
     Active_Avoidance,
     Treadmill_Setup,
     Trackball_Setup,
@@ -293,7 +316,7 @@ class Dataset:
 
     @staticmethod
     def shuffle(data):
-        return sklearn.utils.shuffle(data)
+        return shuffle(data)
 
     @staticmethod
     def filter_by_idx(data, idx_to_keep=None):
@@ -474,6 +497,20 @@ class BehaviorDataset(Dataset):
             )
 
         return occupancy
+
+    @property
+    def relative_data(self):
+        """
+        Normalize the data to the environment dimensions from 0 to 1.
+
+        Self.data is expected to be in the form of [x, y] or [x, y, z].
+
+        Returns:
+        --------
+        relative : np.ndarray
+            The relative data.
+        """
+        return Environment.to_relative(self.data)
 
     def get_setup(self, setup_name):
         self.setup_name = self.metadata["setup"]
@@ -1030,28 +1067,6 @@ class Data_Position(BehaviorDataset):
         self.raw_position = None
         self.lap_starts = None
 
-    @property
-    def relative_position(self):
-        """
-        Normalize the positional data to the environment dimensions from 0 to 1.
-
-        Self.data is expected to be in the form of [x, y] or [x, y, z].
-
-        Returns:
-        --------
-        relative_positions : np.ndarray
-            The relative position data.
-        """
-        relative_positions = self.data
-        .............normalize to 0-1...............
-        if self.metadata["environment_dimensions"] is not None:
-        global_logger.critical(
-            f"Evironment dimensions is not defined in the metadata. Cannot normalize position data."
-        )
-        raise ValueError(
-            f"Evironment dimensions is not defined in the metadata. Cannot normalize position data."
-        )
-
     def refine_metadata(self):
         if self.metadata["environment_dimensions"] is None:
             if self.data is not None:
@@ -1260,6 +1275,12 @@ class Data_Stimulus(BehaviorDataset):
             root_dir=root_dir,
             task_id=task_id,
         )
+
+    def relative_data(self):
+        global_logger.warning(
+            f"Relative data is not implemented for {self.__class__}. Returning self.data"
+        )
+        return self.data
 
     def define_optional_attributes(self):
         self.metadata = add_missing_keys(
@@ -1514,6 +1535,12 @@ class Data_Moving(BehaviorDataset):
             plot_attributes=self.plot_attributes,
         )
 
+    def relative_data(self):
+        global_logger.warning(
+            f"Relative data is not implemented for {self.__class__}. Returning self.data"
+        )
+        return self.data
+
     def define_plot_attributes(self):
         self.plot_attributes["ylable"] = "Movement State"
         self.plot_attributes["ylimits"] = (-0.1, 1.1)
@@ -1664,14 +1691,47 @@ class Datasets:
         return data
 
     def get_multi_data(
-        self, sources, shuffle=False, idx_to_keep=None, split_ratio=1, binned=False
+        self,
+        sources: List[str],
+        shuffle: bool = False,
+        idx_to_keep: Union[List, np.ndarray] = None,
+        split_ratio: float = 1,
+        transformation: str = None,
     ):
+        """
+        Extract data from multiple sources and concatenate them.
+
+        Parameters:
+            - sources (List[str]): The sources to extract data from.
+            - shuffle (bool): Shuffle the concatenated data.
+            - idx_to_keep (Union[List, np.ndarray]): Indices to keep.
+            - split_ratio (float): Ratio to split the data into train and test.
+            - transformation (str): Transformation to apply to the data.
+                transformation types are: "binned", "relative", None.
+
+        Returns:
+            - concatenated_data_tain (np.ndarray): The concatenated training data.
+            - concatenated_data_test (np.ndarray): The concatenated test data.
+        """
         sources = make_list_ifnot(sources)
         concatenated_data = None
         for source in sources:
             dataset_object = getattr(self, source)
             # data = dataset_object.data
-            data = dataset_object.binned_data if binned else dataset_object.data
+            if transformation:
+                if transformation == "binned":
+                    data = dataset_object.binned_data
+                elif transformation == "relative":
+                    data = dataset_object.relative_data
+                else:
+                    global_logger.critical(
+                        f"Transformation {transformation} not supported. Choose from: 'binned', 'relative'."
+                    )
+                    raise ValueError(
+                        f"Transformation {transformation} not supported. Choose from: 'binned', 'relative'."
+                    )
+            else:
+                data = dataset_object.data
             data = np.array([data]).transpose() if len(data.shape) == 1 else data
             if type(concatenated_data) != np.ndarray:
                 concatenated_data = data

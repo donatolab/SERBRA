@@ -6,3 +6,5 @@ Demo*
 logs*
 *.egg-info
 *.egg
+*__pycache__
+*.pyc

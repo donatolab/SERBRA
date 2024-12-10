@@ -6,7 +6,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Polygon
 
-plt.style.use('dark_background')
+plt.style.use("dark_background")
 
 import seaborn as sns
 import plotly
@@ -30,7 +30,7 @@ import cebra
 import pandas as pd
 
 # OWN
-from core.Helper import *
+from Helper import *
 
 
 class Vizualizer:
@@ -853,13 +853,19 @@ class Vizualizer:
 
         axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
+        labels_list = labels["labels"]
+        labels_list = (
+            [labels_list] if not isinstance(labels_list, list) else labels_list
+        )
+        if len(labels_list) == 1 and len(labels_list) != num_subplots:
+            global_logger.warning(
+                f"""Only one label was found in the label list, but multiple subplots are detected ({num_subplots}). Using the same labels for all embeddings."""
+            )
+            labels_list = [labels_list[0]] * num_subplots
+
         # Plot each embedding
         for i, (subplot_title, embedding) in enumerate(embeddings.items()):
             # Get the labels for the current subplot
-            labels_list = labels["labels"]
-            labels_list = (
-                [labels_list] if not isinstance(labels_list, list) else labels_list
-            )
 
             session_labels = labels_list[i]
 
@@ -1948,7 +1954,7 @@ class Vizualizer:
             title += " order provided"
 
         # normalize by cell firering rate
-        plot_rate_map = rate_map if not norm_rate else normalize_01(rate_map)
+        plot_rate_map = rate_map if not norm_rate else normalize_01(rate_map, axis=1)
 
         sorted_rate_map, indices = sort_arr_by(
             plot_rate_map, axis=1, sorting_indices=sorting_indices
@@ -2184,7 +2190,7 @@ class Vizualizer:
                 cmap=cmap,
             )
 
-            norm_traces = normalize_01(traces) if norm else traces
+            norm_traces = normalize_01(traces, axis=1) if norm else traces
             norm_traces = np.nan_to_num(norm_traces)
 
             axes[1, task_num] = Vizualizer.traces_subplot(
@@ -2295,7 +2301,7 @@ class Vizualizer:
             cmap=cmap,
         )
 
-        norm_traces = normalize_01(traces) if norm else traces
+        norm_traces = normalize_01(traces, axis=1) if norm else traces
         norm_traces = np.nan_to_num(norm_traces)
 
         ax2 = Vizualizer.traces_subplot(
@@ -2460,7 +2466,7 @@ class Vizualizer:
         if smooth:
             traces = smooth_array(traces, window_size=window_size, axis=1)
         if norm:
-            traces = normalize_01(traces)
+            traces = normalize_01(traces, axis=1)
             traces = np.nan_to_num(traces)
 
         if labels is None:

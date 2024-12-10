@@ -30,8 +30,8 @@ import cebra
 import cebra.integrations.sklearn.utils as sklearn_utils
 
 # own
-from core.Datasets import Datasets, Dataset
-from core.Helper import *
+from Datasets import Datasets, Dataset
+from Helper import *
 
 
 class Models:
@@ -49,12 +49,13 @@ class Models:
 
     def define_model_name(
         self,
-        model_type,
-        model_name=None,
-        shuffled=False,
-        movement_state="all",
-        split_ratio=1,
-        model_settings=None,
+        model_type: str,
+        model_name: str = None,
+        shuffled: bool = False,
+        transformation: str = None,
+        movement_state: str = "all",
+        split_ratio: float = 1,
+        model_settings: dict = None,
     ):
         if model_name:
             if model_type not in model_name:
@@ -65,11 +66,29 @@ class Models:
             model_name = model_type
             model_name = f"{model_name}_shuffled" if shuffled else model_name
 
-        if movement_state != "all":
+        if movement_state not in ["all", "moving", "stationary"]:
+            global_logger.error(
+                f"Movement state {movement_state} not supported. Choose 'all', 'moving', or 'stationary'."
+            )
+            raise ValueError(
+                f"Movement state {movement_state} not supported. Choose 'all', 'moving', or 'stationary'."
+            )
+        elif movement_state != "all":
             model_name = f"{model_name}_{movement_state}"
 
         if split_ratio != 1:
             model_name = f"{model_name}_{split_ratio}"
+
+        if transformation:
+            if transformation not in ["relative", "binned"]:
+                global_logger.error(
+                    f"Transformation {transformation} not supported. Choose 'relative' or 'binned'."
+                )
+                raise ValueError(
+                    f"Transformation {transformation} not supported. Choose 'relative' or 'binned'."
+                )
+            else:
+                model_name = f"{model_name}_{transformation}"
 
         if model_settings is not None:
             max_iterations = model_settings["max_iterations"]
@@ -146,12 +165,16 @@ class Models:
         models=None,
         to_transform_data=None,
         to_2d=False,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: List[List[str]] = None,
+        model_naming_filter_exclude: List[List[str]] = None,
         manifolds_pipeline="cebra",
         save=False,
         return_labels=False,
     ):
+        """
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        """
         if not type(to_transform_data) == np.ndarray:
             global_logger.warning(
                 f"No data to transform given. Using model training data."
@@ -191,6 +214,10 @@ class Models:
         )
         to_delete_models_key_list = []
         for keys_list, model in traverse_dicts(models):
+            # ...............#FIXME: create proper cebra class
+            # decoding_statistics = model.define_decoding_statistics()
+            # if decoding_statistics is None:
+            #    to_delete_models_key_list.append(keys_list)
             remove_model = False
 
             if model.data is None:
@@ -221,6 +248,7 @@ class Models:
         pipeline="cebra",
         model_type="time",
         model_name=None,
+        transformation=None,
         idx_to_keep=None,
         shuffle=False,
         movement_state="moving",
@@ -231,13 +259,15 @@ class Models:
     ):
         if not is_dict_of_dicts(model_settings):
             model_settings = {pipeline: model_settings}
+
         model_name = self.define_model_name(
-            model_type,
-            model_name,
-            shuffle,
-            movement_state,
-            split_ratio,
-            model_settings[pipeline],
+            model_type=model_type,
+            model_name=model_name,
+            shuffled=shuffle,
+            movement_state=movement_state,
+            split_ratio=split_ratio,
+            transformation=transformation,
+            model_settings=model_settings[pipeline],
         )
 
         model = model or self.get_model(
@@ -1141,7 +1171,6 @@ class Cebras(ModelsWrapper, Model):
         save=False,
         return_labels=False,
     ):
-
         embeddings = {}
         labels = {}
         for model_name, model in models.items():
@@ -1166,6 +1195,20 @@ class Cebras(ModelsWrapper, Model):
         if return_labels:
             return embeddings, labels
         return embeddings
+
+
+class CebraOwn(CEBRA):
+    def __init__(self, model_architecture="offset10-model", **kwargs):
+        super().__init__(model_architecture=model_architecture, **kwargs)
+
+    def define_decoding_statistics(self, regenerate=False):
+        if self.data is None or self.data["test"]["neural"].shape[0] < 10:
+            decoding_statistics = None
+        else:
+            # model = dict_value_keylist(models, keys_list)
+            if self.decoding_statistics is None or regenerate:
+                self.decoding_statistics = decode(model=self)
+        return self.decoding_statistics
 
 
 def decode(
@@ -1221,7 +1264,6 @@ def decode(
     else:
         embedding_test = model.transform(neural_data_test_to_embedd)
 
-    # TODO: behavior data should be dictionary?
     labels_train = (
         model.data["train"]["behavior"] if labels_train is None else labels_train
     )

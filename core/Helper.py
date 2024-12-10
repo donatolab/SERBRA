@@ -1330,7 +1330,22 @@ def correlate_vectors(vectors: np.ndarray, metric="pearson"):
 
 
 ## normalization
-def normalize_01(vector, axis=1):
+def normalize_01(vector, axis):
+    """
+    Normalize a vector to the range [0, 1].
+
+    Default normalization is along the columns (axis=1).
+
+    Args:
+    ------
+    - vector (np.ndarray): Input vector to normalize.
+    - axis (int): Axis along which to normalize the vector.
+
+    Returns:
+    ------
+    - normalized_vector (np.ndarray): Normalized vector.
+    """
+    vector = np.array(vector)
     axis = 0 if axis == 1 and len(vector.shape) == 1 else axis
     min_val = np.min(vector, axis=axis, keepdims=True)
     max_val = np.max(vector, axis=axis, keepdims=True)
@@ -1932,6 +1947,17 @@ def filter_dict_by_properties(
 def wanted_object(obj, wanted_keys_values):
     """
     Check if an object has the wanted keys and values.
+
+    Parameters:
+    ----------
+    obj : object
+        The object to check.
+    wanted_keys_values : dict
+        A dictionary of keys and values to check for in the object.
+
+    Returns:
+    -------
+    bool : True if the object has the wanted keys and values, False otherwise.
     """
     if isinstance(obj, dict):
         dictionary = obj

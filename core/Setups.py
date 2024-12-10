@@ -1,7 +1,7 @@
 from typing import List, Union, Dict, Any, Tuple, Optional
 
 from pathlib import Path
-from core.Helper import *
+from Helper import *
 
 # parallel processing
 from numba import jit, njit, prange
@@ -1534,9 +1534,7 @@ class Environment(Behavior_Processing):
         return stimulus_type_at_frame
 
     @staticmethod
-    def define_border_by_pos(
-        positions: np.ndarray, percentile: int = 1, map=False
-    ):
+    def define_border_by_pos(positions: np.ndarray, percentile: int = 1, map=False):
         """
         Define borders of a Box the environment based on the positions of the animal.
         """
@@ -1635,9 +1633,7 @@ class Environment(Behavior_Processing):
             in_shape_at_frame = np.zeros(positions.shape[0], dtype=int)
             if positions.ndim == 2:
                 # FIXME: change to multi corner detection
-                borders = Environment.define_border_by_pos(
-                    positions, map=False
-                )
+                borders = Environment.define_border_by_pos(positions, map=False)
                 at_corners, at_border = Environment.at_corner_border(
                     positions, borders, border_thr=border_thr
                 )
@@ -1653,6 +1649,26 @@ class Environment(Behavior_Processing):
                     "Not able to generate environmental shapes. Data should be 2D for this function."
                 )
         return list(shapes.keys()), in_shape_at_frame
+
+    @staticmethod
+    def to_relative(data: np.ndarray, axis=0):
+        """
+        Normalize the data to the environment dimensions from 0 to 1.
+
+        Parameters:
+        -----------
+        data : np.ndarray
+            The data to normalize.
+        axis : int, optional (default=0)
+            The axis along which to normalize the data.
+
+        Returns:
+        --------
+        relative : np.ndarray
+            The relative data.
+        """
+        relative_data = normalize_01(data, axis=axis)
+        return relative_data
 
     def process_data(
         self,
