@@ -129,7 +129,8 @@ class Models:
     ):
         models_class = self.get_model_class(manifolds_pipeline)
         models = models_class.get_models(
-            model_naming_filter_include, model_naming_filter_exclude
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
         )
         return models
 
@@ -214,24 +215,11 @@ class Models:
         )
         to_delete_models_key_list = []
         for keys_list, model in traverse_dicts(models):
-            # ...............#FIXME: create proper cebra class
-            # decoding_statistics = model.define_decoding_statistics()
-            # if decoding_statistics is None:
-            #    to_delete_models_key_list.append(keys_list)
-            remove_model = False
-
-            if model.data is None:
-                remove_model = True
-            elif model.data["test"]["neural"].shape[0] < 10:
-                remove_model = True
-
-            if remove_model:
+            decoding_statistics = model.define_decoding_statistics()
+            if decoding_statistics is None:
                 to_delete_models_key_list.append(keys_list)
-            else:
-                model = dict_value_keylist(models, keys_list)
-                # if True:
-                if model.decoding_statistics is None:
-                    model.decoding_statistics = decode(model=model)
+
+            # model = dict_value_keylist(models, keys_list)
 
         for keys_list in to_delete_models_key_list:
             delete_nested_key(models, keys_list)
@@ -346,7 +334,9 @@ class ModelsWrapper:
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str):
     ):
         filtered_models = filter_dict_by_properties(
-            self.models, model_naming_filter_include, model_naming_filter_exclude
+            dictionary=self.models,
+            include_properties=model_naming_filter_include,
+            exclude_properties=model_naming_filter_exclude,
         )
         return filtered_models
 
@@ -1082,13 +1072,80 @@ class CebraOwn(CEBRA):
         self.data = None
         self.save_path = None
 
-    def define_decoding_statistics(self, regenerate=False):
-        if self.data is None or self.data["test"]["neural"].shape[0] < 10:
-            decoding_statistics = None
+    def define_decoding_statistics(
+        self,
+        neural_data_train_to_embedd: np.ndarray = None,
+        neural_data_test_to_embedd: np.ndarray = None,
+        labels_train: np.ndarray = None,
+        labels_test: np.ndarray = None,
+        regenerate: bool = False,
+    ):
+        """
+        Decodes the data using the model.
+
+        Parameters
+        ----------
+        neural_data_train_to_embedd : np.ndarray, optional
+            The neural data to use for training the model (default is None). If not provided, the training data from the model will be used.
+        neural_data_test_to_embedd : np.ndarray, optional
+            The neural data to use for testing the model (default is None). If not provided, the testing data from the model will be used.
+        labels_train : np.ndarray, optional
+            The behavior data to use for training the model (default is None). If not provided, the training data from the model will be used.
+        labels_test : np.ndarray, optional
+            The behavior data to use for testing the model (default is None). If not provided, the testing data from the model will be used.
+        regenerate : bool, optional
+            Whether to regenerate the decoding statistics (default is False).
+
+        Returns
+        -------
+        decoding_statistics : Dict[Dict[str, Any]]
+            A dictionary containing the decoding statistics.
+
+        """
+        if neural_data_train_to_embedd is not None:
+            neural_data_train = self.create_embedding(
+                to_transform_data=neural_data_train_to_embedd
+            )
         else:
-            # model = dict_value_keylist(models, keys_list)
-            if self.decoding_statistics is None or regenerate:
-                self.decoding_statistics = decode(model=self)
+            if self.data["train"]["embedding"] is None:
+                self.data["train"]["embedding"] = self.create_embedding(
+                    to_transform_data=self.data["train"]["neural"]
+                )
+            neural_data_train = self.data["train"]["embedding"]
+
+        if neural_data_test_to_embedd is not None:
+            neural_data_test = self.create_embedding(
+                to_transform_data=neural_data_test_to_embedd
+            )
+        else:
+            if self.data["test"]["embedding"] is None:
+                self.data["test"]["embedding"] = self.create_embedding(
+                    to_transform_data=self.data["test"]["neural"]
+                )
+            neural_data_test = self.data["test"]["embedding"]
+
+        labels_train = (
+            self.data["train"]["behavior"] if labels_train is None else labels_train
+        )
+        labels_test = (
+            self.data["test"]["behavior"] if labels_test is None else labels_test
+        )
+
+        if neural_data_train is None or neural_data_train.shape[0] < 10:
+            self.decoding_statistics = None
+        else:
+            if (
+                self.decoding_statistics is None
+                or regenerate
+                or neural_data_test_to_embedd is not None
+                or neural_data_train_to_embedd is not None
+            ):
+                self.decoding_statistics = decode(
+                    embedding_train=neural_data_train,
+                    embedding_test=neural_data_test,
+                    labels_train=labels_train,
+                    labels_test=labels_test,
+                )
         return self.decoding_statistics
 
     def is_fitted(self, model):
@@ -1210,63 +1267,44 @@ class CebraOwn(CEBRA):
 
 
 def decode(
-    model=None,
-    neural_data_train_to_embedd=None,
-    neural_data_test_to_embedd=None,
-    embedding_train=None,
-    embedding_test=None,
-    labels_train=None,
-    labels_test=None,
-    n_neighbors=36,
-    metric="cosine",
-    detailed_accuracy=False,
+    embedding_train: np.ndarray,
+    embedding_test: np.ndarray,
+    labels_train: np.ndarray,
+    labels_test: np.ndarray,
+    n_neighbors: int = 36,
+    metric: str = "cosine",
+    detailed_accuracy: bool = False,
 ):
     """
     Decodes the neural data using the kNN decoder.
+
+    Parameters
+    ----------
+    embedding_train : np.ndarray
+        The training data.
+    embedding_test : np.ndarray
+        The testing data.
+    labels_train : np.ndarray
+        The training labels.
+    labels_test : np.ndarray
+        The testing labels.
+    n_neighbors : int, optional
+        The number of neighbors to use for decoding (default is 36).
+    metric : str, optional
+        The metric to use for decoding (default is "cosine").
+    detailed_accuracy : bool, optional
+        Whether to return detailed accuracy metrics (default is False).
+
+    Returns
+    -------
+    decoding_statistics : Dict[Dict[str, Any]]
+        A dictionary containing the decoding.
+        - If data is continuous, the dictionary will contain
+        the root mean squared error (rmse), the variance of the absolute error, and the R² score.
+        - If the data is discrete, the dictionary will contain the accuracy, precision, recall, F1 score,
+        ROC AUC, and the area under the curve (AUC).
+
     """
-    if model is None and (
-        embedding_train is None
-        or embedding_test is None
-        or labels_train is None
-        or labels_test is None
-    ):
-        raise ValueError(
-            "Model and embedding or neural_data to embedd is required to decode."
-        )
-
-    if (
-        embedding_train is not None
-        and neural_data_train_to_embedd is not None
-        or embedding_test is not None
-        and neural_data_test_to_embedd is not None
-    ):
-        raise ValueError("Only one embedding or to embedd variables is required.")
-
-    if neural_data_train_to_embedd is None:
-        if embedding_train is None:
-            neural_data_train_to_embedd = model.data["train"]["neural"]
-            if model.data["train"]["embedding"] is not None:
-                embedding_train = model.data["train"]["embedding"]
-            else:
-                embedding_train = model.transform(neural_data_train_to_embedd)
-    else:
-        embedding_train = model.transform(neural_data_train_to_embedd)
-
-    if neural_data_test_to_embedd is None:
-        if embedding_test is None:
-            neural_data_test_to_embedd = model.data["test"]["neural"]
-            if model.data["test"]["embedding"] is not None:
-                embedding_test = model.data["test"]["embedding"]
-            else:
-                embedding_test = model.transform(neural_data_test_to_embedd)
-    else:
-        embedding_test = model.transform(neural_data_test_to_embedd)
-
-    labels_train = (
-        model.data["train"]["behavior"] if labels_train is None else labels_train
-    )
-    labels_test = model.data["test"]["behavior"] if labels_test is None else labels_test
-
     # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
     if is_floating(labels_train):
         knn = sklearn.neighbors.KNeighborsRegressor(

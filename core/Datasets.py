@@ -309,6 +309,9 @@ class Dataset:
 
     @staticmethod
     def split(data, split_ratio=0.8):
+        global_logger.info(
+            f"Splitting data into {split_ratio:.0%}% training and {1-split_ratio:.0%} testing."
+        )
         split_index = int(len(data) * split_ratio)
         data_train = data[:split_index]
         data_test = data[split_index:]
@@ -316,16 +319,18 @@ class Dataset:
 
     @staticmethod
     def shuffle(data):
+        global_logger.info(f"Shuffling data.")
         return shuffle(data)
 
     @staticmethod
     def filter_by_idx(data, idx_to_keep=None):
         if isinstance(idx_to_keep, np.ndarray) or isinstance(idx_to_keep, list):
+            global_logger.info(f"Filtering data by idx_to_keep.")
             data_unfiltered, idx_to_keep = force_equal_dimensions(data, idx_to_keep)
             data_filtered = data_unfiltered[idx_to_keep]
             return data_filtered
         else:
-            print(f"No idx_to_keep given. Returning unfiltered data.")
+            global_logger.info(f"No idx_to_keep given. Returning unfiltered data.")
             return data
 
     @staticmethod
@@ -398,7 +403,6 @@ class Dataset:
                 data_train.append(data_train_i)
                 data_test.append(data_test_i)
         else:
-            # TODO: is this correct? verything working fine?
             data_filtered = Dataset.filter_by_idx(data, idx_to_keep=idx_to_keep)
             data_shuffled = Dataset.shuffle(data_filtered) if shuffle else data_filtered
             data_train, data_test = Dataset.split(data_shuffled, split_ratio)
@@ -1716,6 +1720,7 @@ class Datasets:
         sources = make_list_ifnot(sources)
         concatenated_data = None
         for source in sources:
+            global_logger.info(f"Loading data from {source}.")
             dataset_object = getattr(self, source)
             # data = dataset_object.data
             if transformation:

@@ -26,12 +26,13 @@ from scipy.stats import (
     energy_distance,
     gaussian_kde,
 )
-from scipy.spatial.distance import cdist, mahalanobis
-from scipy.spatial import distance, ConvexHull
+from scipy.spatial import ConvexHull
 from sklearn.covariance import EllipticEnvelope
 
+from tqdm import tqdm
+
 # parallelization
-from numba import njit, prange, jit
+from numba import njit, prange
 
 # import cupy as cp  # numpy using CUDA for faster computation
 import yaml
@@ -91,13 +92,6 @@ class GlobalLogger:
 
 global_logger_object = GlobalLogger()
 global_logger = global_logger_object.logger
-
-# global_logger_object.set_save_dir(os.path.join(os.getcwd(), "logs"))
-# global_logger = global_logger_object.logger
-# global_logger.info('check if log file is created in new working directory')
-# global_logger
-# print(global_logger_object.logger.handlers)
-# global_logger_object.logger.handlers[0].baseFilename
 
 
 def npz_loader(file_path, fname=None):
@@ -2279,7 +2273,7 @@ def generate_linspace_samples(bounds, num):
     return samples
 
 
-# decorator functions
+# decorator functions timer
 def timer(func):
     # This function shows the execution time of
     # the function object passed
@@ -2325,6 +2319,23 @@ def profile_function(file_name="profile_output"):
         return wrap_func
 
     return decorator
+
+
+def iter_dict_with_progress(input_dict):
+    """
+    Iterate through a dictionary with a tqdm progress bar.
+
+    Args:
+        input_dict (dict): Dictionary to iterate through
+
+    Yields:
+        tuple: (key, value) pairs from the dictionary
+    """
+    # Create a tqdm progress bar for the dictionary items
+    for key, value in tqdm(
+        input_dict.items(), desc="Processing", total=len(input_dict)
+    ):
+        yield key, value
 
 
 # misc

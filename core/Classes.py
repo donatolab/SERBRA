@@ -740,31 +740,47 @@ class Session:
             A dictionary containing the decoding statistics between models based on the wanted model names.
         """
         session_models = self.get_pipeline_models(
-            manifolds_pipeline="cebra",
-            model_naming_filter_include=["12800", "0.8"],
-            model_naming_filter_exclude=["relative"],
+            manifolds_pipeline=manifolds_pipeline,
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
         )
-
-        for task_name, task in self.tasks.items():
-            task.models.define_decoding_statistics(
-                manifolds_pipeline="cebra",
-                model_naming_filter_include=["12800", "0.8"],
-                model_naming_filter_exclude=["relative"],
-            )
 
         data_labels = []
         task_decoding_statistics = {}
-        for task_name, task_models in session_models.items():
-            # task_models.define_decoding_statistics()
+        global_logger.info(
+            f"""Start calculating decoding statistics for all tasks and models found from {manifolds_pipeline} pipeline using naming filter including {model_naming_filter_include} and excluding {model_naming_filter_exclude}"""
+        )
+        for task_name, task_models in iter_dict_with_progress(session_models):
+            global_logger.info(f"Decoding statistics for {task_name}")
+            if len(task_models) > 1:
+                global_logger.error(
+                    "Only one model per task is allowed for cross decoding"
+                )
+                raise ValueError(
+                    "Only one model per task is allowed for cross decoding"
+                )
+            model = task_models[list(task_models.keys())[0]]
+            model.define_decoding_statistics(regenerate=True)
+            mean = model.decoding_statistics["rmse"]["mean"]
+            variance = model.decoding_statistics["rmse"]["variance"]
 
-            print(task_name)
+            if "relative" in model.name:
+                global_logger.warning(
+                    f"Detected relative in model name {model.name}. Converting relative performance to absolute using max possible value possible."
+                )
+                behavior_type = model.name.split("_")[1]
+                absolute_data = self.tasks[task_name].behavior.get_multi_data(
+                    sources=behavior_type
+                )[0]
+                # convert percentage to cm
+                max_position_absolute_model_data = np.max(absolute_data)
+                mean = mean * max_position_absolute_model_data
+                variance = variance * max_position_absolute_model_data
+
             stimulus_type = self.tasks[task_name].behavior_metadata["stimulus_type"]
             task_name_type = f"{task_name} ({stimulus_type})"
             task_decoding_statistics[task_name_type] = {}
             data_labels.append(task_name_type)
-            model = task_models[list(task_models.keys())[0]]
-            mean = task_models.decoding_statistics["rmse"]["mean"]
-            variance = task_models.decoding_statistics["rmse"]["variance"]
             task_decoding_statistics[task_name_type][stimulus_type] = {
                 "mean": mean,
                 "variance": variance,
@@ -787,14 +803,26 @@ class Session:
                     (model2.data["train"]["behavior"], model2.data["test"]["behavior"])
                 )
 
-                decoding_of_other_task = decode(
-                    model=model,
+                decoding_of_other_task = model.define_decoding_statistics(
                     neural_data_test_to_embedd=neural_data_test_to_embedd,
                     labels_test=labels_test,
                 )
 
                 mean = decoding_of_other_task["rmse"]["mean"]
                 variance = decoding_of_other_task["rmse"]["variance"]
+
+                if "relative" in model.name:
+                    global_logger.warning(
+                        f"Detected relative in model name {model.name}. Converting relative performance to absolute using max possible value possible."
+                    )
+                    behavior_type = model.name.split("_")[1]
+                    absolute_data = self.tasks[task_name].behavior.get_multi_data(
+                        sources=behavior_type
+                    )[0]
+                    # convert percentage to cm
+                    max_position_absolute_model_data = np.max(absolute_data)
+                    mean = mean * max_position_absolute_model_data
+                    variance = variance * max_position_absolute_model_data
 
                 if stimulus_decoding in task_decoding_statistics[task_name_type]:
                     stimulus_decoding = f"{stimulus_decoding}_2"
@@ -804,7 +832,7 @@ class Session:
                 }
                 data_labels.append(stimulus_decoding)
 
-        print(task_decoding_statistics)
+        global_logger.info(task_decoding_statistics)
 
         Vizualizer.barplot_from_dict_of_dicts(
             task_decoding_statistics,
@@ -1207,6 +1235,9 @@ class Task:
             raise ValueError("behavior_data must be a numpy array.")
 
         print(self.id)
+        global_logger.info(
+            f"Training model {model_type} for task {self.id} using pipeline {manifolds_pipeline}"
+        )
         model = self.models.train_model(
             neural_data=neural_data,
             behavior_data=behavior_data,
