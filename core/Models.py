@@ -1,5 +1,5 @@
 # type hints
-from typing import List, Union, Dict, Any, Tuple, Optional
+from typing import List, Union, Dict, Any, Tuple, Optional, Literal
 
 # show progress bar
 from tqdm import tqdm, trange
@@ -291,15 +291,9 @@ class Models:
                 shuffle=shuffle,
                 split_ratio=split_ratio,
             )
-
-        model_class = self.get_model_class(pipeline)
-
-        model = model_class.train(
-            model=model,
-            model_type=model_type,
-            neural_data_train=neural_data_train,
-            neural_data_test=neural_data_test,
-            behavior_data_train=behavior_data_train,
+        model = model.train(
+            neural_data=neural_data_train,
+            behavior_data=behavior_data_train,
             regenerate=regenerate,
         )
 
@@ -317,12 +311,10 @@ class Models:
         }
 
         if create_embeddings:
-            train_embedding = model_class.create_embedding(
-                model, to_transform_data=neural_data_train
+            train_embedding = model.create_embedding(
+                to_transform_data=neural_data_train
             )
-            test_embedding = model_class.create_embedding(
-                model, to_transform_data=neural_data_test
-            )
+            test_embedding = model.create_embedding(to_transform_data=neural_data_test)
 
         model.data["train"]["embedding"] = train_embedding
         model.data["test"]["embedding"] = test_embedding
@@ -366,11 +358,6 @@ class Model:
         self.model_settings = model_settings or kwargs
         self.model_dir.mkdir(exist_ok=True)
 
-    def create_defaul_model(self):
-        raise NotImplementedError(
-            f"create_defaul_model not implemented for {self.__class__}"
-        )
-
     def define_parameter_save_path(self, model):
         raise NotImplementedError(
             f"define_parameter_save_path not implemented for {self.__class__}"
@@ -385,7 +372,6 @@ class Model:
         )
 
     def init_model(self, model_settings_dict):
-        default_model = self.create_defaul_model()
         if len(model_settings_dict) == 0:
             model_settings_dict = self.model_settings
         initial_model = define_cls_attributes(self, model_settings_dict, override=True)
@@ -400,8 +386,6 @@ class Model:
     def model_settings_end(self, model):
         model.save_path = self.define_parameter_save_path(model)
         model = self.load_fitted_model(model)
-        return model
-
         return model
 
 
@@ -701,16 +685,6 @@ class SpatialInformation(Model):
         self.model_settings_start(self.name, model_settings)
         self.model_settings_end(self)
 
-    def create_defaul_model(self):
-        """
-        Creates a default model configuration.
-
-        Returns: self
-        """
-        # FIXME : implement default model loading part
-        self.si_formula = "skaags"
-        return self
-
     def define_parameter_save_path(self, model):
         """
         Defines the path where model parameters are saved.
@@ -765,19 +739,10 @@ class SpatialInformation(Model):
         fitted_model_path = model.save_path
         if fitted_model_path.exists():
             fitted_model = np.load(fitted_model_path)
+            # TODO: load data from model to prevent recalculation
             raise NotImplementedError(
                 f"load_fitted_model not implemented for {self.__class__}"
             )
-            # TODO: load data from model to prevent recalculation
-            if fitted_model.get_params() == model.get_params():
-                fitted_full_model = define_cls_attributes(fitted_model, model.__dict__)
-                model = fitted_full_model
-                global_logger.info(f"Loaded matching model {fitted_model_path}")
-                print(f"Loaded matching model {fitted_model_path}")
-            else:
-                global_logger.error(
-                    f"Loaded model parameters do not match to initialized model. Not loading {fitted_model_path}"
-                )
         model.fitted = self.is_fitted(model)
         return model
 
@@ -933,22 +898,8 @@ class SpatialInformation(Model):
 
 class Cebras(ModelsWrapper, Model):
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
-        """
-        Standard cebra models are initialized with default parameters:
-            - `model_architecture="offset10-model"`
-            - `batch_size=512`
-            - `learning_rate=3e-4`
-            - `temperature=1` or `temperature=1.12`
-            - `output_dimension=3`
-            - `max_iterations=5000`
-            - `distance="cosine"`
-            - `conditional="time_delta"` or `conditional="time"`
-            - `device="cuda_if_available"`
-            - `verbose=True`
-            - `time_offsets=10`
-        """
         super().__init__(model_dir, model_settings, **kwargs)
-        Model.__init__(self, model_dir, model_id, model_settings, **kwargs)
+        self.model_id = model_id
         # self.time_model = self.time()
         # self.behavior_model = self.behavior()
         # self.hybrid_model = self.hybrid()
@@ -959,32 +910,13 @@ class Cebras(ModelsWrapper, Model):
         )
         return save_path
 
-    def is_fitted(self, model):
-        return sklearn_utils.check_fitted(model)
-
-    def create_defaul_model(self):
-        default_model = CEBRA(
-            model_architecture="offset10-model",
-            batch_size=512,
-            learning_rate=3e-4,
-            temperature=1,
-            output_dimension=3,
-            max_iterations=5000,
-            distance="cosine",
-            conditional="time_delta",
-            device="cuda_if_available",
-            verbose=True,
-            time_offsets=10,
-        )
-        return default_model
-
     def init_model(self, model_settings_dict):
-        default_model = self.create_defaul_model()
         if len(model_settings_dict) == 0:
             model_settings_dict = self.model_settings
-        initial_model = define_cls_attributes(
-            default_model, model_settings_dict, override=True
-        )
+        initial_model = CebraOwn(**model_settings_dict)
+        # initial_model = define_cls_attributes(
+        #    default_model, model_settings_dict, override=True
+        # )
         initial_model.fitted = False
         initial_model.data = None
         initial_model.decoding_statistics = None
@@ -993,18 +925,28 @@ class Cebras(ModelsWrapper, Model):
     def load_fitted_model(self, model):
         fitted_model_path = model.save_path
         if fitted_model_path.exists():
-            fitted_model = CEBRA.load(fitted_model_path)
+            fitted_model = model.load(fitted_model_path)
             if fitted_model.get_params() == model.get_params():
-                fitted_full_model = define_cls_attributes(fitted_model, model.__dict__)
-                fitted_full_model.name = model.name
-                model = fitted_full_model
+                # load_cebra_with_sklearn_backend
+                copy_attributes_to_object(
+                    propertie_name_list=fitted_model.__dict__.keys(),
+                    set_object=model,
+                    get_object=fitted_model,
+                )
                 global_logger.info(f"Loaded matching model {fitted_model_path}")
                 print(f"Loaded matching model {fitted_model_path}")
             else:
+                for mkey, mvalue in model.get_params().items():
+                    for fmkey, fmvalue in fitted_model.get_params().items():
+                        if mkey == fmkey and mvalue != fmvalue:
+                            global_logger.error(
+                                f"Parameter {mkey} with value {mvalue} does not match to {fmvalue}"
+                            )
                 global_logger.error(
                     f"Loaded model parameters do not match to initialized model. Not loading {fitted_model_path}"
                 )
-        model.fitted = self.is_fitted(model)
+
+        model.fitted = model.is_fitted(model)
         return model
 
     def model_settings_start(self, name, model_settings_dict):
@@ -1024,6 +966,7 @@ class Cebras(ModelsWrapper, Model):
         model.temperature = (
             1.12 if kwargs.get("temperature") is None else model.temperature
         )
+        model.type = name
         model.conditional = "time" if kwargs.get("time") is None else model.conditional
         model = self.model_settings_end(model)
         return model
@@ -1031,6 +974,7 @@ class Cebras(ModelsWrapper, Model):
     def behavior(self, name="behavior", model_settings=None, **kwargs):
         model_settings = model_settings or kwargs
         model = self.model_settings_start(name, model_settings)
+        model.type = name
         model = self.model_settings_end(model)
         return model
 
@@ -1038,130 +982,9 @@ class Cebras(ModelsWrapper, Model):
         model_settings = model_settings or kwargs
         model = self.model_settings_start(name, model_settings)
         model.hybrid = True if kwargs.get("hybrid") is None else model.hybrid
+        model.type = name
         model = self.model_settings_end(model)
         return model
-
-    def train(
-        self,
-        model,
-        model_type,
-        neural_data_train,
-        neural_data_test=None,
-        behavior_data_train=None,
-        regenerate=False,
-    ):
-        # remove list if neural data is a list and only one element
-        if isinstance(neural_data_train, list) and len(neural_data_train) == 1:
-            neural_data_test = neural_data_test[0]
-            neural_data_train = neural_data_train[0]
-            behavior_data_train = behavior_data_train[0]
-
-        if not model.fitted or regenerate:
-            # skip if no neural data available
-            if (
-                isinstance(neural_data_train, np.ndarray)
-                and neural_data_train.shape[0] < 10
-            ):
-                global_logger.error(
-                    f"Not enough frames to use for {model.name}. At least 10 are needed. Skipping"
-                )
-                print(
-                    f"Skipping: Not enough frames to use for {model.name}. At least 10 are needed."
-                )
-            else:
-                # train model
-                global_logger.info(f"Training  {model.name} model.")
-                print(f"Training  {model.name} model.")
-                if model_type == "time":
-                    model.fit(neural_data_train)
-                else:
-                    if behavior_data_train is None:
-                        raise ValueError(
-                            f"No behavior data types given for {model_type} model."
-                        )
-                    neural_data_train, behavior_data_train = force_equal_dimensions(
-                        neural_data_train, behavior_data_train
-                    )
-                    model.fit(neural_data_train, behavior_data_train)
-                model.fitted = self.is_fitted(model)
-                model.save(model.save_path)
-        else:
-            global_logger.info(f"{model.name} model already trained. Skipping.")
-            print(f"{model.name} model already trained. Skipping.")
-        return model
-
-    def create_embedding(
-        self,
-        model,
-        session_id=None,
-        to_transform_data=None,
-        to_2d=False,
-        save=False,
-        return_labels=False,
-    ):
-        embedding = None
-        labels = None
-        if model.fitted:
-            if to_transform_data is None:
-                to_transform_data = model.data["train"]["neural"]
-                label = model.data["train"]["behavior"]
-
-            if isinstance(to_transform_data, list) and len(to_transform_data) == 1:
-                to_transform_data = to_transform_data[0]
-
-            if isinstance(to_transform_data, np.ndarray):
-                if session_id is not None:
-                    # single session embedding from multi-session model
-                    embedding = (
-                        model.transform(to_transform_data, session_id=session_id)
-                        if to_transform_data.shape[0] > 10
-                        else None
-                    )
-                else:
-                    embedding = (
-                        model.transform(to_transform_data)
-                        if to_transform_data.shape[0] > 10
-                        else None
-                    )
-
-                if to_2d:
-                    if embedding.shape[1] > 2:
-                        embedding = sphere_to_plane(embedding)
-                    elif embedding.shape[1] == 2:
-                        print(f"Embedding is already 2D.")
-                if save:
-                    raise NotImplementedError("Saving embeddings not implemented yet.")
-                    import pickle
-
-                    with open("multi_embeddings.pkl", "wb") as f:
-                        pickle.dump(embedding, f)
-            else:
-                embedding = {}
-                # multi-session embedding
-                for i, data in enumerate(to_transform_data):
-                    embedding_title = f"{model.name}_task_{i}"
-                    if return_labels:
-                        session_embedding, label = self.create_embedding(
-                            model, i, data, to_2d, save, return_labels
-                        )
-                        if session_embedding is not None:
-                            embedding[embedding_title] = session_embedding
-                            labels[embedding_title] = label
-                    else:
-                        session_embedding = self.create_embedding(
-                            model, i, data, to_2d, save
-                        )
-                        if session_embedding is not None:
-                            embedding[embedding_title] = session_embedding
-
-        else:
-            global_logger.error(f"{model.name} model. Not fitted.")
-            global_logger.warning(f"Skipping {model.name} model")
-            print(f"{model.name} model. Not fitted.")
-            print(f"Skipping {model.name} model")
-        if return_labels:
-            return embedding, labels
-        return embedding
 
     def create_embeddings(
         self,
@@ -1198,8 +1021,66 @@ class Cebras(ModelsWrapper, Model):
 
 
 class CebraOwn(CEBRA):
-    def __init__(self, model_architecture="offset10-model", **kwargs):
-        super().__init__(model_architecture=model_architecture, **kwargs)
+    def __init__(
+        self,
+        model_architecture: str = "offset10-model",
+        device: str = "cuda_if_available",
+        criterion: str = "infonce",
+        distance: str = "cosine",
+        conditional: str = "time_delta",
+        temperature: float = 1.0,
+        temperature_mode: Literal["constant", "auto"] = "constant",
+        min_temperature: Optional[float] = 0.1,
+        time_offsets: int = 10,
+        delta: float = None,
+        max_iterations: int = 10000,
+        max_adapt_iterations: int = 500,
+        batch_size: int = 512,
+        learning_rate: float = 3e-4,
+        optimizer: str = "adam",
+        output_dimension: int = 3,
+        verbose: bool = True,
+        num_hidden_units: int = 32,
+        pad_before_transform: bool = True,
+        hybrid: bool = False,
+        optimizer_kwargs: Tuple[Tuple[str, object], ...] = (
+            ("betas", (0.9, 0.999)),
+            ("eps", 1e-08),
+            ("weight_decay", 0),
+            ("amsgrad", False),
+        ),
+    ):
+        # TODO: change Cebras class and CebraOwn to make it work when CebraOwn also inherits from Model
+        # Model.__init__(self, model_dir, model_id, model_settings=None, **kwargs)
+        CEBRA.__init__(
+            self,
+            model_architecture=model_architecture,
+            device=device,
+            criterion=criterion,
+            distance=distance,
+            conditional=conditional,
+            temperature=temperature,
+            temperature_mode=temperature_mode,
+            min_temperature=min_temperature,
+            time_offsets=time_offsets,
+            delta=delta,
+            max_iterations=max_iterations,
+            max_adapt_iterations=max_adapt_iterations,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            optimizer=optimizer,
+            output_dimension=output_dimension,
+            verbose=verbose,
+            num_hidden_units=num_hidden_units,
+            pad_before_transform=pad_before_transform,
+            hybrid=hybrid,
+            optimizer_kwargs=optimizer_kwargs,
+        )
+        self.decoding_statistics = None
+        self.name = None
+        self.model_type = None
+        self.data = None
+        self.save_path = None
 
     def define_decoding_statistics(self, regenerate=False):
         if self.data is None or self.data["test"]["neural"].shape[0] < 10:
@@ -1209,6 +1090,123 @@ class CebraOwn(CEBRA):
             if self.decoding_statistics is None or regenerate:
                 self.decoding_statistics = decode(model=self)
         return self.decoding_statistics
+
+    def is_fitted(self, model):
+        return sklearn_utils.check_fitted(model)
+
+    def train(
+        self,
+        neural_data,
+        behavior_data=None,
+        regenerate=False,
+    ):
+        # remove list if neural data is a list and only one element
+        if isinstance(neural_data, list) and len(neural_data) == 1:
+            neural_data = neural_data[0]
+            behavior_data = behavior_data[0]
+
+        if not self.fitted or regenerate:
+            # skip if no neural data available
+            if isinstance(neural_data, np.ndarray) and neural_data.shape[0] < 10:
+                global_logger.error(
+                    f"Not enough frames to use for {self.name}. At least 10 are needed. Skipping"
+                )
+                print(
+                    f"Skipping: Not enough frames to use for {self.name}. At least 10 are needed."
+                )
+            else:
+                # train model
+                global_logger.info(f"Training  {self.name} model.")
+                print(f"Training  {self.name} model.")
+                if self.type == "time":
+                    self.fit(neural_data)
+                else:
+                    if behavior_data is None:
+                        raise ValueError(
+                            f"No behavior data types given for {self.type} model."
+                        )
+                    neural_data, behavior_data = force_equal_dimensions(
+                        neural_data, behavior_data
+                    )
+                    self.fit(neural_data, behavior_data)
+                self.fitted = self.is_fitted(self)
+                self.save(self.save_path)
+        else:
+            global_logger.info(f"{self.name} model already trained. Skipping.")
+            print(f"{self.name} model already trained. Skipping.")
+        return self
+
+    def create_embedding(
+        self,
+        session_id=None,
+        to_transform_data=None,
+        to_2d=False,
+        save=False,
+        return_labels=False,
+    ):
+        embedding = None
+        labels = None
+        if self.fitted:
+            if to_transform_data is None:
+                to_transform_data = self.data["train"]["neural"]
+                label = self.data["train"]["behavior"]
+
+            if isinstance(to_transform_data, list) and len(to_transform_data) == 1:
+                to_transform_data = to_transform_data[0]
+
+            if isinstance(to_transform_data, np.ndarray):
+                if session_id is not None:
+                    # single session embedding from multi-session model
+                    embedding = (
+                        self.transform(to_transform_data, session_id=session_id)
+                        if to_transform_data.shape[0] > 10
+                        else None
+                    )
+                else:
+                    embedding = (
+                        self.transform(to_transform_data)
+                        if to_transform_data.shape[0] > 10
+                        else None
+                    )
+
+                if to_2d:
+                    if embedding.shape[1] > 2:
+                        embedding = sphere_to_plane(embedding)
+                    elif embedding.shape[1] == 2:
+                        print(f"Embedding is already 2D.")
+                if save:
+                    raise NotImplementedError("Saving embeddings not implemented yet.")
+                    import pickle
+
+                    with open("multi_embeddings.pkl", "wb") as f:
+                        pickle.dump(embedding, f)
+            else:
+                embedding = {}
+                # multi-session embedding
+                for i, data in enumerate(to_transform_data):
+                    embedding_title = f"{self.name}_task_{i}"
+                    if return_labels:
+                        session_embedding, label = self.create_embedding(
+                            self, i, data, to_2d, save, return_labels
+                        )
+                        if session_embedding is not None:
+                            embedding[embedding_title] = session_embedding
+                            labels[embedding_title] = label
+                    else:
+                        session_embedding = self.create_embedding(
+                            self, i, data, to_2d, save
+                        )
+                        if session_embedding is not None:
+                            embedding[embedding_title] = session_embedding
+
+        else:
+            global_logger.error(f"{self.name} model. Not fitted.")
+            global_logger.warning(f"Skipping {self.name} model")
+            print(f"{self.name} model. Not fitted.")
+            print(f"Skipping {self.name} model")
+        if return_labels:
+            return embedding, labels
+        return embedding
 
 
 def decode(

@@ -714,10 +714,11 @@ class Session:
                 filtered_tasks[task.id] = task
         return filtered_tasks
 
-    def task_model_cross_decode(self,
-            manifolds_pipeline: str = "cebra",
-            model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
-            model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+    def task_model_cross_decode(
+        self,
+        manifolds_pipeline: str = "cebra",
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
     ):
         """
         Calculates the decoding performance between models from all tasks based on the wanted model names.
@@ -727,7 +728,7 @@ class Session:
         manifolds_pipeline : str, optional
             The name of the manifolds pipeline to use for decoding (default is "cebra").
         model_naming_filter_include : list, optional
-            A list of lists containing the model naming parts to include (default is None). 
+            A list of lists containing the model naming parts to include (default is None).
             If None, all models will be included.
         model_naming_filter_exclude : list, optional
             A list of lists containing the model naming parts to exclude (default is None).
@@ -754,7 +755,7 @@ class Session:
         data_labels = []
         task_decoding_statistics = {}
         for task_name, task_models in session_models.items():
-            model.define_decoding_statistics(
+            # task_models.define_decoding_statistics()
 
             print(task_name)
             stimulus_type = self.tasks[task_name].behavior_metadata["stimulus_type"]
@@ -762,8 +763,8 @@ class Session:
             task_decoding_statistics[task_name_type] = {}
             data_labels.append(task_name_type)
             model = task_models[list(task_models.keys())[0]]
-            mean = model.decoding_statistics["rmse"]["mean"]
-            variance = model.decoding_statistics["rmse"]["variance"]
+            mean = task_models.decoding_statistics["rmse"]["mean"]
+            variance = task_models.decoding_statistics["rmse"]["variance"]
             task_decoding_statistics[task_name_type][stimulus_type] = {
                 "mean": mean,
                 "variance": variance,
@@ -773,7 +774,9 @@ class Session:
                 if task_name == task_name2:
 
                     continue
-                stimulus_type2 = self.tasks[task_name2].behavior_metadata["stimulus_type"]
+                stimulus_type2 = self.tasks[task_name2].behavior_metadata[
+                    "stimulus_type"
+                ]
                 model2 = task_models2[list(task_models2.keys())[0]]
                 stimulus_decoding = f"{task_name_type}_{stimulus_type2}"
 
