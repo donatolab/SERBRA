@@ -624,16 +624,23 @@ class NeuralDataset(Dataset):
         if use_embedding:
             if model is None:
                 if self.embedding is None:
+                    global_logger.error(
+                        f"Embedding was not generated. Model needed for embedding."
+                    )
                     raise (f"Embedding was not generated. Model needed for embedding.")
                 else:
                     data = self.embedding
             else:
                 if self.embedding is not None:
-                    print(f"Recalculated Embedding based on given model")
+                    global_logger.warning(
+                        f"Embedding already calculated. Overwriting with new model."
+                    )
                 data = self.embedd_data(model)
         else:
             if model is not None:
-                print(f"Model given but embedding not requested. Using raw data.")
+                global_logger.warning(
+                    f"Model given but embedding not requested. Using raw data."
+                )
             data = self.data
         filtered_neural_data = self.filter_by_idx(data, idx_to_keep=idx_to_keep)
         return filtered_neural_data
@@ -716,7 +723,7 @@ class NeuralDataset(Dataset):
                 neighbor_distance = np.sqrt(4 / len(group_vectors))
 
                 if out_det_method == "density" and use_embedding == False:
-                    print(
+                    global_logger.warning(
                         "WARNING: Density based outlier detection is not recommended for high dimensional data. Euclidean distance is used for samples distance calculation."
                     )
 
@@ -732,10 +739,16 @@ class NeuralDataset(Dataset):
                     )
                 else:
                     if not isinstance(similarities, dict):
+                        global_logger.error(
+                            "Similarities should be dictionary. For plotting similarities in 2D"
+                        )
                         raise ValueError(
                             "Similarities should be dictionary. For plotting similarities in 2D"
                         )
                     if not isinstance(list(similarities.values())[0], np.ndarray):
+                        global_logger.error(
+                            "Similarities inside dict should be numpy array."
+                        )
                         raise ValueError(
                             "Similarities inside dict should be numpy array."
                         )
@@ -760,10 +773,16 @@ class NeuralDataset(Dataset):
                 similarities = correlate_vectors(filtered_neural_data, metric=metric)
             else:
                 if not isinstance(similarities, np.ndarray):
+                    global_logger.error(
+                        "Similarities should be numpy array. For inside bin similarity plotting."
+                    )
                     raise ValueError(
                         "Similarities should be numpy array. For inside bin similarity plotting."
                     )
                 if similarities.ndim != 2:
+                    global_logger.error(
+                        "Similarities should be 2D array. For plotting similarities in 2D"
+                    )
                     raise ValueError(
                         "Similarities should be 2D array. For plotting similarities in 2D"
                     )
@@ -1152,7 +1171,9 @@ class Data_Position(BehaviorDataset):
         binned_data = bin_array(
             data, bin_size=bin_size, min_bin=min_bins, max_bin=max_bins
         )
-        self.max_bin = np.ceil(np.array(dimensions) / np.array(bin_size)).astype(int)
+        self.max_bin = (
+            np.ceil(np.array(dimensions) / np.array(bin_size)).astype(int)[:, 1] - 1
+        )
         encoded_data = self.create_1d_discrete_labels(binned_data)
         if return_category_map:
             return encoded_data, self.category_map

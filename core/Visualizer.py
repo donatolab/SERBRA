@@ -1,5 +1,6 @@
 # Plotting
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 from matplotlib.ticker import MaxNLocator
 from matplotlib.collections import LineCollection
@@ -694,10 +695,14 @@ class Vizualizer:
         if plot_legend:
             if embedding_labels.ndim == 1:
                 Vizualizer.add_1d_colormap_legend(
-                    ax, embedding_labels, label_name="labels", ticks=None, cmap=cmap
+                    ax=ax,
+                    labels=embedding_labels,
+                    label_name="labels",
+                    ticks=None,
+                    cmap=cmap,
                 )
             elif embedding_labels.ndim == 2:
-                Vizualizer.add_2d_colormap_legend(fig)
+                Vizualizer.add_2d_colormap_legend(fig=fig)
             else:
                 raise ValueError("Invalid labels dimension. Choose 2D or 3D labels.")
 
@@ -745,11 +750,13 @@ class Vizualizer:
     def add_2d_colormap_legend(
         fig,
         Legend=None,
+        cmap="rainbow",
         discret_n_colors=None,
         colors=None,
         xticks=None,
         yticks=None,
         additional_title="",
+        legend_left=None,
     ):
         if xticks is None:
             xticks = []
@@ -760,7 +767,9 @@ class Vizualizer:
         # Get the position of the main plot
         main_pos = main_ax.get_position()
         # Calculate the position of the legend
-        legend_left = main_pos.x1 + main_pos.x1 / 10
+        legend_left = (
+            main_pos.x1 + main_pos.x1 / 10 if legend_left is None else legend_left
+        )
 
         cax = fig.add_axes([legend_left, 0.55, 0.3, 0.3])
         cax.set_xlabel("X")
@@ -778,9 +787,9 @@ class Vizualizer:
 
             if discret_n_colors is not None:
                 # create discrete colormap by splitting colormap into n colors
-                colors = plt.cm.viridis(
+                colors = cm.get_cmap(cmap)(
                     np.linspace(0, 1, discret_n_colors)
-                )  # Using viridis colormap
+                )  # Using rainbow colormap
                 cmap = mcolors.ListedColormap(colors)
                 bounds = np.linspace(0, 1, discret_n_colors + 1)
 
@@ -942,36 +951,29 @@ class Vizualizer:
         self.plot_ending(title, title_size=preset_figsize_x * cols, as_pdf=as_pdf)
 
     def create_rgba_labels(values, alpha=0.8):
-        """c : array-like or list of colors or color, optional
-        The marker colors. Possible values:
+        """
+        Create RGBA labels using a colormap.
 
-        - A scalar or sequence of n numbers to be mapped to colors using
-            *cmap* and *norm*.
-        - A 2D array in which the rows are RGB or RGBA.
-        - A sequence of colors of length n.
-        - A single color format string.
+        Parameters:
+        values : array-like
+            The input values to be mapped to colors. Can be 1D or 2D.
+        alpha : float, optional
+            The alpha level for the colors. Default is 0.8.
 
-        Note that *c* should not be a single numeric RGB or RGBA sequence
-        because that is indistinguishable from an array of values to be
-        colormapped. If you want to specify the same RGB or RGBA value for
-        all points, use a 2D array with a single row.  Otherwise,
-        value-matching will have precedence in case of a size matching with
-        *x* and *y*.
+        Returns:
+        np.ndarray
+            An array of RGBA colors.
 
-        If you wish to specify a single color for all points
-        prefer the *color* keyword argument.
-
-        Defaults to `None`. In that case the marker color is determined
-        by the value of *color*, *facecolor* or *facecolors*. In case
-        those are not specified or `None`, the marker color is determined
-        by the next color of the ``Axes``' current "shape and fill" color
-        cycle. This cycle defaults to :rc:`axes.prop_cycle`."""
+        Description:
+        This function maps input values to RGBA colors using a specified colormap.
+        It supports 1D and 2D input values. For 1D values, each value is mapped to
+        a color. For 2D values, each pair of values is mapped to a color.
+        """
 
         normalized_values = normalize_01(values, axis=0)
         values = np.array(values)
         if values.ndim == 1:
-            # rainbow colormap
-            cmap = plt.cm.rainbow
+            cmap = plt.cm.get_cmap("rainbow")
             rgba_colors = np.array([cmap(x) for x in normalized_values])
         elif values.ndim == 2:
             cmap = lambda x, y: (x, 0.5, y, alpha)

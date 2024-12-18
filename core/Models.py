@@ -989,7 +989,7 @@ class Cebras(ModelsWrapper, Model):
         for model_name, model in models.items():
             embedding_title = f"{model_name}"
             if return_labels:
-                embedding, label = self.create_embedding(
+                embedding, label = model.create_embedding(
                     model,
                     to_transform_data=to_transform_data,
                     to_2d=to_2d,
@@ -997,8 +997,8 @@ class Cebras(ModelsWrapper, Model):
                     return_labels=return_labels,
                 )
             else:
-                embedding = self.create_embedding(
-                    model, to_transform_data=to_transform_data, to_2d=to_2d, save=save
+                embedding = model.create_embedding(
+                    to_transform_data=to_transform_data, to_2d=to_2d, save=save
                 )
             if embedding is not None:
                 embeddings[embedding_title] = embedding
@@ -1264,7 +1264,6 @@ class CebraOwn(CEBRA):
         if return_labels:
             return embedding, labels
         return embedding
-
 
 def decode(
     embedding_train: np.ndarray,

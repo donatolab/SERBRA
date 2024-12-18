@@ -8,3 +8,4 @@ logs*
 *.egg
 *__pycache__
 *.pyc
+*structure_index

@@ -446,7 +446,7 @@ def compare_distribution_groups(
         similarities_to_groupi = np.zeros(max_bin)
 
         for group_j, (group_name2, group2) in enumerate(group_vectors.items()):
-            print(f"Comparing {group_name} to {group_name2}")
+            global_logger.info(f"Comparing {group_name} to {group_name2}")
             dist = compare_distributions(
                 group1,
                 group2,
@@ -456,6 +456,8 @@ def compare_distribution_groups(
                 parallel=parallel,
                 out_det_method=out_det_method,
             )
+            if np.isnan(dist):
+                raise ValueError("check what is happening")
             group_position = group_j if isinstance(group_name2, str) else group_name2
             similarities_to_groupi[group_position] = dist
 
@@ -559,6 +561,8 @@ def compare_distributions(
 
     # Filter out outliers from the distributions
     if filter_outliers:
+        org_points1 = points1.copy()
+        org_points2 = points2.copy()
         if parallel:
             points1 = filter_outlier_numba(
                 points1, method=out_det_method, neighbor_distance=neighbor_distance
@@ -575,7 +579,7 @@ def compare_distributions(
             wasserstein_distance(points1[:, i], points2[:, i])
             for i in range(points1.shape[1])
         ]
-        return np.sum(distances)
+        similarity = np.sum(distances)
 
     elif metric == "kolmogorov-smirnov":
         # Calculate the Kolmogorov-Smirnov statistic for each dimension and take the maximum
@@ -583,23 +587,23 @@ def compare_distributions(
             ks_2samp(points1[:, i], points2[:, i]).statistic
             for i in range(points1.shape[1])
         ]
-        return np.max(ks_statistics)
+        similarity = np.max(ks_statistics)
 
     elif metric == "chi2":
         # Chi-Squared test (requires binned data, here we just compare histograms)
         hist1, hist2 = points_to_histogram(points1, points2)
-        return np.sum((hist1 - hist2) ** 2 / hist2)
+        similarity = np.sum((hist1 - hist2) ** 2 / hist2)
 
     elif metric == "kullback-leibler":
         # Kullback-Leibler Divergence
         hist1, hist2 = points_to_histogram(points1, points2)
-        return entropy(hist1, hist2)
+        similarity = entropy(hist1, hist2)
 
     elif metric == "jensen-shannon":
         # Jensen-Shannon Divergence
         hist1, hist2 = points_to_histogram(points1, points2)
         m = 0.5 * (hist1 + hist2)
-        return 0.5 * (entropy(hist1, m) + entropy(hist2, m))
+        similarity = 0.5 * (entropy(hist1, m) + entropy(hist2, m))
 
     elif metric == "energy":
         # Energy Distance
@@ -607,26 +611,26 @@ def compare_distributions(
             energy_distance(points1[:, i], points2[:, i])
             for i in range(points1.shape[1])
         ]
-        return np.mean(distances)
+        similarity = np.mean(distances)
 
     elif metric == "euclidean":
-        return euclidean_distance_between_distributions(points1, points2)
+        similarity = euclidean_distance_between_distributions(points1, points2)
 
     elif metric == "mahalanobis":
-        return mahalanobis_distance_between_distributions(points1, points2)
+        similarity = mahalanobis_distance_between_distributions(points1, points2)
 
     elif metric == "cosine":
         if points1.ndim == 2:
             v1 = np.mean(points1, axis=0)
         if points2.ndim == 2:
             v2 = np.mean(points2, axis=0)
-        return cosine_similarity(v1, v2)
+        similarity = cosine_similarity(v1, v2)
 
     elif metric == "overlap":
         kde1 = gaussian_kde(points1.T)
         kde2 = gaussian_kde(points2.T)
         overlap = normalized_kde_overlap(kde1, kde2)
-        return overlap
+        similarity = overlap
 
     elif metric == "cross_entropy":
         # Cross entropy: H(p, q) = -sum(p * log(q))
@@ -634,10 +638,21 @@ def compare_distributions(
         kde2 = gaussian_kde(points2.T)
         kde1_densities = kde1.evaluate(points1.T)
         kde2_densities = kde2.evaluate(points1.T)
-        return entropy(kde1_densities, kde2_densities)
+        similarity = entropy(kde1_densities, kde2_densities)
 
     else:
         raise ValueError(f"Unsupported metric: {metric}")
+
+    if similarity == None:
+        raise ValueError(
+            f"Similarity is None. Metric: {metric}, points1: {points1}, points2: {points2}"
+        )
+    
+    if np.isnan(similarity):
+        raise ValueError(
+            f"Similarity is nan. Metric: {metric}, points1: {points1}, points2: {points2}"
+        )
+    return similarity
 
 
 def normalized_kde_overlap(kde1, kde2):
@@ -1094,6 +1109,7 @@ def points_to_histogram(points1, points2, bins=None):
     return hist1, hist2
 
 
+........................................ check why this function is removing all points......
 @njit(nopython=True)
 def filter_outlier_numba(
     points, contamination=0.2, neighbor_distance=None, method="contamination"
@@ -1319,6 +1335,7 @@ def correlate_vectors(vectors: np.ndarray, metric="pearson"):
         # correlation_matrix = normalized_vectors @ normalized_vectors.T
         correlation_matrix = sklearn.metrics.pairwise.cosine_similarity(vectors)
     else:
+        global_logger.error("Metric must be 'pearson' or 'cosine'.")
         raise ValueError("metric must be 'pearson' or 'cosine'.")
     return correlation_matrix
 
@@ -1383,21 +1400,25 @@ def filter_strings_by_properties(
             exclude_properties = [exclude_properties]
 
     for string in strings:
+        include_check = False
         if include_properties:
             # Check if any of the include properties lists are present in the string
-            include_check = any(
-                all(prop.lower() in string.lower() for prop in props)
-                for props in include_properties
-            )
+            for props in include_properties:
+                props = make_list_ifnot(props)
+                if all(prop.lower() in string.lower() for prop in props):
+                    include_check = True
+                    break
         else:
             include_check = True
 
+        exclude_check = False
         if exclude_properties:
             # Check if any of the exclude properties lists are present in the string
-            exclude_check = any(
-                all(prop.lower() in string.lower() for prop in props)
-                for props in exclude_properties
-            )
+            for props in exclude_properties:
+                props = make_list_ifnot(props)
+                if all(prop.lower() in string.lower() for prop in props):
+                    exclude_check = True
+                    break
         else:
             exclude_check = False
 
@@ -1860,6 +1881,7 @@ def group_by_binned_data(
 
     """
     if data is None and group_values != "count":
+        global_logger.error("Data needed for grouping.")
         raise ValueError("Data needed for grouping.")
 
     if group_values != "count":
