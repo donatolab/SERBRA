@@ -443,7 +443,7 @@ def compare_distribution_groups(
     # Compare distributions between each group (bin)
     for group_i, (group_name, group1) in enumerate(group_vectors.items()):
 
-        similarities_to_groupi = np.zeros(max_bin)
+        similarities_to_groupi = np.zeros(max_bin + 1)
 
         for group_j, (group_name2, group2) in enumerate(group_vectors.items()):
             global_logger.info(f"Comparing {group_name} to {group_name2}")
@@ -456,7 +456,7 @@ def compare_distribution_groups(
                 parallel=parallel,
                 out_det_method=out_det_method,
             )
-            if np.isnan(dist):
+            if dist is not None and np.isnan(dist):
                 raise ValueError("check what is happening")
             group_position = group_j if isinstance(group_name2, str) else group_name2
             similarities_to_groupi[group_position] = dist
@@ -492,6 +492,7 @@ def compare_distributions(
         - 'energy': Energy Distance - measure of the distance between two probability distributions (typically used for 1D distributions)
         - 'mahalanobis': Mahalanobis Distance - measure of the distance between two probability distributions
         - "cosine": Cosine Similarity only for mean vector of distribution- measure of the cosine of the angle between two non-zero vectors. This metric is equivalent to the Pearson correlation coefficient for normalized vectors.
+        - "overlap": Overlap between two distributions using Kernel Density Estimation (KDE). This method is not working if points are lower than dimensions.
 
     Wasserstein Distance (smaller = more similar)
     In your case, a Wasserstein distance of 3.099 indicates that it would take an average of 3.099 units of “work” (moving mass) to transform one distribution into the other.
@@ -527,6 +528,13 @@ def compare_distributions(
     Returns:
     - The computed distance between the two distributions.
     """
+    if len(points1) == 0:
+        global_logger.warning(f"First Distribution is empty returning None")
+        return None
+    if len(points2) == 0:
+        global_logger.warning(f"Second Distribution is empty returning None")
+        return None
+
     assert (
         points1.shape[1] == points2.shape[1]
     ), "Distributions must have the same number of dimensions"
@@ -556,7 +564,7 @@ def compare_distributions(
         raise NotImplementedError(f"Metric {metric} not implemented")
 
     if out_det_method is None:
-        print(points1[0].shape[0])
+        global_logger
         out_det_method = "density" if points1[0].shape[0] < 4 else "contamination"
 
     # Filter out outliers from the distributions
@@ -634,6 +642,10 @@ def compare_distributions(
 
     elif metric == "cross_entropy":
         # Cross entropy: H(p, q) = -sum(p * log(q))
+        if points1.ndim > 30 or points2.ndim > 30:
+            raise NotImplementedError(
+                "Cross entropy not implemented properly for high dimesions"
+            )
         kde1 = gaussian_kde(points1.T)
         kde2 = gaussian_kde(points2.T)
         kde1_densities = kde1.evaluate(points1.T)
@@ -646,11 +658,6 @@ def compare_distributions(
     if similarity == None:
         raise ValueError(
             f"Similarity is None. Metric: {metric}, points1: {points1}, points2: {points2}"
-        )
-    
-    if np.isnan(similarity):
-        raise ValueError(
-            f"Similarity is nan. Metric: {metric}, points1: {points1}, points2: {points2}"
         )
     return similarity
 
@@ -775,6 +782,30 @@ def get_covariance_matrix(data: np.ndarray, epsilon: float = 1e-6) -> np.ndarray
 def regularized_covariance(cov_matrix, epsilon=1e-6):
     return cov_matrix + np.eye(cov_matrix.shape[0]) * epsilon
 
+@njit(nopython=True)
+def get_cov_mean_invcov(data):
+    """
+    Compute the mean and covariance matrix of the input data.
+
+    Args:
+    data (np.ndarray): Input data, shape (n_samples, n_features)
+
+    Returns:
+    tuple: (mean, cov)
+        mean (np.ndarray): Mean vector, shape (n_features,)
+        cov (np.ndarray): Covariance matrix, shape (n_features, n_features)
+    """
+    # Compute the covariance matrix for each distribution (can be estimated from data)
+    cov = get_covariance_matrix(data)
+    # Compute the inverse of the covariance matrices
+    cov_inv = np.linalg.inv(cov)
+    mean = np.zeros(data.shape[1])
+
+    # Manually compute the mean along axis=0
+    for i in prange(data.shape[1]):
+        mean[i] = np.sum(data[:, i]) / data.shape[0]
+
+    return cov, mean, cov_inv
 
 @njit(nopython=True)
 def pca_numba(data, n_components=2):
@@ -844,14 +875,15 @@ def compute_mean_and_cov(X):
 def all_finite(arr):
     """Check if all elements in the array are finite."""
     flat_arr = arr.flat
-    for i in range(len(flat_arr)):
+    all_finite = True
+    for i in prange(len(flat_arr)):
         x = flat_arr[i]
         if not np.isfinite(x):
-            return False
-    return True
+            all_finite = False
+    return all_finite
 
 
-@njit(nopython=True)
+@njit
 def is_positive_definite(A):
     """Check if a matrix is positive definite."""
     try:
@@ -861,30 +893,83 @@ def is_positive_definite(A):
         return False
 
 
+@njit
+def nearestPD(A):
+    """
+    Find the nearest positive definite matrix to input matrix A.
+    Uses a more numerically stable approach with careful handling of eigenvalues.
+
+    Parameters:
+    -----------
+    A : ndarray
+        Input matrix to be converted to the nearest positive definite matrix
+
+    Returns:
+    --------
+    A3 : ndarray
+        Nearest positive definite matrix to A
+    """
+    n = A.shape[0]
+
+    # Symmetrize A
+    B = (A + A.T) / 2
+
+    # Compute SVD
+    U, s, Vt = np.linalg.svd(B)
+
+    # Ensure eigenvalues are positive
+    s = np.maximum(s, 0)
+
+    # Reconstruct matrix with positive eigenvalues
+    H = np.dot(U, np.dot(np.diag(s), U.T))
+
+    # Average with original symmetrized matrix
+    A2 = (B + H) / 2
+    A3 = (A2 + A2.T) / 2  # Ensure perfect symmetry
+
+    # If already positive definite, return result
+    if is_positive_definite(A3):
+        return A3
+
+    # Otherwise, gradually add to diagonal until positive definite
+    spacing = np.max(np.abs(A)) * 1e-9  # Scale spacing with matrix magnitude
+    I = np.eye(n)
+    k = 0
+    max_attempts = 100  # Prevent infinite loops
+
+    while not is_positive_definite(A3) and k < max_attempts:
+        mineig = np.min(np.real(np.linalg.eigvals(A3)))
+        A3 += I * (-mineig + spacing)
+        k += 1
+        spacing *= 2  # Increase spacing geometrically if needed
+
+    return A3
+
+
 @njit(nopython=True)
 def mahalanobis_distance_between_distributions(points1, points2):
-    # Mahalanobis Distance
-    # Compute the covariance matrix for each distribution (can be estimated from data)
-    cov_matrix1 = get_covariance_matrix(points1)
-    cov_matrix2 = get_covariance_matrix(points2)
-    if cov_matrix1.ndim < 2 or cov_matrix2.ndim < 2:
-        return np.inf
-    # Compute the inverse of the covariance matrices
-    cov_inv1 = np.linalg.inv(cov_matrix1)
-    cov_inv2 = np.linalg.inv(cov_matrix2)
+    """
+    Compute the Mahalanobis distance between two distributions.
 
-    # Manually compute the mean along axis=0
-    mean1 = np.zeros(points1.shape[1])
-    mean2 = np.zeros(points2.shape[1])
+    Parameters:
+    ----------
+    points1 : np.ndarray
+        First distribution, shape (n_samples1, n_features)
+    points2 : np.ndarray
+        Second distribution, shape (n_samples2, n_features)
 
-    for i in range(points1.shape[1]):
-        mean1[i] = np.sum(points1[:, i]) / points1.shape[0]
-        mean2[i] = np.sum(points2[:, i]) / points2.shape[0]
+    Returns:
+    -------
+    float
+        Mahalanobis distance between the two distributions
+    """
+    cov_matrix1, mean1, cov_inv1 = get_cov_mean_invcov(points1)
+    cov_matrix2, mean2, cov_inv2 = get_cov_mean_invcov(points2)
 
     # Sum of inverses of the covariance matrices
     cov_inv_sum = cov_inv1 + cov_inv2
 
-    return mahalanobis_distance(mean1, mean2, cov_inv_sum)
+    return mahalanobis_distance(mean1, mean2, cov_inv_sum) 
 
 
 @njit(nopython=True, parallel=True)
@@ -952,6 +1037,28 @@ def pairwise_euclidean_distance(points1, points2):
     return distances
 
 
+@njit(nopython=True, parallel=True)
+def pairwise_mahalanobis_distance(points1, points2, inv_cov):
+    """
+    Compute the pairwise Mahalanobis distance between two sets of points from the same distribution.
+
+    Args:
+    points1 (np.ndarray): First set of points, shape (n_samples1, n_features)
+    points2 (np.ndarray): Second set of points, shape (n_samples2, n_features)
+    inv_cov (np.ndarray): Inverse of the covariance matrix, shape (n_features, n_features)
+
+    Returns:
+    np.ndarray: Pairwise Mahalanobis distance matrix, shape (n_samples1, n_samples2)
+    """
+    n1, d = points1.shape
+    n2 = points2.shape[0]
+    distances = np.zeros((n1, n2))
+    for i in prange(n1):
+        point_distances = compute_mahalanobis_distances(points2, points1[i], inv_cov)
+        distances[i] = point_distances
+    return distances
+
+
 @njit(nopython=True)
 def euclidean_distance(x, y):
     """
@@ -986,7 +1093,10 @@ def mahalanobis_distance(x, mean, inv_cov):
     mean = mean.astype(np.float64)
     inv_cov = inv_cov.astype(np.float64)
     diff = x - mean
-    distance = np.sqrt(diff.dot(inv_cov).dot(diff))
+    distance_squared = diff.dot(inv_cov).dot(diff)
+    distance = np.sqrt(distance_squared)
+    # if np.isnan(distance):
+    #    raise ValueError("Mahalanobis distance is nan")
     return distance
 
 
@@ -1028,7 +1138,6 @@ def compute_density(points, neighbor_distance, inv_cov=None):
     return densities
 
 
-@njit(nopython=True)
 def get_outlier_mask_numba(
     points, contamination=0.2, neighbor_distance=None, method="contamination"
 ):
@@ -1052,19 +1161,26 @@ def get_outlier_mask_numba(
 
         # Check if covariance matrix is positive definite
         if not is_positive_definite(cov):
-            # If not, add a small value to the diagonal
-            cov += np.eye(d) * 1e-6
+            # If not, find the nearest positive definite matrix
+            cov = nearestPD(cov)
 
+        inversion_failed = False
         try:
             inv_cov = np.linalg.inv(cov)
         except:
-            # If inversion fails, return valid points
+            inversion_failed = True
+
+        if inversion_failed or not is_positive_definite(inv_cov):
+            # global_logger.warning("Inversion failed, return valid points.")
             return np.ones(len(valid_points), dtype=np.bool_)
 
         distances = compute_mahalanobis_distances(valid_points, mean, inv_cov)
+        distances = np.nan_to_num(distances, nan=np.inf)
 
         # Determine threshold based on contamination (percentage of outliers)
-        threshold = np.percentile(distances, 100 * (1 - contamination))
+        threshold = np.percentile(
+            distances[distances < np.inf], 100 * (1 - contamination)
+        )
         mask_inliers = distances <= threshold
 
     elif method == "density":
@@ -1075,6 +1191,7 @@ def get_outlier_mask_numba(
                 "neighbor_distance must be specified for density-based outlier detection"
             )
         densities = compute_density(valid_points, neighbor_distance)
+        densities = np.nan_to_num(densities, nan=0.0)
 
         # Determine threshold based on contamination (percentage of lowest density points)
         threshold = (
@@ -1082,7 +1199,7 @@ def get_outlier_mask_numba(
             if sum(densities) > 0
             else np.inf
         )
-        mask_inliers = densities > threshold
+        mask_inliers = densities >= threshold
 
     return mask_inliers
 
@@ -1109,8 +1226,6 @@ def points_to_histogram(points1, points2, bins=None):
     return hist1, hist2
 
 
-........................................ check why this function is removing all points......
-@njit(nopython=True)
 def filter_outlier_numba(
     points, contamination=0.2, neighbor_distance=None, method="contamination"
 ):
@@ -1308,36 +1423,25 @@ def in_hull(point, hull):
     return all((np.dot(eq[:-1], point) + eq[-1] <= 0) for eq in hull.equations)
 
 
-def correlate_vectors(vectors: np.ndarray, metric="pearson"):
-    """
-    Matrix Multiplikation is used to calculate the correlation matrix.
-
-    Equivalent to cosine measure for normalized vectors. Example code:
-        similarity_matrix = np.zeros((vectors.shape[0], vectors.shape[0]))
-        for i, v1 in enumerate(vectors):
-            for j, v2 in enumerate(vectors):
-                similarity_matrix[i, j] = cosine_similarity(v1, v2)
-
-    Returns:
-        np.ndarray: A matrix of correlations/cosine similarities between each pair of vectors.
-
-    Example:
-        vectors = np.array([[1, 2, 3],
-                            [4, 5, 6],
-                            [7, 8, 9]])
-        correlation_matrix = correlation_matrix(vectors)
-        print(correlation_matrix)
-    """
+def pairwise_compare(vectors: np.ndarray, metric="pearson"):
+    """ """
     if metric == "pearson":
-        correlation_matrix = np.corrcoef(vectors)
+        distances = np.corrcoef(vectors)
     elif metric == "cosine":
         # normalized_vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
-        # correlation_matrix = normalized_vectors @ normalized_vectors.T
-        correlation_matrix = sklearn.metrics.pairwise.cosine_similarity(vectors)
+        # distances = normalized_vectors @ normalized_vectors.T
+        distances = sklearn.metrics.pairwise.cosine_similarity(vectors)
+    elif metric == "manhattan":
+        distances = sklearn.metrics.pairwise.manhattan_distances(vectors)
+    elif metric == "euclidean":
+        distances = pairwise_euclidean_distance(vectors, vectors)
+    elif metric == "mahalanobis":
+        cov, mean, cov_inv = get_cov_mean_invcov(vectors)
+        distances = pairwise_mahalanobis_distance(vectors, vectors, cov_inv)
     else:
-        global_logger.error("Metric must be 'pearson' or 'cosine'.")
-        raise ValueError("metric must be 'pearson' or 'cosine'.")
-    return correlation_matrix
+        global_logger.error(f"{metric} not supported in function {pairwise_compare}")
+        raise ValueError(f"{metric} not supported in function {pairwise_compare}")
+    return distances
 
 
 ## normalization
@@ -1870,7 +1974,8 @@ def group_by_binned_data(
     Group data based on binned data.
     If category_map is provided, the binned data will be used as keys to group the data. Mostly used to map 1D discrete labels to multi dimensional position data.
 
-    Args:
+    Parameters:
+    ----------
         - binned_data: The binned data used for grouping.
         - category_map: A dictionary mapping binned data to categories.
         - group_by: The method used for grouping the data.
@@ -1878,7 +1983,6 @@ def group_by_binned_data(
             - 'raw': Return the raw data.
             - 'mean': Return the mean of the grouped data.
             - 'count': Return the count of the grouped data.
-
     """
     if data is None and group_values != "count":
         global_logger.error("Data needed for grouping.")
@@ -1895,7 +1999,7 @@ def group_by_binned_data(
         bins = list(category_map.keys())
         uncoded_binned_data = uncode_categories(binned_data, category_map)
 
-    max_bin = np.max(bins, axis=0) + 1 if max_bin is None else max_bin
+    max_bin = np.max(bins, axis=0) if max_bin is None else max_bin
 
     # create groups
     groups = {}
@@ -1920,7 +2024,7 @@ def group_by_binned_data(
         groups[unique_loc] = values_at_bin
 
     if as_array:
-        groups_array = np.zeros(max_bin.astype(int))
+        groups_array = np.zeros(max_bin.astype(int) + 1)
         for coordinates, values in groups.items():
             groups_array[coordinates] = values
         return groups_array, bins

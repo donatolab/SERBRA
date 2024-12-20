@@ -17,7 +17,6 @@ from cebra import CEBRA
 
 # own
 from Helper import (
-    normalize_01,
     check_needed_keys,
     get_str_from_dict,
     global_logger,
@@ -26,7 +25,7 @@ from Helper import (
     encode_categorical,
     is_list_of_ndarrays,
     group_by_binned_data,
-    correlate_vectors,
+    pairwise_compare,
     compare_distribution_groups,
     calc_entropy,
     calc_kde_entropy,
@@ -38,6 +37,7 @@ from Helper import (
     add_missing_keys,
     may_butter_lowpass_filter,
     fill_continuous_array,
+    get_covariance_matrix,
 )
 from Visualizer import Vizualizer
 from Setups import Femtonics, Thorlabs, Inscopix, Environment
@@ -687,7 +687,8 @@ class NeuralDataset(Dataset):
             )
             if inside_bin_similarity:
                 # Calculate similarity between vectors
-                similarities = correlate_vectors(filtered_neural_data, metric=metric)
+                if similarities is None:
+                    similarities = pairwise_compare(filtered_neural_data, metric=metric)
 
                 # Calculate similarity inside binned features
                 binned_similarities, _ = group_by_binned_data(
@@ -770,7 +771,7 @@ class NeuralDataset(Dataset):
         else:
             # No binned features, calculate similarity directly
             if similarities is None:
-                similarities = correlate_vectors(filtered_neural_data, metric=metric)
+                similarities = pairwise_compare(filtered_neural_data, metric=metric)
             else:
                 if not isinstance(similarities, np.ndarray):
                     global_logger.error(
@@ -813,6 +814,7 @@ class NeuralDataset(Dataset):
                     yticks=yticks,
                     xticks_pos=xticks_pos,
                     yticks_pos=yticks_pos,
+                    colorbar_label=metric,
                     xlabel=xlabel,
                     ylabel=ylabel,
                     save_dir=save_dir,
@@ -845,8 +847,6 @@ class NeuralDataset(Dataset):
         outlier_threshold: float = 0.2,
         plot=False,
         plot_density=False,
-        use_alpha=False,
-        plot_legend=False,
         figsize=(6, 5),
         save_plot: bool = False,
         save_dir=None,
@@ -916,6 +916,10 @@ class NeuralDataset(Dataset):
 
         inf_contents = {}
         max_inf_content = 0
+        if method == "volume":
+            print(
+                f"WARNING: Volume of covariance matrix is not a measure of information content."
+            )
         for group_name, data in densities.items():
             locations = data["locations"]
             group_densities = data["values"]
@@ -970,6 +974,7 @@ class NeuralDataset(Dataset):
                 heatmap_data,
                 title=title,
                 additional_title=additional_title,
+                figsize=figsize,
                 xticks=xticks,
                 yticks=yticks,
                 xticks_pos=xticks_pos,
