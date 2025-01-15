@@ -1176,9 +1176,14 @@ class Data_Position(BehaviorDataset):
         binned_data = bin_array(
             data, bin_size=bin_size, min_bin=min_bins, max_bin=max_bins
         )
-        self.max_bin = (
-            np.ceil(np.array(dimensions) / np.array(bin_size)).astype(int)[:, 1] - 1
-        )
+        max_bin = np.ceil(np.array(dimensions) / np.array(bin_size)).astype(int) - 1
+        # convert to 1d if 2d
+        if len(max_bin.shape) != 1:
+            max_bin = max_bin[:, 1]
+            raise ValueError(
+                "!!!! check why !!!!. Only 1D and 2D environments are supported."
+            )
+        self.max_bin = max_bin
         encoded_data = self.create_1d_discrete_labels(binned_data)
         if return_category_map:
             return encoded_data, self.category_map

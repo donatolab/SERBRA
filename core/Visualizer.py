@@ -862,7 +862,7 @@ class Vizualizer:
 
         axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
-        labels_list = labels["labels"]
+        labels_list = np.array(labels["labels"])
         labels_list = (
             [labels_list] if not isinstance(labels_list, list) else labels_list
         )

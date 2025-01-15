@@ -1327,33 +1327,22 @@ class Task:
                 embedding_labels_dict[model_name] = model.data["train"]["behavior"]
 
         # get embedding lables
-        if not isinstance(embedding_labels, np.ndarray) and not isinstance(
-            embedding_labels, dict
-        ):
-            global_logger.warning(f"Using behavior_data_types: {behavior_data_types}")
-            print(f"Using behavior_data_types: {behavior_data_types}")
-
-            embedding_labels_dict = self.get_behavior_labels(
-                behavior_data_types, idx_to_keep=None
-            )
-            if not equal_number_entries(embeddings, embedding_labels_dict):
-                embedding_labels_dict = self.get_behavior_labels(
-                    behavior_data_types, movement_state="moving"
+        if embedding_labels is not None:
+            if not isinstance(embedding_labels, np.ndarray) and not isinstance(
+                embedding_labels, dict
+            ):
+                raise ValueError(
+                    f"Provided embedding_labels is not a numpy array or dictionary."
                 )
-                if not equal_number_entries(embeddings, embedding_labels_dict):
-                    embedding_labels_dict = self.get_behavior_labels(
-                        behavior_data_types, movement_state="stationary"
-                    )
+            else:
+                if isinstance(embedding_labels, np.ndarray):
+                    embedding_labels_dict = {"Provided_labels": embedding_labels}
+                else:
+                    embedding_labels_dict = embedding_labels
                     if not equal_number_entries(embeddings, embedding_labels_dict):
                         raise ValueError(
-                            f"Number of labels is not equal to all, moving or stationary number of frames."
+                            f"Number of labels is not equal to all, moving or stationary number of frames. You could extract labels corresponding to only moving using the function self.get_behavior_labels(behavior_data_types, movement_state='moving'\)"
                         )
-
-        else:
-            if isinstance(embedding_labels, np.ndarray):
-                embedding_labels_dict = {"Provided_labels": embedding_labels}
-            else:
-                embedding_labels_dict = embedding_labels
 
         # get ticks
         if len(behavior_data_types) == 1 and colorbar_ticks is None:
@@ -1361,21 +1350,28 @@ class Task:
             colorbar_ticks = dataset_object.plot_attributes["yticks"]
 
         viz = Vizualizer(self.data_dir.parent.parent)
-
-        for embedding_title, embedding_labels in embedding_labels_dict.items():
-            if set_title:
-                title = set_title
-            else:
-                title = f"{manifolds_pipeline.upper()} embeddings {self.id}"
-                title += (
-                    get_str_from_dict(
-                        dictionary=self.behavior_metadata,
-                        keys=Task.descriptive_metadata_keys,
-                    )
-                    + f"{' '+str(title_comment) if title_comment else ''}"
+        if set_title:   
+            title = set_title
+        else:
+            title = f"{manifolds_pipeline.upper()} embeddings {self.id}"
+            title += (
+                get_str_from_dict(
+                    dictionary=self.behavior_metadata,
+                    keys=Task.descriptive_metadata_keys,
                 )
-            projection = "2d" if to_2d else "3d"
-            labels_dict = {"name": embedding_title, "labels": embedding_labels}
+                + f"{' '+str(title_comment) if title_comment else ''}"
+            )
+        projection = "2d" if to_2d else "3d"
+
+        # plot embeddings if behavior_data_type is in embedding_title
+        for behavior_data_type in behavior_data_types:
+            labels_dict = {"name": behavior_data_type, "labels": []}
+            embeddings_to_plot = {} ............... # get embeddings for behavior_data_type 
+            for embedding_title, embedding_labels in embedding_labels_dict.items():
+                if behavior_data_type not in embedding_title:
+                    continue
+                labels_dict["labels"].append(embedding_labels)
+
             viz.plot_multiple_embeddings(
                 embeddings,
                 labels=labels_dict,
