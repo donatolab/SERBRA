@@ -1350,7 +1350,7 @@ class Task:
             colorbar_ticks = dataset_object.plot_attributes["yticks"]
 
         viz = Vizualizer(self.data_dir.parent.parent)
-        if set_title:   
+        if set_title:
             title = set_title
         else:
             title = f"{manifolds_pipeline.upper()} embeddings {self.id}"
@@ -1366,14 +1366,15 @@ class Task:
         # plot embeddings if behavior_data_type is in embedding_title
         for behavior_data_type in behavior_data_types:
             labels_dict = {"name": behavior_data_type, "labels": []}
-            embeddings_to_plot = {} ............... # get embeddings for behavior_data_type 
+            embeddings_to_plot = {}
             for embedding_title, embedding_labels in embedding_labels_dict.items():
                 if behavior_data_type not in embedding_title:
                     continue
                 labels_dict["labels"].append(embedding_labels)
+                embeddings_to_plot[embedding_title] = embeddings[embedding_title]
 
             viz.plot_multiple_embeddings(
-                embeddings,
+                embeddings_to_plot,
                 labels=labels_dict,
                 ticks=colorbar_ticks,
                 title=title,
@@ -1421,7 +1422,7 @@ class Task:
         plot_original=True,
         plot_shuffled=True,
         num_iterations=None,
-        plot_model_iterations=False,
+        plot_iterations=False,
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         alpha=0.8,
@@ -1444,19 +1445,39 @@ class Task:
             models_original[0].max_iterations if not num_iterations else num_iterations
         )
         title = title or f"Losses {self.id} {stimulus_type}"
-        title += f" - {num_iterations} Iterartions" if not plot_model_iterations else ""
+        title += f" - {num_iterations} Iterartions" if not plot_iterations else ""
 
         viz = Vizualizer(self.data_dir.parent.parent)
+        losses_original = {}
+        for model in models_original:
+            if model.fitted:
+                losses_original[model.name] = model.state_dict_["loss"]
+            else:
+                global_logger.warning(
+                    f"{model.name} Not fitted. Skipping model {model.name}."
+                )
+                print(f"Skipping model {model.name}.")
+
+        losses_shuffled = {}
+        for model in models_shuffled:
+            if model.fitted:
+                losses_shuffled[model.name] = model.state_dict_["loss"]
+            else:
+                global_logger.warning(
+                    f"{model.name} Not fitted. Skipping model {model.name}."
+                )
+                print(f"Skipping model {model.name}.")
+
         viz.plot_losses(
-            models=models_original,
-            models_shuffled=models_shuffled,
+            losses=losses_original,
+            losses_shuffled=losses_shuffled,
             title=title,
             coloring_type=coloring_type,
             plot_original=plot_original,
             plot_shuffled=plot_shuffled,
             alpha=alpha,
             figsize=figsize,
-            plot_model_iterations=plot_model_iterations,
+            plot_iterations=plot_iterations,
         )
 
     def plot_multiple_consistency_scores(

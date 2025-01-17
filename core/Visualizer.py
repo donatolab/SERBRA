@@ -30,7 +30,8 @@ import torch
 import cebra
 import pandas as pd
 
-# OWN
+from typing import Union, Optional, Tuple
+from numpy.typing import ArrayLike
 from Helper import *
 
 
@@ -862,7 +863,7 @@ class Vizualizer:
 
         axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
 
-        labels_list = np.array(labels["labels"])
+        labels_list = labels["labels"]
         labels_list = (
             [labels_list] if not isinstance(labels_list, list) else labels_list
         )
@@ -985,50 +986,50 @@ class Vizualizer:
 
     def plot_losses(
         self,
-        models,
-        models_shuffled=[],
-        title="Losses",
-        coloring_type="rainbow",
-        plot_original=True,
-        plot_shuffled=True,
-        plot_model_iterations=False,
-        alpha=0.8,
+        losses: Dict[str, ArrayLike],
+        losses_shuffled: Dict[str, ArrayLike] = {},
+        title: str = "Losses",
+        coloring_type: str = "rainbow",
+        plot_original: bool = True,
+        plot_shuffled: bool = True,
+        plot_iterations: bool = False,
+        alpha: float = 0.8,
         figsize=(10, 10),
     ):
         plt.figure(figsize=figsize)
         ax = plt.subplot(111)
 
         if coloring_type == "rainbow":
-            num_colors = len(models) + len(models_shuffled)
+            num_colors = len(losses) + len(losses_shuffled)
             rainbow_colors = [
                 mcolors.to_rgba(c, alpha=alpha)
                 for c in plt.cm.rainbow(np.linspace(0, 1, num_colors))
             ]
             colors = (
-                rainbow_colors[: len(models)],
-                rainbow_colors[len(models) :],
+                rainbow_colors[: len(losses)],
+                rainbow_colors[len(losses) :],
             )
 
         elif coloring_type == "distinct":
-            # Generate distinct colors for models and models_shuffled
+            # Generate distinct colors for losses and losses_shuffled
             colors_original = [
                 mcolors.to_rgba(c, alpha=alpha)
-                for c in plt.cm.tab10(np.linspace(0, 1, len(models)))
+                for c in plt.cm.tab10(np.linspace(0, 1, len(losses)))
             ]
             colors_shuffled = [
                 mcolors.to_rgba(c, alpha=alpha)
-                for c in plt.cm.Set3(np.linspace(0, 1, len(models_shuffled)))
+                for c in plt.cm.Set3(np.linspace(0, 1, len(losses_shuffled)))
             ]
             colors = colors_original, colors_shuffled
 
         elif coloring_type == "mono":  # Blues and Reds
             blue_colors = [
                 mcolors.to_rgba(c, alpha=alpha)
-                for c in plt.cm.Blues(np.linspace(0.3, 1, len(models)))
+                for c in plt.cm.Blues(np.linspace(0.3, 1, len(losses)))
             ]
             reds_colors = [
                 mcolors.to_rgba(c, alpha=alpha)
-                for c in plt.cm.Reds(np.linspace(0.3, 1, len(models_shuffled)))
+                for c in plt.cm.Reds(np.linspace(0.3, 1, len(losses_shuffled)))
             ]
             colors = (
                 blue_colors,  # colors_original
@@ -1040,28 +1041,23 @@ class Vizualizer:
 
         # Plotting
         if plot_original and plot_shuffled:
-            models_to_plot = models + models_shuffled
+            losses_to_plot = {**losses, **losses_shuffled}
             colors_to_use = colors[0] + colors[1]
         elif plot_original:
-            models_to_plot = models
+            losses_to_plot = losses
             colors_to_use = colors[0]
             title += f"{title} not shuffled"
         else:
-            models_to_plot = models_shuffled
+            losses_to_plot = losses_shuffled
             title += f"{title} shuffled"
             colors_to_use = colors[1]
 
-        for color, model in zip(colors_to_use, models_to_plot):
-            label = model.name.split("behavior_")[-1]
-            label += f" - {model.max_iterations} Iter" if plot_model_iterations else ""
-            if model.fitted:
-                ax = cebra.plot_loss(
-                    model, color=color, alpha=alpha, label=label, ax=ax
-                )
-            else:
-                global_logger.error(f"{label} Not fitted.")
-                global_logger.warning(f"Skipping model {label}.")
-                print(f"Skipping model {label}.")
+        for color, (loss_name, loss) in zip(colors_to_use, losses_to_plot.items()):
+            label = loss_name.split("behavior_")[-1]
+            label += f" - {loss_name.split('iter')[-1]} Iter" if plot_iterations else ""
+            ax = Vizualizer.plot_loss(
+                loss, color=color, alpha=alpha, label=label, ax=ax
+            )
 
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
@@ -1069,6 +1065,36 @@ class Vizualizer:
         ax.set_ylabel("InfoNCE Loss")
         plt.legend(bbox_to_anchor=(0.5, 0.3), frameon=False)
         self.plot_ending(title)
+
+    @staticmethod
+    def plot_loss(
+        loss: ArrayLike,
+        label: Optional[Union[str, int, float]] = None,
+        ax: Optional[matplotlib.axes.Axes] = None,
+        color: str = "magenta",
+        linewidth: int = 1,
+        x_label: bool = True,
+        y_label: bool = True,
+        figsize: tuple = (7, 4),
+        dpi: float = 100,
+        **kwargs,
+    ):
+        if ax is None:
+            fig = plt.figure(figsize=figsize, dpi=dpi)
+            ax = fig.add_subplot(111)
+        ax.plot(loss, c=color, linewidth=linewidth, label=label, **kwargs)
+        if x_label:
+            ax.set_xlabel("Steps")
+        if y_label:
+            if isinstance(y_label, str):
+                ax.set_ylabel(f"{y_label} Loss")
+            else:
+                ax.set_ylabel("Loss")
+
+        if label is not None:
+            ax.legend()
+
+        return ax
 
     def plot_consistency_scores(self, ax1, title, embeddings, labels, dataset_ids):
         (
