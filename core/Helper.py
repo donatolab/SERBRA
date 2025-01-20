@@ -1961,6 +1961,14 @@ def equal_number_entries(embeddings, embedding_labels):
                 return False
     return True
 
+def add_descriptive_metadata(text, metadata=None, keys=None, comment=None):
+    if isinstance(metadata, dict) and isinstance(keys, list):
+        text += get_str_from_dict(
+            dictionary=metadata,
+            keys=keys,
+        )
+    text += f"{' '+str(comment) if comment else ''}"
+    return text
 
 def group_by_binned_data(
     binned_data: np.ndarray,

@@ -300,7 +300,7 @@ class Multi:
 
             # create labels for all behavior data types
             for behavior_data_type in behavior_data_types:
-
+                models_embeddings = print("Dont know how this should look like...")
                 for embedding_model_name, embeddings in models_embeddings.items():
                     global_logger.warning(
                         f"Using behavior_data_types: {behavior_data_types}"
@@ -389,11 +389,7 @@ class Multi:
 class Animal:
     """Represents an animal in the dataset."""
 
-    descriptive_metadata_keys = [
-        "stimulus_type",
-        "method",
-        "processing_software",
-    ]
+    descriptive_metadata_keys = []
     needed_attributes: List[str] = ["animal_id", "dob"]
 
     def __init__(
@@ -633,16 +629,6 @@ class Animal:
             plot_iterations=False,
             as_pdf=as_pdf,
         )
-
-
-def add_descriptive_metadata(text, metadata=None, keys=None, comment=None):
-    if isinstance(metadata, dict) and isinstance(keys, list):
-        text += get_str_from_dict(
-            dictionary=metadata,
-            keys=keys,
-        )
-    text += f"{' '+str(comment) if comment else ''}"
-    return text
 
 
 class Session:
@@ -1390,7 +1376,7 @@ class Task:
         to_2d: bool = False,
         show_hulls: bool = False,
         to_transform_data: Optional[np.ndarray] = None,
-        colorbar_ticks: Optional[List] = None,
+        given_colorbar_ticks: Optional[List] = None,
         embedding_labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
         behavior_data_types: List[str] = ["position"],
         manifolds_pipeline: str = "cebra",
@@ -1403,59 +1389,20 @@ class Task:
         as_pdf: bool = False,
     ):
         """
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        behavior_data_types : list, optional
+            The types of behavior data to use when extracting the labels (default is ["position"]).
+            The available types are: "position", "velocity", "stimulus", "moving", "acceleration".
         """
-        if embeddings is not None and to_transform_data is not None:
-            global_logger.error(
-                "Either provide embeddings or to_transform_data, not both."
-            )
-            raise ValueError(
-                "Either provide embeddings or to_transform_data, not both."
-            )
-        if to_transform_data is not None:
-            embeddings = self.models.create_embeddings(
-                to_transform_data=to_transform_data,
-                to_2d=to_2d,
-                model_naming_filter_include=model_naming_filter_include,
-                model_naming_filter_exclude=model_naming_filter_exclude,
-                manifolds_pipeline="cebra",
-            )
-
-        if not embeddings:
-            models = self.models.get_pipeline_models(
-                manifolds_pipeline=manifolds_pipeline,
-                model_naming_filter_include=model_naming_filter_include,
-                model_naming_filter_exclude=model_naming_filter_exclude,
-            )
-            embeddings = {}
-            embedding_labels_dict = {}
-            for model_name, model in models.items():
-                embeddings[model_name] = model.data["train"]["embedding"]
-                embedding_labels_dict[model_name] = model.data["train"]["behavior"]
-
-        # get embedding lables
-        if embedding_labels is not None:
-            if not isinstance(embedding_labels, np.ndarray) and not isinstance(
-                embedding_labels, dict
-            ):
-                raise ValueError(
-                    f"Provided embedding_labels is not a numpy array or dictionary."
-                )
-            else:
-                if isinstance(embedding_labels, np.ndarray):
-                    embedding_labels_dict = {"Provided_labels": embedding_labels}
-                else:
-                    embedding_labels_dict = embedding_labels
-                    if not equal_number_entries(embeddings, embedding_labels_dict):
-                        raise ValueError(
-                            f"Number of labels is not equal to all, moving or stationary number of frames. You could extract labels corresponding to only moving using the function self.get_behavior_labels(behavior_data_types, movement_state='moving'\)"
-                        )
-
-        # get ticks
-        if len(behavior_data_types) == 1 and colorbar_ticks is None:
-            dataset_object = getattr(self.behavior, behavior_data_types[0])
-            colorbar_ticks = dataset_object.plot_attributes["yticks"]
+        embeddings, embedding_labels_dict = self.extract_wanted_embedding_and_labels(
+            cls=self,
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
+            embeddings=embeddings,
+            manifolds_pipeline=manifolds_pipeline,
+            to_transform_data=to_transform_data,
+            embedding_labels=embedding_labels,
+            to_2d=to_2d,
+        )
 
         viz = Vizualizer(self.data_dir.parent.parent)
         title = (
@@ -1472,6 +1419,12 @@ class Task:
 
         # plot embeddings if behavior_data_type is in embedding_title
         for behavior_data_type in behavior_data_types:
+            # get ticks
+            if given_colorbar_ticks is None:
+                dataset_object = getattr(self.behavior, behavior_data_type)
+                colorbar_ticks = dataset_object.plot_attributes["yticks"]
+            else:
+                colorbar_ticks = given_colorbar_ticks
             labels_dict = {"name": behavior_data_type, "labels": []}
             embeddings_to_plot = {}
             for embedding_title, embedding_labels in embedding_labels_dict.items():
@@ -1534,6 +1487,7 @@ class Task:
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         alpha=0.8,
         figsize=(10, 10),
+        as_pdf=False,
     ):
         models_original, models_shuffled = (
             self.models.get_models_splitted_original_shuffled(
@@ -1591,7 +1545,103 @@ class Task:
             alpha=alpha,
             figsize=figsize,
             plot_iterations=plot_iterations,
+            as_pdf=as_pdf,
         )
+
+    @staticmethod
+    def extract_wanted_embedding_and_labels(
+        cls: Union[Task, Multi],
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        embeddings: Optional[Dict[str, np.ndarray]] = None,
+        manifolds_pipeline: str = "cebra",
+        to_transform_data: Optional[np.ndarray] = None,
+        embedding_labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
+        to_2d: bool = False,
+    ):
+        """
+        Extracts the wanted data for plotting embeddings.
+
+        Parameters
+        ----------
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+            Filter for model names to include. If None, all models will be included. 3 levels of filtering are possible.
+            1. Include all models containing a specific string: "string"
+            2. Include all models containing a specific combination of strings: ["string1", "string2"]
+            3. Include all models containing one of the string combinations: [["string1", "string2"], ["string3", "string4"]]
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+            Same as model_naming_filter_include but for excluding models.
+        embeddings : dict, optional
+            A dictionary containing the embeddings to plot (default is None). If None, the embeddings are created from the models,
+            which should inherit the default embedding data (data that was defined to train the model) based on neural data.
+        manifolds_pipeline : str, optional
+            The pipeline to search for models (default is "cebra").
+        to_transform_data : np.ndarray, optional
+            The data to transform to embeddings (default is None). If None, the embeddings are created from the models inheriting the default data (data that was defined to train the model)
+        embedding_labels : np.ndarray or dict, optional
+            The labels for the embeddings (default is None). If None, the labels are extracted from the default behavior data (data that was defined to train the model).
+        """
+        if embeddings is not None and to_transform_data is not None:
+            global_logger.error(
+                "Either provide embeddings or to_transform_data, not both."
+            )
+            raise ValueError(
+                "Either provide embeddings or to_transform_data, not both."
+            )
+        if to_transform_data is not None:
+            embeddings = cls.models.create_embeddings(
+                to_transform_data=to_transform_data,
+                to_2d=to_2d,
+                model_naming_filter_include=model_naming_filter_include,
+                model_naming_filter_exclude=model_naming_filter_exclude,
+                manifolds_pipeline="cebra",
+            )
+
+        if not embeddings:
+            models = cls.models.get_pipeline_models(
+                manifolds_pipeline=manifolds_pipeline,
+                model_naming_filter_include=model_naming_filter_include,
+                model_naming_filter_exclude=model_naming_filter_exclude,
+            )
+            embeddings = {}
+            embedding_labels_dict = {}
+            for model_name, model in models.items():
+                embeddings[model_name] = model.data["train"]["embedding"]
+                embedding_labels_dict[model_name] = model.data["train"]["behavior"]
+
+        # get embedding lables
+        if embedding_labels is not None:
+            if not isinstance(embedding_labels, np.ndarray) and not isinstance(
+                embedding_labels, dict
+            ):
+                raise ValueError(
+                    f"Provided embedding_labels is not a numpy array or dictionary."
+                )
+            else:
+                if isinstance(embedding_labels, np.ndarray):
+                    embedding_labels_dict = {"Provided_labels": embedding_labels}
+                else:
+                    embedding_labels_dict = embedding_labels
+                    if not equal_number_entries(embeddings, embedding_labels_dict):
+                        raise ValueError(
+                            f"Number of labels is not equal to all, moving or stationary number of frames. You could extract labels corresponding to only moving using the function self.get_behavior_labels(behavior_data_types, movement_state='moving'\)"
+                        )
+
+        return embeddings, embedding_labels_dict
+
+    def structural_indices(
+        self,
+        as_pdf=False,
+    ):
+        """
+        Define structural indices for the task given model data.
+        """
+        .... use extract_wanted_embedding_and_labels ??? something else? do the functions inside the model class? 
+        structural_indices = {}
+        for model_name, model in models.items():
+            structural_indices[model_name] = model.structural_index()
+
+        return structural_indices
 
     def plot_multiple_consistency_scores(
         self,

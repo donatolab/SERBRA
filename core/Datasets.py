@@ -1594,7 +1594,7 @@ class Data_Moving(BehaviorDataset):
             self.data = self.fit_moving_to_brainarea(moving_frames, self.metadata["area"])
         else:
             self.data = moving_frames
-            global_logger.warning(f"Moving data not fitted to brain area {self.metadata['area']} lag.")
+            global_logger.warning(f"Moving data not fitted to brain area {self.metadata['area']} lag")
         return self.data
 
     def fit_moving_to_brainarea(self, data, area):
