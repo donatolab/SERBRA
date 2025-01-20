@@ -1458,7 +1458,7 @@ class Data_Velocity(BehaviorDataset):
             return encoded_data, self.category_map
         return encoded_data
 
-    def process_raw_data(self, save=True):
+    def process_raw_data(self, save=True, smooth=True):
         """
         calculating velocity based on velocity data in raw_data_object
         """
@@ -1477,20 +1477,23 @@ class Data_Velocity(BehaviorDataset):
         self.raw_velocity = Environment.get_velocity_from_cumdist(
             walked_distances, imaging_fps=self.metadata["imaging_fps"], smooth=False
         )
-        velocity_smoothed = may_butter_lowpass_filter(
-            self.raw_velocity,
-            smooth=True,
-            cutoff=2,
-            fps=self.metadata["imaging_fps"],
-            order=2,
-        )
-        # velocity_smoothed = moving_average(self.raw_velocity)
-        global_logger
-        print(
-            f"Calculating smooth velocity based on butter_lowpass_filter 2Hz, {self.metadata['imaging_fps']}fps, 2nd order."
-        )
-        # change value/frame to value/second
-        self.data = velocity_smoothed
+        if smooth:
+            velocity_smoothed = may_butter_lowpass_filter(
+                self.raw_velocity,
+                smooth=True,
+                cutoff=2,
+                fps=self.metadata["imaging_fps"],
+                order=2,
+            )
+            # velocity_smoothed = moving_average(self.raw_velocity)
+            global_logger
+            print(
+                f"Calculating smooth velocity based on butter_lowpass_filter 2Hz, {self.metadata['imaging_fps']}fps, 2nd order."
+            )
+            # change value/frame to value/second
+            self.data = velocity_smoothed
+        else:
+            self.data = self.raw_velocity
         return self.data
 
 
@@ -1581,13 +1584,17 @@ class Data_Moving(BehaviorDataset):
         self.plot_attributes["ylimits"] = (-0.1, 1.1)
         self.plot_attributes["yticks"] = [[0, 1], ["Stationary", "Moving"]]
 
-    def process_raw_data(self, save=True):
+    def process_raw_data(self, save=True, fit_to_brainarea=True):
         velocities = self.raw_data_object.data
         if velocities is None:
             velocities = self.raw_data_object.process_raw_data(save=False)
         velocities_abs = np.linalg.norm(np.abs(velocities), axis=1)
         moving_frames = velocities_abs > self.velocity_threshold
-        self.data = self.fit_moving_to_brainarea(moving_frames, self.metadata["area"])
+        if fit_to_brainarea:
+            self.data = self.fit_moving_to_brainarea(moving_frames, self.metadata["area"])
+        else:
+            self.data = moving_frames
+            global_logger.warning(f"Moving data not fitted to brain area {self.metadata['area']} lag.")
         return self.data
 
     def fit_moving_to_brainarea(self, data, area):

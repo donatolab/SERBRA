@@ -250,7 +250,7 @@ class Multi:
         embedding_labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
         behavior_data_types: List[str] = ["position"],
         manifolds_pipeline: str = "cebra",
-        set_title: Optional[str] = None,
+        title: Optional[str] = None,
         title_comment: Optional[str] = None,
         markersize: float = None,
         alpha: float = None,
@@ -352,8 +352,8 @@ class Multi:
         viz = Vizualizer(self.model_dir.parent)
         self.id = self.define_id(self.name)
         for embedding_title, embedding_labels in embedding_labels_dict.items():
-            if set_title:
-                title = set_title
+            if title:
+                title = title
             else:
                 title = f"{manifolds_pipeline.upper()} embeddings {self.id}"
                 descriptive_metadata_keys = [
@@ -389,6 +389,11 @@ class Multi:
 class Animal:
     """Represents an animal in the dataset."""
 
+    descriptive_metadata_keys = [
+        "stimulus_type",
+        "method",
+        "processing_software",
+    ]
     needed_attributes: List[str] = ["animal_id", "dob"]
 
     def __init__(
@@ -535,6 +540,109 @@ class Animal:
                 filtered_session_tasks = session.filter_tasks(wanted_properties)
                 filtered_tasks.update(filtered_session_tasks)
         return filtered_tasks
+
+    def plot_task_models(
+        self,
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str
+        to_2d: bool = False,
+        behavior_type: str = "position",
+        manifolds_pipeline: str = "cebra",
+        embeddings_title: Optional[str] = None,
+        losses_title: Optional[str] = None,
+        losses_coloring: Optional[str] = "rainbow",
+        title_comment: Optional[str] = None,
+        markersize: float = None,
+        alpha: float = None,
+        figsize: Tuple[int, int] = None,
+        dpi: int = 300,
+        as_pdf: bool = False,
+    ):
+        """
+        Plot model embeddings and losses nearby each other for every task in every session.
+
+        Only possible if a unique model is found for each task. Losses can be colored by rainbow, distinct, or mono colors.
+        """
+        # extract embeddings and losses
+        embeddings = {}
+        labels = {"name": behavior_type, "labels": []}
+        losses = {}
+        for session_date, session in self.sessions.items():
+            for task_name, task in session.tasks.items():
+                task_models = task.models.get_pipeline_models(
+                    manifolds_pipeline=manifolds_pipeline,
+                    model_naming_filter_include=model_naming_filter_include,
+                    model_naming_filter_exclude=model_naming_filter_exclude,
+                )
+                if len(task_models) == 0:
+                    continue
+                elif len(task_models) > 1:
+                    raise ValueError("More than one model found. Improve filtering.")
+
+                task_model = next(iter(task_models.values()))
+
+                task_identifier = f"{self.id}_{session_date}_{task_name}"
+                embeddings[task_identifier] = task_model.data["train"]["embedding"]
+
+                labels["labels"].append(task_model.data["train"]["behavior"])
+
+                losses[task_identifier] = task_model.state_dict_["loss"]
+
+        labels[task_identifier] = labels
+
+        # plot embeddings
+        embeddings_title = (
+            f"{manifolds_pipeline.upper()} embeddings {self.id}"
+            if not embeddings_title
+            else embeddings_title
+        )
+        embeddings_title = add_descriptive_metadata(
+            text=embeddings_title, comment=title_comment, metadata=None, keys=None
+        )
+
+        viz = Vizualizer(root_dir=self.root_dir)
+        # embeddings nearby each other
+        viz.plot_multiple_embeddings(
+            embeddings=embeddings,
+            labels=labels,
+            title=embeddings_title,
+            projection="2d" if to_2d else "3d",
+            show_hulls=False,
+            markersize=markersize,
+            figsize=figsize,
+            alpha=alpha,
+            dpi=dpi,
+            as_pdf=as_pdf,
+        )
+
+        losses_title = (
+            f"{manifolds_pipeline.upper()} losses {self.id}"
+            if not losses_title
+            else losses_title
+        )
+        losses_title = add_descriptive_metadata(
+            text=losses_title, comment=title_comment, metadata=None, keys=None
+        )
+        # losses nearby each other
+        viz.plot_losses(
+            losses=losses,
+            title=losses_title,
+            alpha=0.8,
+            figsize=figsize,
+            coloring_type=losses_coloring,
+            plot_iterations=False,
+            as_pdf=as_pdf,
+        )
+
+
+def add_descriptive_metadata(text, metadata=None, keys=None, comment=None):
+    if isinstance(metadata, dict) and isinstance(keys, list):
+        text += get_str_from_dict(
+            dictionary=metadata,
+            keys=keys,
+        )
+    text += f"{' '+str(comment) if comment else ''}"
+    return text
 
 
 class Session:
@@ -1286,7 +1394,7 @@ class Task:
         embedding_labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
         behavior_data_types: List[str] = ["position"],
         manifolds_pipeline: str = "cebra",
-        set_title: Optional[str] = None,
+        title: Optional[str] = None,
         title_comment: Optional[str] = None,
         markersize: float = None,
         alpha: float = None,
@@ -1350,17 +1458,16 @@ class Task:
             colorbar_ticks = dataset_object.plot_attributes["yticks"]
 
         viz = Vizualizer(self.data_dir.parent.parent)
-        if set_title:
-            title = set_title
-        else:
-            title = f"{manifolds_pipeline.upper()} embeddings {self.id}"
-            title += (
-                get_str_from_dict(
-                    dictionary=self.behavior_metadata,
-                    keys=Task.descriptive_metadata_keys,
-                )
-                + f"{' '+str(title_comment) if title_comment else ''}"
-            )
+        title = (
+            f"{manifolds_pipeline.upper()} embeddings {self.id}" if not title else title
+        )
+        title = add_descriptive_metadata(
+            text=title,
+            comment=title_comment,
+            metadata=self.behavior_metadata,
+            keys=Task.descriptive_metadata_keys,
+        )
+
         projection = "2d" if to_2d else "3d"
 
         # plot embeddings if behavior_data_type is in embedding_title
@@ -1444,8 +1551,14 @@ class Task:
         num_iterations = (
             models_original[0].max_iterations if not num_iterations else num_iterations
         )
-        title = title or f"Losses {self.id} {stimulus_type}"
-        title += f" - {num_iterations} Iterartions" if not plot_iterations else ""
+        title = title or f"Losses {self.id} {stimulus_type}" if not title else title
+        comment += f" - {num_iterations} Iterartions" if not plot_iterations else ""
+        title = add_descriptive_metadata(
+            text=title,
+            comment=comment,
+            metadata=self.behavior_metadata,
+            keys=Task.descriptive_metadata_keys,
+        )
 
         viz = Vizualizer(self.data_dir.parent.parent)
         losses_original = {}

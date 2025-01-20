@@ -995,7 +995,11 @@ class Vizualizer:
         plot_iterations: bool = False,
         alpha: float = 0.8,
         figsize=(10, 10),
+        as_pdf=False,
     ):
+        """
+        Plot the losses of the original and shuffled data. Can be colored by rainbow, distinct, or mono colors.
+        """
         plt.figure(figsize=figsize)
         ax = plt.subplot(111)
 
@@ -1064,7 +1068,7 @@ class Vizualizer:
         ax.set_xlabel("Iterations")
         ax.set_ylabel("InfoNCE Loss")
         plt.legend(bbox_to_anchor=(0.5, 0.3), frameon=False)
-        self.plot_ending(title)
+        self.plot_ending(title, as_pdf=as_pdf)
 
     @staticmethod
     def plot_loss(
