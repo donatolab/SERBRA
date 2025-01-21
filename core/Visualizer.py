@@ -7,6 +7,30 @@ from matplotlib.collections import LineCollection
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Polygon
 
+# Suppress tight_layout warnings
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message="This figure includes Axes that are not compatible with tight_layout",
+)
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message="This figure includes Axes that are not compatible with tight_layout",
+)
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message="No data for colormapping provided via 'c'. Parameters 'cmap' will be ignored",
+)
+
+import sys
+from pathlib import Path
+from utils.structure_index import draw_graph
+
 plt.style.use("dark_background")
 
 import seaborn as sns
@@ -3366,3 +3390,107 @@ class Vizualizer:
         fig.tight_layout()
         Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
         plt.show()
+
+    def plot_structure_index(
+        self,
+        embedding: np.ndarray,
+        feature: np.ndarray,
+        overlapMat: np.ndarray,
+        SI: float,
+        binLabel: np.ndarray,
+        title: str = "Structural Properties",
+        additional_title: str = None,
+        figsize=(18, 5),
+        cmap="rainbow",
+        as_pdf=False,
+    ):
+        fig, ax = plt.subplots(1, 3, figsize=figsize)
+
+        title += f" {additional_title}" if additional_title != "" else ""
+        fig.suptitle(title, fontsize=20)
+
+        # create 2D RGBA labels to overwrite 1D cmap coloring
+        rgba_colors = None
+        if len(feature.shape) == 1:
+            session_labels = feature
+        else:
+            if len(feature.shape) == 2 and feature.shape[1] == 2:
+                min_vals = np.min(feature, axis=0)
+                max_vals = np.max(feature, axis=0)
+                # steps = 5
+                xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
+                yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
+
+                rgba_colors = Vizualizer.create_rgba_labels(feature)
+            elif is_rgba(feature):
+                first_embedding = embedding.values()
+                if first_embedding.shape[1] == 2:
+                    min_vals = np.min(first_embedding, axis=0)
+                    max_vals = np.max(first_embedding, axis=0)
+                    xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
+                    yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
+                else:
+                    xticks_2d_colormap = None
+                    yticks_2d_colormap = None
+                rgba_colors = feature
+
+            if rgba_colors is not None:
+                session_labels = rgba_colors
+
+        # plot 3D scatters
+        at = plt.subplot(1, 3, 1, projection="3d")
+        embedding_title = "Embedding"
+
+        session_labels_dict = {"name": "position", "labels": session_labels}
+
+        self.plot_embedding(
+            ax=at,
+            embedding=embedding,
+            embedding_labels=session_labels_dict,
+            title=embedding_title,
+            show_hulls=False,
+            cmap=cmap,
+            plot_legend=False,
+            # markersize=markersize,
+            # alpha=alpha,
+            # dpi=dpi,
+        )
+        if len(feature.shape) == 2 and feature.shape[1] == 2:
+            Vizualizer.add_2d_colormap_legend(fig=fig, legend_left=-0.1)
+
+        # plot adjacency matrix
+        b = ax[1].matshow(
+            overlapMat, vmin=0, vmax=0.5, cmap=matplotlib.cm.get_cmap("viridis")
+        )
+        ax[1].xaxis.set_ticks_position("bottom")
+        cbar = fig.colorbar(
+            b, ax=ax[1], anchor=(0, 0.2), shrink=1, ticks=[0, 0.25, 0.5]
+        )
+        cbar.set_label("overlap score", rotation=90, fontsize=14)
+        ax[1].set_title("Adjacency matrix", size=16)
+        ax[1].set_xlabel("bin-groups", size=14)
+        ax[1].set_ylabel("bin-groups", size=14)
+
+        # plot weighted directed graph
+        draw_graph(
+            overlapMat,
+            ax[2],
+            node_cmap=matplotlib.cm.get_cmap("rainbow"),
+            edge_cmap=plt.cm.Greys,
+            node_names=np.round(binLabel[1][:, 0, 1], 2),
+        )
+        ax[2].set_xlim(1.2 * np.array(ax[2].get_xlim()))
+        ax[2].set_ylim(1.2 * np.array(ax[2].get_ylim()))
+        ax[2].set_title("Directed graph", size=16)
+        ax[2].text(
+            0.98,
+            0.05,
+            f"SI: {SI:.2f}",
+            horizontalalignment="right",
+            verticalalignment="bottom",
+            transform=ax[2].transAxes,
+            fontsize=25,
+        )
+        plt.tight_layout()
+
+        self.plot_ending(title=title, as_pdf=as_pdf)

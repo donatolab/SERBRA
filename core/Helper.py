@@ -1,10 +1,9 @@
-import os
+import sys, os
 from pathlib import Path
-
 
 # type hints
 from typing import List, Union, Dict, Any, Tuple, Optional
-
+from numpy.typing import ArrayLike
 
 # calculations
 import numpy as np
@@ -782,6 +781,7 @@ def get_covariance_matrix(data: np.ndarray, epsilon: float = 1e-6) -> np.ndarray
 def regularized_covariance(cov_matrix, epsilon=1e-6):
     return cov_matrix + np.eye(cov_matrix.shape[0]) * epsilon
 
+
 @njit(nopython=True)
 def get_cov_mean_invcov(data):
     """
@@ -806,6 +806,7 @@ def get_cov_mean_invcov(data):
         mean[i] = np.sum(data[:, i]) / data.shape[0]
 
     return cov, mean, cov_inv
+
 
 @njit(nopython=True)
 def pca_numba(data, n_components=2):
@@ -969,7 +970,7 @@ def mahalanobis_distance_between_distributions(points1, points2):
     # Sum of inverses of the covariance matrices
     cov_inv_sum = cov_inv1 + cov_inv2
 
-    return mahalanobis_distance(mean1, mean2, cov_inv_sum) 
+    return mahalanobis_distance(mean1, mean2, cov_inv_sum)
 
 
 @njit(nopython=True, parallel=True)
@@ -1961,6 +1962,7 @@ def equal_number_entries(embeddings, embedding_labels):
                 return False
     return True
 
+
 def add_descriptive_metadata(text, metadata=None, keys=None, comment=None):
     if isinstance(metadata, dict) and isinstance(keys, list):
         text += get_str_from_dict(
@@ -1969,6 +1971,7 @@ def add_descriptive_metadata(text, metadata=None, keys=None, comment=None):
         )
     text += f"{' '+str(comment) if comment else ''}"
     return text
+
 
 def group_by_binned_data(
     binned_data: np.ndarray,

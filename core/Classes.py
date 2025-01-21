@@ -11,7 +11,7 @@ from Helper import *
 from Visualizer import *
 from Models import Models, PlaceCellDetectors, decode
 from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
-
+from utils.structure_index import compute_structure_index
 
 # calculations
 import numpy as np
@@ -1506,7 +1506,7 @@ class Task:
             models_original[0].max_iterations if not num_iterations else num_iterations
         )
         title = title or f"Losses {self.id} {stimulus_type}" if not title else title
-        comment += f" - {num_iterations} Iterartions" if not plot_iterations else ""
+        comment = f" - {num_iterations} Iterartions" if not plot_iterations else ""
         title = add_descriptive_metadata(
             text=title,
             comment=comment,
@@ -1631,15 +1631,101 @@ class Task:
 
     def structural_indices(
         self,
+        manifolds_pipeline: str = "cebra",
+        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        embeddings: Optional[Dict[str, np.ndarray]] = None,
+        embedding_labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
+        to_transform_data: Optional[np.ndarray] = None,
+        behavior_data_types: List[str] = None,
+        to_2d: bool = False,
+        params: Dict[str, Any] = None,
         as_pdf=False,
-    ):
+    ) -> float:
         """
-        Define structural indices for the task given model data.
+        Calculate structural indices for the task given a model.
+
+
+        Raw or Embedded data as well as labels are extracted from the models that fit the naming filter.
+
+        This Method is based on a graph-based topological metric able to quantify the amount of structure
+        present at the distribution of a given feature over a point cloud in an arbitrary D-dimensional space.
+        See the publication(https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1011768)
+        for specific details and follow this notebook (https://colab.research.google.com/github/PridaLab/structure_index/blob/main/demos/structure_index_demo.ipynb)
+        for a step by step demo.
+        https://github.com/PridaLab/structure_index
+
+        Parameters:
+        -----------
+        First Parameters:
+            Are explained in the extract_wanted_embedding_and_labels function.
+        behavior_data_types: list, optional
+            The types of behavior data to use when extracting the labels default is extracting from all.
+        as_pdf: bool, optional
+            Whether to save the plot as a PDF (default is False).
+        params: dict
+            n_bins: integer (default: 10)
+                number of bin-groups the label will be divided into (they will
+                become nodes on the graph). For vectorial features, if one wants
+                different number of bins for each entry then specify n_bins as a
+                list (i.e. [10,20,5]). Note that it will be ignored if
+                'discrete_label' is set to True.
+
+            n_neighbors: int (default: 15)
+                Number of neighbors used to compute the overlapping between
+                bin-groups. This parameter controls the tradeoff between local and
+                global structure.
+
+            discrete_label: boolean (default: False)
+                If the label is discrete, then one bin-group will be created for
+                each discrete value it takes. Note that if set to True, 'n_bins'
+                parameter will be ignored.
+
+            num_shuffles: int (default: 100)
+                Number of shuffles to be computed. Note it must fall within the
+                interval [0, np.inf).
+
+            verbose: boolean (default: False)
+                Boolean controling whether or not to print internal process.
+
+        Returns:
+        --------
+
         """
-        .... use extract_wanted_embedding_and_labels ??? something else? do the functions inside the model class? 
+        embeddings, embedding_labels_dict = self.extract_wanted_embedding_and_labels(
+            cls=self,
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
+            embeddings=embeddings,
+            manifolds_pipeline=manifolds_pipeline,
+            to_transform_data=to_transform_data,
+            embedding_labels=embedding_labels,
+            to_2d=to_2d,
+        )
+
+        viz = Vizualizer(self.data_dir.parent.parent)
         structural_indices = {}
-        for model_name, model in models.items():
-            structural_indices[model_name] = model.structural_index()
+        for model_name, embedding in embeddings.items():
+            if behavior_data_types is not None:
+                for behavior_data_type in behavior_data_types:
+                    if behavior_data_type not in model_name:
+                        continue
+            labels = embedding_labels_dict[model_name]
+            SI, binLabel, overlapMat, sSI = compute_structure_index(
+                embedding, labels, **params
+            )
+            .....Determine what output the function above is giving and how to use it
+            structural_indices[model_name] = SI
+
+            viz.plot_structure_index(
+                embedding=embedding,
+                feature=labels,
+                overlapMat=overlapMat,
+                SI=SI,
+                binLabel=binLabel,
+                additional_title=f"Position of {self.id} - {model_name}",
+                as_pdf=as_pdf,
+            )
 
         return structural_indices
 

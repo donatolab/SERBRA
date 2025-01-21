@@ -404,9 +404,7 @@ class PlaceCellDetectors(ModelsWrapper):
         window_size=2,
         max_bin=None,
     ):
-        # #FIXME: ..............add uncommented line again
-        # if self.rate_map is None or self.time_map is None:
-        if True:
+        if self.rate_map is None or self.time_map is None:
             self.rate_map, self.time_map = self.get_rate_time_map(
                 activity,
                 binned_pos,
@@ -741,7 +739,7 @@ class SpatialInformation(Model):
         rate_map, time_map=None, spatial_information_method="skaggs"
     ):
         """
-        ... old documentation ...
+        #FIXME: This is old documentation, change it to the new one
         Computes the spatial information rate and content.
 
         Parameters
@@ -763,7 +761,7 @@ class SpatialInformation(Model):
         # duration = np.sum(time_map)  # in frames
         ## spacing adds floating point precision to avoid DivideByZero errors
         # position_PDF = time_map / (duration + np.spacing(1))
-        ## ................ use position pdf
+        ## use position pdf
         # p_spike = rate_map * position_PDF + np.spacing(1)
 
         p_spike = np.nansum(rate_map, axis=1)
@@ -1264,6 +1262,7 @@ class CebraOwn(CEBRA):
         if return_labels:
             return embedding, labels
         return embedding
+
 
 def decode(
     embedding_train: np.ndarray,
