@@ -19,7 +19,7 @@ warnings.filterwarnings(
 warnings.filterwarnings(
     "ignore",
     category=UserWarning,
-    message="This figure includes Axes that are not compatible with tight_layout",
+    message="The figure layout has changed to tight",
 )
 warnings.filterwarnings(
     "ignore",
@@ -1082,7 +1082,7 @@ class Vizualizer:
 
         for color, (loss_name, loss) in zip(colors_to_use, losses_to_plot.items()):
             label = loss_name.split("behavior_")[-1]
-            label += f" - {loss_name.split('iter')[-1]} Iter" if plot_iterations else ""
+            label += f"-{loss_name.split('iter')[-1]} Iter" if plot_iterations else ""
             ax = Vizualizer.plot_loss(
                 loss, color=color, alpha=alpha, label=label, ax=ax
             )
@@ -1479,14 +1479,15 @@ class Vizualizer:
         Vizualizer.heatmap_subplot(correlation2, title2, ax4, sort=sort)
         self.plot_ending(title, save=True)
 
-    def plot_ending(self, title, title_size=20, save=True, as_pdf=False):
+    def plot_ending(self, title, title_size=20, save=True, as_pdf=False, show=True):
         plt.suptitle(title, fontsize=title_size)
         plt.tight_layout()  # Ensure subplots fit within figure area
 
         if save:
             Vizualizer.save_plot(self.save_dir, title, "pdf" if as_pdf else "png")
 
-        plt.show()
+        if show:
+            plt.show()
         plt.close()
 
     #################################################################
@@ -1755,7 +1756,7 @@ class Vizualizer:
         c_dec = len(decodings)
         # discrete colormap (nipy_spectral) and discrete
         colormap = plt.get_cmap("tab10")
-        fig, axes = plt.subplots(len(decodings), 2, figsize=(15, 3 * c_dec))
+        fig, ax = plt.subplots(len(decodings), 2, figsize=(15, 3 * c_dec))
         fig.suptitle(
             f"Decoding statistics for different tasks {additional_title}", fontsize=20
         )
@@ -1772,30 +1773,30 @@ class Vizualizer:
                 elif "variance" in eval_stat.keys():
                     var = eval_stat["variance"]
 
-                axes[dec_num, i].plot(
+                ax[dec_num, i].plot(
                     xticks,
                     values,
                     # label=f"{animal_id}",
                     # color=colormap(animal_num),
                 )
-                axes[dec_num, i].set_title(
+                ax[dec_num, i].set_title(
                     f"{eval_name} score for tasks with {iter} iterations"
                 )
-                axes[dec_num, i].set_ylabel(eval_name)
+                ax[dec_num, i].set_ylabel(eval_name)
                 min_y = -1 if eval_name == "r2" else 0
                 max_y = 1 if eval_name == "r2" else None
-                axes[dec_num, i].set_ylim(min_y, max_y)
+                ax[dec_num, i].set_ylim(min_y, max_y)
                 # set xticks
                 xtick_pos = np.arange(len(xticks))
-                axes[dec_num, i].legend()
+                ax[dec_num, i].legend()
                 if dec_num == len(decodings) - 1:
-                    axes[dec_num, i].set_xlabel("Task")
-                    axes[dec_num, i].set_xticks(xtick_pos, xticks)
+                    ax[dec_num, i].set_xlabel("Task")
+                    ax[dec_num, i].set_xticks(xtick_pos, xticks)
                 else:
-                    axes[dec_num, i].set_xticks(xtick_pos, [])
+                    ax[dec_num, i].set_xticks(xtick_pos, [])
 
                 if var is not None:
-                    axes[dec_num, i].errorbar(
+                    ax[dec_num, i].errorbar(
                         xticks,
                         values,
                         # yerr=animal_eval_stat_var,
@@ -3398,10 +3399,11 @@ class Vizualizer:
         overlapMat: np.ndarray,
         SI: float,
         binLabel: np.ndarray,
-        title: str = "Structural Properties",
+        title: str = "Structural Index",
         additional_title: str = None,
         figsize=(18, 5),
         cmap="rainbow",
+        show=True,
         as_pdf=False,
     ):
         fig, ax = plt.subplots(1, 3, figsize=figsize)
@@ -3441,7 +3443,7 @@ class Vizualizer:
         at = plt.subplot(1, 3, 1, projection="3d")
         embedding_title = "Embedding"
 
-        session_labels_dict = {"name": "position", "labels": session_labels}
+        session_labels_dict = {"name": "", "labels": session_labels}
 
         self.plot_embedding(
             ax=at,
@@ -3493,4 +3495,154 @@ class Vizualizer:
         )
         plt.tight_layout()
 
-        self.plot_ending(title=title, as_pdf=as_pdf)
+        self.plot_ending(title=title, as_pdf=as_pdf, show=show)
+
+    @staticmethod
+    def lineplot_from_dict_of_dicts(
+        data: Dict[str, Dict[str, Union[float, int]]],
+        title: str = "Decoding of Position",
+        additional_title: str = "",
+        legend_title: str = None,
+        xlabel: str = "Iterations",
+        ylabel: str = "",
+        xticks: List[int] = None,
+        yticks: List[int] = None,
+        xtick_pos: Optional[list] = None,
+        ytick_pos: Optional[list] = None,
+        xlim: Optional[Tuple[int, int]] = None,
+        ylim: Optional[Tuple[int, int]] = None,
+        figsize=(10, 6),
+        save_dir: str = None,
+        as_pdf: bool = False,
+        cmap: str = "tab10",
+        show_variance=True,
+    ):
+        """
+        Plots a line plot per source with different tasks as subgroups.
+
+        Args:
+            data: {source: {task: value}}
+                values are RMSE values in m.
+            title: Main title of the plot.
+            additional_title: Additional text to append to the title.
+            legend_title: Title for the legend.
+            xlabel: Label for the X-axis.
+            ylabel: Label for the Y-axis.
+            figsize: Size of the figure.
+            save_dir: Directory to save the plot.
+            as_pdf: Whether to save the plot as a PDF.
+            cmap: Color map to use.
+            show_variance: Whether to show variance as a shaded area.
+        """
+        colormap = plt.get_cmap(cmap)
+        title = f"{title} {additional_title}" if additional_title else title
+        fig, ax = plt.subplots(figsize=figsize)
+
+        for source_num, (source, task_dict) in enumerate(data.items()):
+            for task_num, (task, value) in enumerate(task_dict.items()):
+                if isinstance(value, dict):
+                    variance = value.get("variance") if show_variance else None
+                    value = value.get("mean")
+                else:
+                    variance = None
+
+                label = f"{source}: {task}"
+                color = colormap(source_num)
+                plot_line(
+                    ax=ax,
+                    values=value,
+                    label=label,
+                    xlabel=xlabel,
+                    ylabel=ylabel,
+                    xlim=xlim,
+                    ylim=ylim,
+                    xticks=xticks,
+                    yticks=yticks,
+                    xtick_pos=xtick_pos,
+                    ytick_pos=ytick_pos,
+                    var=variance,
+                    color=color,
+                )
+
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.title(title)
+        plt.legend(title=legend_title)  # bbox_to_anchor=(1.05, 1), loc="upper right")
+        plt.tight_layout()
+
+        Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
+        plt.show()
+
+
+def plot_line(
+    values: list,
+    label: str,
+    xlabel: str,
+    ylabel: str,
+    var: Optional[list] = None,
+    color: Optional[str] = None,
+    ax: Optional[plt.Axes] = None,
+    show_plot: bool = True,
+    figsize=(8, 6),
+    xlim: Optional[Tuple[int, int]] = None,
+    ylim: Optional[Tuple[int, int]] = None,
+    xticks: Optional[list] = None,
+    yticks: Optional[list] = None,
+    xtick_pos: Optional[list] = None,
+    ytick_pos: Optional[list] = None,
+    grid: bool = False,
+):
+    """
+    Plots a line with optional variance. Can be used as a standalone function or with an existing axis.
+
+    Args:
+        values: Y-axis values.
+        label: Label for the line.
+        xlabel: Label for the X-axis.
+        ylabel: Label for the Y-axis.
+        var: Variance values for shading (optional).
+        color: Color of the line (optional).
+        ax: Axis to plot on (optional). If not provided, a new figure and axis will be created.
+        show_plot: Whether to display the plot immediately (default: True). Set to False if integrating into a larger plot.
+    """
+    # Create a new figure and axis if none is provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    x = range(len(values))
+    ax.plot(x, values, label=label, color=color)
+    if var:
+        ax.fill_between(
+            x,
+            np.array(values) - np.array(var),
+            np.array(values) + np.array(var),
+            color=color,
+            alpha=0.2,
+        )
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.legend()
+
+    if xticks:
+        if xtick_pos:
+            ax.set_xticks(xtick_pos, xticks, rotation=45, ha="right")
+        else:
+            ax.set_xticks(xticks, rotation=45, ha="right")
+    if yticks:
+        if ytick_pos:
+            ax.set_yticks(ytick_pos, yticks)
+        else:
+            ax.set_yticks(yticks)
+
+    if xlim:
+        ax.set_xlim(xlim)
+    if ylim:
+        ax.set_ylim(ylim)
+
+    if grid:
+        ax.grid(alpha=0.2)
+
+    # Show the plot if no axis was provided and show_plot is True
+    if ax is None and show_plot:
+        plt.tight_layout()
+        plt.show()
