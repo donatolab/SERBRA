@@ -1768,8 +1768,11 @@ class CaBinCorr(Neural_Processing):
             f"CaBinCorr processing not implemented for {self.__class__}"
         )
 
+    def data(self, type="F_upphase"):
+        return npz_loader(self.data_path, type)
+
     def process_data(self, raw_data_path=None, save=True, overwrite=False):
-        binarized_data = npz_loader(self.data_path, "F_upphase")
+        binarized_data = self.data()
 
         if binarized_data is None:
             binarized_data = self.run_cabincorr(raw_data_path)

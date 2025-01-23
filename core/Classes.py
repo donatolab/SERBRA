@@ -1641,7 +1641,7 @@ class Task:
                 else:
                     labels_dict = labels
                     if not equal_number_entries(embeddings, labels_dict):
-                        raise ValueError(
+                        global_logger.warning(
                             f"Number of labels is not equal to all, moving or stationary number of frames. You could extract labels corresponding to only moving using the function self.get_behavior_labels(behavior_data_types, movement_state='moving'\)"
                         )
 
@@ -2206,3 +2206,87 @@ class Task:
             color=colors,
         )
         return zscore, si_rate, si_content
+
+    def npy(
+        self,
+        fname: str,
+        task: str,
+        data: np.ndarray = None,
+    ):
+        """
+        Manages numpy array file operations in a backup directory.
+
+        This method provides functionality to save numpy arrays to a backup location
+        and check for the existence of previously saved files.
+
+        Parameters
+        ----------
+        fname : str
+            The base filename for the numpy file (without .npy extension).
+            This name will be used to create the file in the backup directory.
+
+        task : str
+            Specifies the operation to perform:
+            - "save": Saves the provided data as a numpy file
+            - "exists": Checks if a file with the given name already exists in the backup directory
+
+        data : np.ndarray, optional
+            The numpy array to be saved.
+            Required when task is "save", otherwise ignored.
+            If not a numpy array, it will be converted using np.array().
+
+        Returns
+        -------
+        bool or None
+            - When task is "exists": Returns True if the file exists, False otherwise
+            - When task is "save": Returns None after saving the file
+
+        Raises
+        ------
+        ValueError
+            If task is "save" and no data is provided
+
+        Notes
+        -----
+        - The file is saved in a "backup_npys" directory located one level up from
+        the current data directory
+        - If the backup directory does not exist, it will be created automatically
+        - A log message is generated when a file is successfully saved
+
+        Examples
+        --------
+        # Check if a file exists
+        exists = self.npy("my_data", task="exists")
+
+        # Save a numpy array
+        data = np.random.rand(10, 10)
+        self.npy("my_data", task="save", data=data)
+        """
+        npy_save_location = self.data_dir.parent.joinpath("backup_npys")
+        if not npy_save_location.exists():
+            npy_save_location.mkdir(parents=True)
+        data_path = npy_save_location.joinpath(f"{fname}.npy")
+        if task == "exists":
+            return data_path.exists()
+        elif task == "save":
+            if data is None:
+                global_logger.error(
+                    f"Data must be provided to save npy in {data_path}."
+                )
+                raise ValueError(f"Data must be provided to save npy in {data_path}.")
+            np_data = np.array(data)
+            np.save(data_path, np_data)
+            global_logger.info(f"{self.id}: Saved {fname} to {data_path}")
+        elif task == "load":
+            if data_path.exists():
+                try:
+                    # load dictionary
+                    return np.load(data_path, allow_pickle=True).item()
+                except:
+                    return np.load(data_path, allow_pickle=True)
+            else:
+                global_logger.warning(f"{self.id}: No file found at {data_path}")
+                return None
+        else:
+            global_logger.error(f"Task {task} not recognized.")
+            raise ValueError(f"Task {task} not recognized.")

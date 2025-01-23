@@ -3579,6 +3579,7 @@ def plot_line(
     label: str,
     xlabel: str,
     ylabel: str,
+    title: Optional[str] = None,
     var: Optional[list] = None,
     color: Optional[str] = None,
     ax: Optional[plt.Axes] = None,
@@ -3619,6 +3620,7 @@ def plot_line(
             color=color,
             alpha=0.2,
         )
+    ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.legend()
