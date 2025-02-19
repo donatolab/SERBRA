@@ -11,7 +11,7 @@ from Helper import *
 from Visualizer import *
 from Models import Models, PlaceCellDetectors, decode
 from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
-from utils.structure_index import compute_structure_index
+from structure_index import compute_structure_index
 
 # calculations
 import numpy as np
@@ -535,6 +535,14 @@ class Animal:
                 filtered_tasks.update(filtered_session_tasks)
         return filtered_tasks
 
+    def get_unique_model_information(self
+    ):
+        """
+        Get the unique model information all sesseions and tasks.
+
+        """
+        raise NotImplementedError("Not implemented yet.")
+
     def plot_task_models(
         self,
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
@@ -555,7 +563,8 @@ class Animal:
         """
         Plot model embeddings and losses nearby each other for every task in every session.
 
-        Only possible if a unique model is found for each task. Losses can be colored by rainbow, distinct, or mono colors.
+        Only possible if a unique model is found for each task. Losses can be 
+        colored by rainbow, distinct, or mono colors.
         """
         # extract embeddings and losses
         embeddings = {}
@@ -576,6 +585,7 @@ class Animal:
                 task_model = next(iter(task_models.values()))
 
                 task_identifier = f"{self.id}_{session_date}_{task_name}"
+
                 embeddings[task_identifier] = task_model.data["train"]["embedding"]
 
                 labels["labels"].append(task_model.data["train"]["behavior"])
@@ -583,6 +593,7 @@ class Animal:
                 losses[task_identifier] = task_model.state_dict_["loss"]
 
         labels[task_identifier] = labels
+        ... detect if this is working properly if yes, move extracting of information into function abov (get_unique_model_information)
 
         # plot embeddings
         embeddings_title = (

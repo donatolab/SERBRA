@@ -38,6 +38,7 @@ from Helper import (
     may_butter_lowpass_filter,
     fill_continuous_array,
     get_covariance_matrix,
+    add_stream_lag,
 )
 from Visualizer import Vizualizer
 from Setups import Femtonics, Thorlabs, Inscopix, Environment
@@ -1591,19 +1592,49 @@ class Data_Moving(BehaviorDataset):
         velocities_abs = np.linalg.norm(np.abs(velocities), axis=1)
         moving_frames = velocities_abs > self.velocity_threshold
         if fit_to_brainarea:
-            self.data = self.fit_moving_to_brainarea(moving_frames, self.metadata["area"])
+            self.data = self.fit_moving_to_brainarea(
+                moving_frames, self.metadata["area"]
+            )
         else:
             self.data = moving_frames
-            global_logger.warning(f"Moving data not fitted to brain area {self.metadata['area']} lag")
+            global_logger.warning(
+                f"Moving data not fitted to brain area {self.metadata['area']} lag"
+            )
         return self.data
 
-    def fit_moving_to_brainarea(self, data, area):
+    def fit_moving_to_brainarea(self, data: np.ndarray, area: str):
+        """
+        Fit the movement data to the brain area processing lag.
+
+        1. Fill the gaps in the movement data based on the brain area processing lag.
+        2.
+
+        Parameters:
+            - data (np.ndarray): The movement data.
+            - area (str): The brain area.
+        """
         processing_movement_lag = self.brain_processing_delay[area]  # seconds
         if not processing_movement_lag:
             raise NotImplementedError(f"{area} processing lag not implemented.")
+
+        # fill array with value if lag is biggern than gap
         processing_movement_frames = fill_continuous_array(
             data, fps=self.metadata["imaging_fps"], time_gap=processing_movement_lag
         )
+
+        # TODO: is it needed to extend the sequence of stationary/moving frames by the processing lag?
+        """processing_movement_frames = add_stream_lag(processing_movement_frames,
+                                                    min_stream_duration=self.brain_processing_delay[area],
+                                                    fps=self.metadata["imaging_fps"],
+                                                    lag=self.brain_processing_delay[area],)"""
+
+        # add lag time to state before change
+        for i, state in enumerate(processing_movement_frames):
+            if state == 1:
+                for j in range(1, processing_movement_lag):
+                    if i + j < len(processing_movement_frames):
+                        processing_movement_frames[i + j] = 1
+
         return processing_movement_frames
 
     def get_idx_to_keep(self, movement_state):

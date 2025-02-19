@@ -29,7 +29,7 @@ warnings.filterwarnings(
 
 import sys
 from pathlib import Path
-from utils.structure_index import draw_graph
+from structure_index import draw_graph
 
 plt.style.use("dark_background")
 

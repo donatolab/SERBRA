@@ -359,19 +359,13 @@ def compute_mutual_information(
         predicted_labels: List[int] - predicted labels of the data
         metric: str - metric to use for the computation. Options: "mutual", "normalized", "adjusted"
             - "mutual": Mutual Information: Mutual Information (MI) is a measure of the similarity between two labels of the same data.
-
             - "normalized": Normalized Mutual Information: Normalized Mutual Information (NMI) is a normalization of the Mutual Information (MI)
             score to scale the results between 0 (no mutual information) and 1 (perfect correlation)
-
             - "adjusted": Adjusted Mutual Information: Adjusted Mutual Information is an adjustment of the Normalized Mutual Information (NMI)
             score to account for chance. -1 <= AMI <= 1.0 (1.0 is the perfect match, 0 is the random match, and -1 is the worst match)
-
             - "v": V-measure: The V-measure is the harmonic mean between homogeneity and completeness: v = (1 + beta) * homogeneity * completeness / (beta * homogeneity + completeness).
-
             - "fmi": Fowlkes-Mallows Index: The Fowlkes-Mallows index (FMI) is defined as the geometric mean between precision and recall: FMI = sqrt(precision * recall).
-
             - "rand": Rand Index: The Rand Index computes a similarity measure between two clusterings by considering all pairs of samples and counting pairs that are assigned in the same or different clusters in the predicted and true clusterings.
-
             - "adjrand": Adjusted Rand Index: The Adjusted Rand Index is the corrected-for-chance version of the Rand Index.
 
     returns:
@@ -1827,7 +1821,28 @@ def bin_array(
     return binned_array
 
 
-def fill_continuous_array(data_array, fps, time_gap):
+def get_frame_count(duration: Union[int, float], fps: Union[int, float]):
+    """
+    Calculate the number of frames in a given duration at a specific frame rate.
+
+    Parameters:
+    duration (float): Duration in seconds.
+    fps (int): Frame rate in frames per second.
+
+    Returns:
+    int: Number of frames in the given duration at the specified frame rate.
+    """
+    frame_count = duration * fps
+    if frame_count % 1 != 0:
+        global_logger.warning(
+            f"Frame count is not an integer. Rounding to {int(frame_count)}"
+        )
+    return int(frame_count)
+
+
+def fill_continuous_array(
+    data_array: np.ndarray, fps: Union[int, float], time_gap: Union[int, float]
+):
     """
     Fills gaps in a continuous array where values remain the same for a specified time gap.
 
@@ -1852,10 +1867,11 @@ def fill_continuous_array(data_array, fps, time_gap):
     >>> fill_continuous_array(data_array, fps, time_gap)
     array([1, 1, 1, 1, 1, 1, 1, 1, 1])
     """
-    frame_gap = fps * time_gap
+    frame_gap = get_frame_count(time_gap, fps)
     # Find indices where values change
     value_changes = np.where(np.abs(np.diff(data_array)) > np.finfo(float).eps)[0] + 1
     filled_array = data_array.copy()
+
     # Fill gaps after continuous 2 seconds of the same value
     for i in range(len(value_changes) - 1):
         start = value_changes[i]
@@ -1866,6 +1882,45 @@ def fill_continuous_array(data_array, fps, time_gap):
             if value_before == value_after:
                 filled_array[start:end] = [value_before] * (end - start)
     return filled_array
+
+
+def add_stream_lag(
+    array: np.ndarray,
+    min_stream_duration: Union[int, float],
+    fps: Union[int, float],
+    lag: Union[int, float],
+):
+    """
+    Add a lag to the end of continuous streams in an array.
+
+    Parameters:
+    ----------
+        array (numpy.ndarray): The input array containing continuous data.
+        min_stream_duration (float): The minimum duration of a continuous stream in seconds.
+        fps (int): Frames per second, used to calculate the frame count.
+        lag (float): The lag duration in seconds to add to the end of each stream.
+
+    Returns:
+    -------
+        numpy.ndarray: The array with lag added to the end of continuous streams.
+    """
+    min_stream_frames = get_frame_count(min_stream_duration, fps)
+    lag_frames = get_frame_count(lag, fps)
+
+    value_changes = np.where(np.abs(np.diff(array)) > np.finfo(float).eps)[0] + 1
+    manipulated_array = array.copy()
+    for i in reversed(range(len(value_changes) - 1)):
+        start = value_changes[i]
+        end = value_changes[i + 1]
+        if end - start > min_stream_frames:
+            fill_value = array[start]
+            manipulated_array[start : end + lag_frames] = fill_value
+
+    if value_changes[0] > min_stream_frames:
+        fill_value = array[0]
+        manipulated_array[: value_changes[0] + lag_frames] = fill_value
+
+    return manipulated_array
 
 
 def convert_values_to_binary(vec: np.ndarray, threshold=2.5):
@@ -2427,6 +2482,8 @@ def timer(func):
 def profile_function(file_name="profile_output"):
     """
     Run a function and profile it using the Profiler class.
+
+    Installation via pip install pyinstrument.
 
     Example:
         @profile_function(file_name="profile_output_parallel")
