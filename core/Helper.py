@@ -1438,7 +1438,7 @@ def pairwise_compare(vectors: np.ndarray, metric="pearson"):
         raise ValueError(f"{metric} not supported in function {pairwise_compare}")
     return distances
 
-
+    
 ## normalization
 def normalize_01(vector, axis):
     """

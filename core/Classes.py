@@ -535,13 +535,69 @@ class Animal:
                 filtered_tasks.update(filtered_session_tasks)
         return filtered_tasks
 
-    def get_unique_model_information(self
+    def get_unique_model_information(self,
+        labels_name: str = "",
+        manifolds_pipeline: str = "cebra",
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
     ):
         """
-        Get the unique model information all sesseions and tasks.
+        Get the unique model information all sessions and tasks.
+
+        Only possible if a unique model is found for each task and labels_name is in the model name.
+
+        Parameters
+        ----------
+        labels_name : str
+            The name of the labels describing the behavior used for labeling the embeddings.
+        manifolds_pipeline : str, optional
+            The name of the manifolds pipeline to use for decoding (default is "cebra").
+        model_naming_filter_include : list, optional
+            A list of lists containing the model naming parts to include (default is None).
+            If None, all models will be included, which will result in an error if more than one model is found.
+        model_naming_filter_exclude : list, optional
+            A list of lists containing the model naming parts to exclude (default is None).
+            If None, no models will be excluded.
+        
+        Returns
+        -------
+        embeddings : dict
+            A dictionary containing the embeddings of the unique models with the task identifier as key and the embeddings as value.
+        losses : dict
+            A dictionary containing the losses of the unique models with the task identifier as key and the losses as value.
+        labels : dict
+            A dictionary containing the labels variable name and a list of labels.
 
         """
-        raise NotImplementedError("Not implemented yet.")
+        # extract embeddings and losses
+        embeddings = {}
+        losses = {}
+        labels = {"name": labels_name, "labels": []}
+
+        for session_date, session in self.sessions.items():
+            for task_name, task in session.tasks.items():
+                task_models = task.models.get_pipeline_models(
+                    manifolds_pipeline=manifolds_pipeline,
+                    model_naming_filter_include=model_naming_filter_include,
+                    model_naming_filter_exclude=model_naming_filter_exclude,
+                )
+                if len(task_models) > 1:
+                    for model_name in task_models.keys():
+                        if labels_name not in model_name:
+                            task_models.pop(model_name)
+                    if len(task_models) > 1:
+                        raise ValueError("More than one model found. Improve filtering.")
+                
+                if len(task_models) == 0:
+                    continue
+                task_model = next(iter(task_models.values()))
+
+                task_identifier = f"{self.id}_{session_date}_{task_name}"
+                embeddings[task_identifier] = task_model.data["train"]["embedding"]
+                labels["labels"].append(task_model.data["train"]["behavior"])
+                losses[task_identifier] = task_model.state_dict_["loss"]
+        
+        return embeddings, losses, labels
 
     def plot_task_models(
         self,
@@ -566,34 +622,12 @@ class Animal:
         Only possible if a unique model is found for each task. Losses can be 
         colored by rainbow, distinct, or mono colors.
         """
-        # extract embeddings and losses
-        embeddings = {}
-        labels = {"name": behavior_type, "labels": []}
-        losses = {}
-        for session_date, session in self.sessions.items():
-            for task_name, task in session.tasks.items():
-                task_models = task.models.get_pipeline_models(
-                    manifolds_pipeline=manifolds_pipeline,
-                    model_naming_filter_include=model_naming_filter_include,
-                    model_naming_filter_exclude=model_naming_filter_exclude,
-                )
-                if len(task_models) == 0:
-                    continue
-                elif len(task_models) > 1:
-                    raise ValueError("More than one model found. Improve filtering.")
-
-                task_model = next(iter(task_models.values()))
-
-                task_identifier = f"{self.id}_{session_date}_{task_name}"
-
-                embeddings[task_identifier] = task_model.data["train"]["embedding"]
-
-                labels["labels"].append(task_model.data["train"]["behavior"])
-
-                losses[task_identifier] = task_model.state_dict_["loss"]
-
-        labels[task_identifier] = labels
-        ... detect if this is working properly if yes, move extracting of information into function abov (get_unique_model_information)
+        embeddings, losses, labels = self.get_unique_model_information(
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
+            manifolds_pipeline=manifolds_pipeline,
+            labels_name=behavior_type,
+        )
 
         # plot embeddings
         embeddings_title = (

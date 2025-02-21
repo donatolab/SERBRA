@@ -46,6 +46,7 @@ import matplotlib.cm
 import matplotlib.colors
 import matplotlib.figure
 import matplotlib.pyplot as plt
+from sklearn.manifold import MDS
 import numpy as np
 import numpy.typing as npt
 import torch
@@ -3648,3 +3649,55 @@ def plot_line(
     if ax is None and show_plot:
         plt.tight_layout()
         plt.show()
+
+def mds(distances: Union[np.ndarray, pd.DataFrame], 
+        n_components: int = 2,
+        labels: Optional[Union[np.ndarray, pd.Series]] = None,):
+    """
+    Apply Multidimensional Scaling (MDS) to a distance matrix.
+
+    Args:
+        distances: Distance matrix as a NumPy array or Pandas DataFrame.
+        n_components: Number of dimensions to reduce to (default: 2).
+    
+    Returns:
+        np.ndarray: Reduced-dimensional embeddings.
+    """
+    # Example Procrustes distance matrix (replace with your real data)
+    # Apply MDS to get 2D coordinates
+    mds = MDS(n_components=2, dissimilarity="precomputed", random_state=42)
+    coords = mds.fit_transform(distances)
+
+    # Plot
+    plt.figure(figsize=(6, 6))
+    plt.scatter(coords[:, 0], coords[:, 1])
+    if not isinstance(labels, type(None)):
+        for i, (x, y) in zip(labels, coords):
+            plt.text(x, y, str(i), fontsize=12, ha='right')
+
+    plt.xlabel("MDS Dimension 1")
+    plt.ylabel("MDS Dimension 2")
+    plt.title("2D Representation of Procrustes Distances")
+    plt.show()
+
+def pca_component_variance_plot(data: Union[list, np.ndarray], labels: list, percentag=0.8):
+    from sklearn.decomposition import PCA
+    datas = make_list_ifnot(data)
+    labels = make_list_ifnot(labels)
+    #discrete colors
+    colors = plt.cm.tab10(np.linspace(0, 1, len(datas)))
+    plt.figure(figsize=(8, 5))
+    for data, color, label in zip(datas, colors, labels):
+        pca = PCA()
+        pca.fit(data)
+        cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
+        n_components = np.argmax(cumulative_variance > percentag)
+        plt.plot(cumulative_variance, color=color, label=f"{label}: {n_components}")
+        plt.scatter(n_components, percentag, color=color)
+        #plt.axhline(percentag, color=color, linestyle="--", alpha=0.3)
+        plt.axvline(n_components, color=color, linestyle="--", alpha=0.3)
+    plt.xlabel("Number of components")
+    plt.ylabel("Explained variance")
+    plt.grid(alpha=0.1)
+    plt.legend()
+    plt.show()
