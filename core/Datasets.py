@@ -1604,25 +1604,24 @@ class Data_Moving(BehaviorDataset):
 
     def fit_moving_to_brainarea(self, data: np.ndarray, area: str):
         """
-        Fit the movement data to the brain area processing lag.
+        Fit the movement data to the brain area reset time.
 
-        1. Fill the gaps in the movement data based on the brain area processing lag.
-        2.
+        1. Fill the gaps in the movement data based on the brain area reset time.
 
         Parameters:
             - data (np.ndarray): The movement data.
             - area (str): The brain area.
         """
-        processing_movement_lag = self.brain_processing_delay[area]  # seconds
-        if not processing_movement_lag:
-            raise NotImplementedError(f"{area} processing lag not implemented.")
+        processing_movement_reset = self.brain_processing_delay[area]  # seconds
+        if not processing_movement_reset:
+            raise NotImplementedError(f"{area} reset time not provided.")
 
         # fill array with value if lag is biggern than gap
         processing_movement_frames = fill_continuous_array(
-            data, fps=self.metadata["imaging_fps"], time_gap=processing_movement_lag
+            data, fps=self.metadata["imaging_fps"], time_gap=processing_movement_reset
         )
 
-        # TODO: is it needed to extend the sequence of stationary/moving frames by the processing lag?
+        # No lag in the brain as far as we know
         """processing_movement_frames = add_stream_lag(processing_movement_frames,
                                                     min_stream_duration=self.brain_processing_delay[area],
                                                     fps=self.metadata["imaging_fps"],
@@ -1631,7 +1630,7 @@ class Data_Moving(BehaviorDataset):
         # add lag time to state before change
         for i, state in enumerate(processing_movement_frames):
             if state == 1:
-                for j in range(1, processing_movement_lag):
+                for j in range(1, processing_movement_reset):
                     if i + j < len(processing_movement_frames):
                         processing_movement_frames[i + j] = 1
 
