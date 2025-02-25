@@ -1,8 +1,8 @@
 # General libraries
 matplotlib
-numpy
+numpy<2.0.0
 scipy
-scikit-learn
+scikit-learn<1.6
 pyyaml
 tqdm
 numba
@@ -12,8 +12,8 @@ plotly
 cebra
 
 # the following packages should fit to you Graphics card and CUDA version
-torch==2.1.0+cu121
-torchaudio==2.1.0+cu121
-torchvision==0.16.0+cu121
+torch #==2.6.0+cu126
+torchaudio #==2.6.0+cu126
+torchvision #==0.21.0+cu126
 
 # -f https://download.pytorch.org/whl/torch_stable.html

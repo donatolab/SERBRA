@@ -1,3 +1,26 @@
+# Setup Environment
+The following steps are required to setup the environment for the analysis pipeline.
+
+```bash
+# Clone the repositories
+git clone https://github.com/Dynamics-of-Neural-Systems-Lab/MARBLE.git
+#git clone https://github.com/AdaptiveMotorControlLab/CEBRA.git
+git clone https://github.com/Ch3fUlrich/CEBRA_own.git
+conda create -n cebra python=3.10
+conda activate cebra
+
+# Manifold embedding without labels
+cd MARBLE
+pip install .
+pip install pot, umap, ptu, torch_scatter, torch_sparse, torch_geometric
+cd ..
+
+# this repository requirements
+cd CEBRA_own
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
 # Metadata Variables
 The pipelines implemented in this repository strongly depend on 
 - [metadata variables defined in the yaml files](#yaml-metadata-variables) and

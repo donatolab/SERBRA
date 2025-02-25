@@ -33,7 +33,6 @@ from structure_index import draw_graph
 
 plt.style.use("dark_background")
 
-import seaborn as sns
 import plotly
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import colorsys
