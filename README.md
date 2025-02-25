@@ -12,7 +12,7 @@ conda activate cebra
 # Manifold embedding without labels
 cd MARBLE
 pip install .
-pip install pot, umap, ptu, torch_scatter, torch_sparse, torch_geometric
+pip install pot umap ptu torch_scatter torch_sparse torch_geometric torch_cluster
 cd ..
 
 # this repository requirements
