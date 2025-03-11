@@ -535,8 +535,10 @@ class Animal:
                 filtered_tasks.update(filtered_session_tasks)
         return filtered_tasks
 
+
     def get_unique_model_information(self,
         labels_name: str = "",
+        wanted_information: List[str] = ["embedding", "loss"],
         manifolds_pipeline: str = "cebra",
         model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
         model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
@@ -550,6 +552,15 @@ class Animal:
         ----------
         labels_name : str
             The name of the labels describing the behavior used for labeling the embeddings.
+        wanted_information : list
+            A list containing the wanted information to extract from the models (default is ["embedding", "loss"]).
+            Options are 
+                - "embedding": the embeddings of the unique models
+                - "loss": the training losses of the unique models
+                - "raw": the raw data used for training the unique models, which is binarized neural data for models based on cebra
+                - "labels": the labels of the data points used for training the unique models
+                - "fluorescence": the fluorescence data which is the base for the raw binarized data
+                - "all": all of the above
         manifolds_pipeline : str, optional
             The name of the manifolds pipeline to use for decoding (default is "cebra").
         model_naming_filter_include : list, optional
@@ -570,8 +581,10 @@ class Animal:
 
         """
         # extract embeddings and losses
+        raws = {}
         embeddings = {}
-        losses = {}
+        losss = {}
+        fluorescences = {}
         labels = {"name": labels_name, "labels": []}
 
         for session_date, session in self.sessions.items():
@@ -592,12 +605,19 @@ class Animal:
                     continue
                 task_model = next(iter(task_models.values()))
 
-                task_identifier = f"{self.id}_{session_date}_{task_name}"
-                embeddings[task_identifier] = task_model.data["train"]["embedding"]
+                raws[task.id] = task_model.data["train"]["neural"]
+                embeddings[task.id] = task_model.data["train"]["embedding"]
                 labels["labels"].append(task_model.data["train"]["behavior"])
-                losses[task_identifier] = task_model.state_dict_["loss"]
+                losss[task.id] = task_model.state_dict_["loss"]
+                        
+                fluorescences[task.id] = task.neural.get_process_data(type="unprocessed")
+                
         
-        return embeddings, losses, labels
+        information = {}
+        for wanted_info in wanted_information:
+            information[wanted_info] = locals()[wanted_info+"s"]
+            
+        return information
 
     def plot_task_models(
         self,
@@ -622,7 +642,7 @@ class Animal:
         Only possible if a unique model is found for each task. Losses can be 
         colored by rainbow, distinct, or mono colors.
         """
-        embeddings, losses, labels = self.get_unique_model_information(
+        raw, embeddings, losses, labels = self.get_unique_model_information(
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
             manifolds_pipeline=manifolds_pipeline,

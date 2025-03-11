@@ -646,6 +646,35 @@ class NeuralDataset(Dataset):
         filtered_neural_data = self.filter_by_idx(data, idx_to_keep=idx_to_keep)
         return filtered_neural_data
 
+    def get_process_data(self, type:str="processed", fit_to_shape:Union[None, Tuple[int, int]]=None):
+        """
+        Get the data of the task.
+        
+        The data is processed and has 1 dimension larger to create the format of [time, features].
+        
+        Parameters
+        ----------
+        type : str, optional
+            The type of data to get (default is "processed"). Other options could be available, depending on the function of setup.preprocess.process.data 
+            Options are:
+                - "processed": the processed data
+                - "unprocessed": the unprocessed data
+        
+        fit_to_shape : tuple, optional
+            The shape to fit the data to. Default is None, which does not change the shape of the data.
+            
+        Returns
+        -------
+            data : np.ndarray
+                The data of the task with 1 dimension larger than the number of features. 
+        """
+        data = self.setup.preprocess.process.data(type=type)
+        data = force_1_dim_larger(data)
+        if fit_to_shape:
+            empty_data = np.zeros(fit_to_shape)
+            data, _ = force_equal_dimensions(data, empty_data)
+        return data
+
     def similarity(
         self,
         similarities: np.ndarray = None,
@@ -1722,7 +1751,7 @@ class Data_Photon(NeuralDataset):
         return setup
 
 
-class Data_Probe(Dataset):
+class Data_Probe(Dataset): #Maybe NeuralDataset
     def __init__(self, path=None, raw_data_object=None, metadata=None):
         super().__init__(
             key="probe", path=path, raw_data_object=raw_data_object, metadata=metadata
@@ -1858,10 +1887,39 @@ class Datasets_Neural(Datasets):
             raise ValueError(f"Imaging type {data_source} not supported.")
         return imaging_type
 
-    def get_object(self, data_source):
-        imaging_type = self.define_imaging_type(data_source)
+    def get_object(self, data_source:Union[None, str]=None) -> Union[Data_Photon, Data_Probe]:
+        """
+        Get the data object based on the data source. 
+        
+        WARNING: The implementation only handles on type of neural imaging method, so multiple data sources are not supported yet.
+
+        Args:
+            data_source (str, optional): One data source with a name from the list self.photon_imaging_methods or self.probe_imaging_methods
+                to get the data object from. If None, the already defined imaging type is used.
+
+        Returns:
+            data_object (Data_Photon or Data_Probe): The data object based on the data source
+        """
+        imaging_type = self.imaging_type if data_source is None else data_source
         data_object = getattr(self, imaging_type)
         return data_object
+    
+    def get_process_data(self, data_source:Union[None, str]=None, type:str="processed") -> np.ndarray:
+        """
+        Get the data from process object based on the data source.
+        
+        WARNING: The implementation only handles on type of neural imaging method, so multiple data sources are not supported yet.
+        
+        Args:
+            data_source (str, optional): One data source with a name from the list self.photon_imaging_methods or self.probe_imaging_methods
+                to get the data object from. If None, the already defined imaging type is used.
+                
+        Returns:
+            data (np.ndarray): The processed data
+        """
+        data_object = self.get_object(data_source)
+        data = data_object.get_process_data(type=type)
+        return data
 
 
 class Datasets_Behavior(Datasets):

@@ -1768,10 +1768,31 @@ class CaBinCorr(Neural_Processing):
             f"CaBinCorr processing not implemented for {self.__class__}"
         )
 
-    def data(self, type="F_upphase"):
+    def data(self, type:str="processed") -> np.ndarray:
+        """
+        Load the data of the specified type.
+
+        Args:
+            type (str, optional): Loads data stored in the npz file which is created by the CaBinCorr processing. Defaults to "processed".
+                Options:
+                    - "unprocessed": corresponds to "F_fileterd" data corresponding to detrendet fluoresence.
+                    - "processed": corresponds to "F_upphase" data corresponding to upphase of fluoresence signal.
+                    - "F_upphase": binarized rising phase of the fluorescence trace.
+                    - "F_onphase": binarized not falling phase after the rising phase of the fluorescence trace.
+                    - "F_filtered": detrendet fluoresence.
+        Returns:
+            np.ndarray: The data of the specified type.
+        """
+        if type=="unprocessed":
+            type="F_filtered"
+        elif type=="processed":
+            type="F_upphase"
         return npz_loader(self.data_path, type)
 
-    def process_data(self, raw_data_path=None, save=True, overwrite=False):
+    def process_data(self, 
+                raw_data_path: Union[str, Path]=None,
+                save: bool=True, 
+                overwrite: bool=False) -> np.ndarray:
         binarized_data = self.data()
 
         if binarized_data is None:
