@@ -1758,7 +1758,7 @@ class CaBinCorr(Neural_Processing):
         )
         self.data_path = self.define_data_path(file_name=self.data_naming_scheme)
         self.output_fnames = {
-            "F_filtered": "F_filtered.npy",
+            "F_detrended": "F_detrended.npy",
             "F_onphase": "F_onphase.npy",
             "F_upphase": "F_upphase.npy",
         }
@@ -1779,12 +1779,12 @@ class CaBinCorr(Neural_Processing):
                     - "processed": corresponds to "F_upphase" data corresponding to upphase of fluoresence signal.
                     - "F_upphase": binarized rising phase of the fluorescence trace.
                     - "F_onphase": binarized not falling phase after the rising phase of the fluorescence trace.
-                    - "F_filtered": detrendet fluoresence.
+                    - "F_detrended": detrendet fluoresence.
         Returns:
             np.ndarray: The data of the specified type.
         """
         if type=="unprocessed":
-            type="F_filtered"
+            type="F_detrended"
         elif type=="processed":
             type="F_upphase"
         return npz_loader(self.data_path, type)

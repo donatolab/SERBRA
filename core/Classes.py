@@ -240,8 +240,8 @@ class Multi:
 
     def plot_embeddings(
         self,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
+        model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         embeddings: Optional[Dict[str, np.ndarray]] = None,
         to_2d: bool = False,
         show_hulls: bool = False,
@@ -472,8 +472,8 @@ class Animal:
 
     def get_pipeline_models(
         self,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
+        model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         manifolds_pipeline: str = "cebra",
     ):
         session: Session
@@ -621,8 +621,8 @@ class Animal:
 
     def plot_task_models(
         self,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str
+        model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
+        model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         to_2d: bool = False,
         behavior_type: str = "position",
         manifolds_pipeline: str = "cebra",
@@ -641,6 +641,30 @@ class Animal:
 
         Only possible if a unique model is found for each task. Losses can be 
         colored by rainbow, distinct, or mono colors.
+        
+        Parameters
+        ----------
+        model_naming_filter_include : list, optional
+            A list of lists containing the model naming parts to include (default is None).
+            If None, all models will be included, which will result in an error if more than one model is found.
+            Options:
+                - single string: only one property has to be included
+                - list of strings: all properties have to be included
+                - list of lists of strings: Either one of the properties in the inner list has to be included
+            
+        model_naming_filter_exclude : list, optional
+            A list of lists containing the model naming parts to exclude (default is None).
+            If None, no models will be excluded.
+            Options:
+                - single string: only one property has to be excluded
+                - list of strings: all properties have to be excluded
+                - list of lists of strings: Either one of the properties in the inner list has to be excluded
+                
+        to_2d : bool, optional
+            If True, the embeddings will be plotted in 2D (default is False).
+        
+        behavior_type : str, optional
+            The behavior type to use for labeling the embeddings (default is "position").
         """
         raw, embeddings, losses, labels = self.get_unique_model_information(
             model_naming_filter_include=model_naming_filter_include,
@@ -796,8 +820,8 @@ class Session:
 
     def get_pipeline_models(
         self,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
+        model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         manifolds_pipeline: str = "cebra",
     ):
         task: Task
@@ -1450,8 +1474,8 @@ class Task:
 
     def plot_embeddings(
         self,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
+        model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         embeddings: Optional[Dict[str, np.ndarray]] = None,
         to_2d: bool = False,
         show_hulls: bool = False,
@@ -1563,8 +1587,8 @@ class Task:
         plot_shuffled=True,
         num_iterations=None,
         plot_iterations=False,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
+        model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         alpha=0.8,
         figsize=(10, 10),
         as_pdf=False,
@@ -1631,8 +1655,8 @@ class Task:
     @staticmethod
     def extract_wanted_embedding_and_labels(
         cls: Union[Task, Multi],
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
+        model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         embeddings: Optional[Dict[str, np.ndarray]] = None,
         manifolds_pipeline: str = "cebra",
         to_transform_data: Optional[np.ndarray] = None,
@@ -1715,8 +1739,8 @@ class Task:
     def structural_indices(
         self,
         manifolds_pipeline: str = "cebra",
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
+        model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         use_raw: bool = False,
         embeddings: Optional[Dict[str, np.ndarray]] = None,
         labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
