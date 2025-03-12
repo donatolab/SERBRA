@@ -1737,6 +1737,7 @@ class Environment(Behavior_Processing):
 
         return data
 
+test
 class CaBinCorr(Neural_Processing):
     def __init__(self, key, root_dir=None, metadata={}):
         super().__init__(key=key, root_dir=root_dir, metadata=metadata)
