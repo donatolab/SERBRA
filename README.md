@@ -1,3 +1,10 @@
+# Description
+Fully automated batch loading, preprocessing, processing and plotting. This pipeline was initially developed for running [Cebra](https://github.com/AdaptiveMotorControlLab/CEBRA), but is now the base for running any analysis pipeline.
+
+The pipelines implemented in this repository strongly depend on 
+- [metadata variables defined in the yaml files](#yaml-metadata-variables) and
+- [folder structure](#folder-structure)
+
 # Setup Environment
 The following steps are required to setup the environment for the analysis pipeline.
 
@@ -21,11 +28,80 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 ```
 
-# Metadata Variables
-The pipelines implemented in this repository strongly depend on 
-- [metadata variables defined in the yaml files](#yaml-metadata-variables) and
-- 
+# Folder Structure
+The folder structure is important for the pipeline to work. The following names used are eamples and the files are still accepted if they have different names as long as they have **specific information in the file names**. The Important information is marked using **[square brackets]**, which should not really be in the file names. The structure is as follows:
 
+## Inscopix Data
+```bash
+───DON-019608
+    │   DON-019608.yaml
+    │   
+    ├───20240126
+    │   │   20240126.yaml
+    │   │   
+    │   ├───FS1 (task data)
+    │   │   │
+    │   │   ├───001P-I (Inscopix data)
+    │   │   │   │     2021-10-31-17-58-12_video_sched_0_[binarized_traces]_V3_curated.[npz]
+    │   │   │   │   
+    │   │   │   └───tif
+    │   │   │       │      
+    │   │   │       └───suite2p
+    │   │   │           │      
+    │   │   │           └───plane0
+    │   │   │               F.npy
+    │   │   │               Fneu.npy
+    │   │   │               iscell.npy
+    │   │   │               ops.npy
+    │   │   │               spks.npy
+    │   │   │               stat.npy
+    │   │   │               
+    │   │   └───TR-BSL (Open field data)
+    │   │            [DON-007021_20211031_TR-BSL_NS1]-ACQ(crop)DLC_resnet50_open_arena_white_floorSep8shuffle1_200000_fixedlocs_[locs.npy]
+    │   │
+    │   └───NS1 (task data)
+    │       │   ...
+    │      ...
+    │
+    └───20240127
+        │   ...
+       ...
+```
+
+## 2P Data
+```bash
+───DON-019608
+    │   DON-019608.yaml
+    │   
+    ├───20240126
+    │   │   20240126.yaml
+    │   │   
+    │   ├───002P-F (2P data from femtonics)
+    │   │   │     [DON-019608_20240126_002P-F_S1-S2-ACQ.mesc]
+    │   │   │   
+    │   │   └───tif
+    │   │       │      
+    │   │       └───suite2p
+    │   │           │      
+    │   │           └───plane0
+    │   │               F.npy
+    │   │               Fneu.npy
+    │   │               iscell.npy
+    │   │               ops.npy
+    │   │               spks.npy
+    │   │               stat.npy
+    │   ├───TRD-2P (treadmil movement data)
+    │   │        DON-019608_202401261_TRD-2P_S1-ACQ.mat
+    │   │        DON-019608_202401261_TRD-2P_S2-ACQ.mat
+    │   │
+    │   └───0000MC (optional: movies folder)
+    │
+    └───20240127
+        │   ...
+       ...
+```
+
+# Metadata Variables
 ## Python Variables
 The pipeline has some important variables that need to be defined in the python script. These variables are important for defining what data to load and how to analyze it. 
 
