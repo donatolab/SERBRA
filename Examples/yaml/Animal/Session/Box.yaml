@@ -1,0 +1,22 @@
+date: '20211022'
+comment: null
+expt_pipeline: OpenFieldDynamics
+tasks_infos:
+  FS1: 
+    neural_metadata:
+      method: 1P
+      area: CA3
+      setup: inscopix
+      preprocessing: opexebo
+      processing: cabincorr
+      fps: 20
+    behavior_metadata:
+      setup: openfield
+      preprocessing: cam
+      #binning_size: 0.05 # meters #default is 0.05 for 2D and 0.01 for 1D
+      stimulus_type: cookiecrumbs
+      environment_dimensions: [0.80, 0.80] # meters
+      #fps: 10000
+      pixel_per_meter: 1547.8   # 1.5478 m per pixel 
+      # for NS sessions, the pixel_per_meter is 13562.5 # 1.35625 m per pixel
+      # pixel_per_meter: 1356.25 # 1.35625 m per pixel
