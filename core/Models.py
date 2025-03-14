@@ -19,6 +19,7 @@ from sklearn.metrics import (
 )
 
 import scipy
+from copy import deepcopy
 
 # parralelize
 from numba import jit, njit, prange
@@ -28,11 +29,11 @@ from numba import cuda  # @jit(target='cuda')
 from cebra import CEBRA
 import cebra
 import cebra.integrations.sklearn.utils as sklearn_utils
+from structure_index import compute_structure_index
 
 # own
 from Datasets import Datasets, Dataset
 from Helper import *
-
 
 class Models:
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
@@ -1263,6 +1264,27 @@ class CebraOwn(CEBRA):
             return embedding, labels
         return embedding
 
+    def get_data(self, train_or_test:str = "train", type:str = "embedding") -> np.ndarray:
+        """
+        Get the data for the model.
+        
+        Parameters
+        ----------
+        train_or_test : str
+            The type of data to get (either "train" or "test").
+        type : str
+            The type of data to get (either "neural", "embedding" or "behavior").
+        
+        Returns
+        -------
+        np.ndarray
+            The data for the model.
+        """
+        return self.data[train_or_test][type]
+
+    def structural_index(self,
+    ):
+        pass
 
 def decode(
     embedding_train: np.ndarray,
@@ -1435,3 +1457,53 @@ def decode(
         )
 
     return results
+
+def structure_index(self, data, labels, params):
+    #TODO: this function needs to be in helper functions
+    #TODO: cebraOwn should have this function so it can be used by the model itself
+    
+    if isinstance(params["n_neighbors"], int) or isinstance(params["n_neighbors"], np.int32) or isinstance(params["n_neighbors"], np.int64):
+        parameter_sweep = False
+    elif isinstance(params["n_neighbors"], List) or isinstance(params["n_neighbors"], np.ndarray):
+        parameter_sweep = True
+        sweep_range = deepcopy(params["n_neighbors"])
+    else:
+        global_logger.error("n_neighbors must be an integer or a list of integers.")
+        raise ValueError("n_neighbors must be an integer or a list of integers.")
+    
+    
+    if parameter_sweep:
+        structural_index = {}
+        for n_neighbors in tqdm(sweep_range):
+            params["n_neighbors"] = n_neighbors
+            SI, binLabel, overlapMat, sSI = compute_structure_index(
+                data, labels, **params
+            )
+            structural_index[n_neighbors] = {
+                "SI": SI,
+                "bin_label": binLabel,
+                "overlap_mat": overlapMat,
+                "shuf_SI": sSI,
+            }
+    else:
+        SI, binLabel, overlapMat, sSI = compute_structure_index(
+            data, labels, **params
+        )
+        structural_index = {
+            "SI": SI,
+            "bin_label": binLabel,
+            "overlap_mat": overlapMat,
+            "shuf_SI": sSI,
+        }
+        additional_title = f"{self.id} -{'RAW-' if use_raw else ''} {model_name}"
+        if plot:
+            viz.plot_structure_index(
+                embedding=plot_embeddings[model_name],
+                feature=labels,
+                overlapMat=overlapMat,
+                SI=SI,
+                binLabel=binLabel,
+                additional_title=additional_title,
+                as_pdf=as_pdf,
+            )
+    return structural_index

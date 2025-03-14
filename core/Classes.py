@@ -1,6 +1,7 @@
 # type hints
 from __future__ import annotations
 from typing import List, Union, Dict, Any, Tuple, Optional
+from tqdm import tqdm, trange
 
 # paths
 from pathlib import Path
@@ -11,7 +12,6 @@ from Helper import *
 from Visualizer import *
 from Models import Models, PlaceCellDetectors, decode
 from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
-from structure_index import compute_structure_index
 
 # calculations
 import numpy as np
@@ -535,7 +535,6 @@ class Animal:
                 filtered_tasks.update(filtered_session_tasks)
         return filtered_tasks
 
-
     def get_unique_model_information(self,
         labels_name: str = "",
         wanted_information: List[str] = ["embedding", "loss"],
@@ -717,6 +716,43 @@ class Animal:
             as_pdf=as_pdf,
         )
 
+    def structural_indices(self, 
+        manifolds_pipeline: str = "cebra",
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+        use_raw: bool = False,
+        params: Dict[str, Union[int, bool, List[int]]] = None,
+        embeddings: Optional[Dict[str, np.ndarray]] = None,
+        labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
+        to_transform_data: Optional[np.ndarray] = None,
+        behavior_data_types: List[str] = None,
+        to_2d: bool = False,
+        regenerate: bool = False,
+        plot: bool=True,
+        as_pdf: bool=False,     
+        ):
+        animal_structrual_indices = {}
+        for date, session in self.sessions.items():
+            session : Session
+            global_logger.info(f"Calculating structural indices for {session.id}")
+            session_structrual_indices = session.structural_indices(
+                            manifolds_pipeline=manifolds_pipeline,
+                            model_naming_filter_include=model_naming_filter_include,
+                            model_naming_filter_exclude=model_naming_filter_exclude,
+                            regenerate = regenerate,
+                            embeddings=embeddings,
+                            labels=labels,
+                            to_transform_data=to_transform_data,
+                            behavior_data_types=behavior_data_types,
+                            to_2d=to_2d,
+                            params=params,
+                            plot=plot,
+                            use_raw=use_raw,
+                            as_pdf=as_pdf,
+                            )
+            animal_structrual_indices[date] = session_structrual_indices
+        #TODO: plotting
+        return animal_structrual_indices
 
 class Session:
     """Represents a session in the dataset."""
@@ -1023,6 +1059,47 @@ class Session:
         )
         return task_decoding_statistics
 
+    def structural_indices(
+        self,
+        manifolds_pipeline: str = "cebra",
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+        use_raw: bool = False,
+        params: Dict[str, Union[int, bool, List[int]]] = None,
+        embeddings: Optional[Dict[str, np.ndarray]] = None,
+        labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
+        to_transform_data: Optional[np.ndarray] = None,
+        behavior_data_types: List[str] = None,
+        to_2d: bool = False,
+        regenerate: bool = False,
+        plot: bool=True,
+        as_pdf: bool=False,     
+    ):
+        task : Task
+        session_structrual_indices = {}
+        for task_name, task in self.tasks.items():
+            global_logger.info(f"Calculating structural indices for {task.id}")
+            task_structrual_indices = task.structural_indices(
+                manifolds_pipeline=manifolds_pipeline,
+                model_naming_filter_include=model_naming_filter_include,
+                model_naming_filter_exclude=model_naming_filter_exclude,
+                regenerate = regenerate,
+                embeddings=embeddings,
+                labels=labels,
+                to_transform_data=to_transform_data,
+                behavior_data_types=behavior_data_types,
+                to_2d=to_2d,
+                params=params,
+                plot=plot,
+                use_raw=use_raw,
+                as_pdf=as_pdf,
+                )
+            session_structrual_indices[task_name] = task_structrual_indices
+        
+            #TODO: plotting
+        return session_structrual_indices
+            
+                
     # Place Cells for all sessions
     def plot_cell_activity_pos_by_time(
         self,
@@ -1714,11 +1791,11 @@ class Task:
             labels_dict = {}
             for model_name, model in models.items():
                 embeddings[model_name] = (
-                    model.data["train"]["embedding"]
+                    model.get_data()
                     if not use_raw
-                    else model.data["train"]["neural"]
+                    else model.get_data("neural")
                 )
-                labels_dict[model_name] = model.data["train"]["behavior"]
+                labels_dict[model_name] = model.get_data("train", "behavior")
 
         # get embedding lables
         if labels is not None:
@@ -1742,20 +1819,22 @@ class Task:
         model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
         model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         use_raw: bool = False,
+        params: Dict[str, Union[int, bool, List[int]]] = None,
         embeddings: Optional[Dict[str, np.ndarray]] = None,
         labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
         to_transform_data: Optional[np.ndarray] = None,
         behavior_data_types: List[str] = None,
         to_2d: bool = False,
-        params: Dict[str, Any] = None,
-        plot=True,
-        as_pdf=False,
-    ) -> float:
+        regenerate: bool = False,
+        plot: bool=True,
+        as_pdf: bool=False,
+    ) -> Dict[str, Dict[str, Union[float, np.ndarray]]]: #TODO: finish return types
         """
         Calculate structural indices for the task given a model.
 
 
-        Raw or Embedded data as well as labels are extracted from the models that fit the naming filter.
+        Raw or Embedded data as well as labels are extracted from the models that fit the naming filter. 
+        If n_neighbors is a list, then a parameter sweep is performed.
 
         This Method is based on a graph-based topological metric able to quantify the amount of structure
         present at the distribution of a given feature over a point cloud in an arbitrary D-dimensional space.
@@ -1780,7 +1859,7 @@ class Task:
                 list (i.e. [10,20,5]). Note that it will be ignored if
                 'discrete_label' is set to True.
 
-            n_neighbors: int (default: 15)
+            n_neighbors: integer (default: 15) or list of integers
                 Number of neighbors used to compute the overlapping between
                 bin-groups. This parameter controls the tradeoff between local and
                 global structure.
@@ -1843,35 +1922,61 @@ class Task:
         )
 
         viz = Vizualizer(self.data_dir.parent.parent)
-        structural_indices = {}
+        
+        if use_raw:
+            #TODO
+            #TODO
+            #TODO
+            #TODO
+            pass
+        
+        task_structural_indices = {}
         for model_name, embedding in embeddings.items():
+            global_logger.info(f"Calculating structural indices for {model_name}")
             if behavior_data_types is not None:
                 for behavior_data_type in behavior_data_types:
                     if behavior_data_type not in model_name:
                         continue
+            
             labels = labels_dict[model_name]
-            SI, binLabel, overlapMat, sSI = compute_structure_index(
-                embedding, labels, **params
-            )
-            # .....Determine what output the function above is giving and how to use it
-            structural_indices[model_name] = {
-                "SI": SI,
-                "bin_label": binLabel,
-                "overlap_mat": overlapMat,
-                "shuf_SI": sSI,
-            }
-            if plot:
-                viz.plot_structure_index(
-                    embedding=plot_embeddings[model_name],
-                    feature=labels,
-                    overlapMat=overlapMat,
-                    SI=SI,
-                    binLabel=binLabel,
-                    additional_title=f"{self.id} -{'RAW-' if use_raw else ''} {model_name}",
-                    as_pdf=as_pdf,
+            
+            ofname = f"structrual_indices_{model_name}"
+            ofname += "_raw" if use_raw else ""
+            ofname += "_sweep" if parameter_sweep else ""
+            
+            model_structural_indices = self.npy(fname=ofname, task="load") 
+            
+            if model_structural_indices is None or regenerate:
+                model_structural_indices = self.structure_index()
+                task_structural_indices[model_name] = model.structural_indices()
+                if parameter_sweep:
+                    #TODO: plotting for parameter sweep
+                    #TODO
+                    #TODO
+                    #TODO
+                    pass
+                else:
+                    additional_title = f"{self.id} -{'RAW-' if use_raw else ''} {model_name}"
+                    if plot:
+                        viz.plot_structure_index(
+                            embedding=plot_embeddings[model_name],
+                            feature=labels,
+                            overlapMat=overlapMat,
+                            SI=SI,
+                            binLabel=binLabel,
+                            additional_title=additional_title,
+                            as_pdf=as_pdf,
+                        )
+                
+                self.npy(
+                    fname=ofname,
+                    data=task_structural_indices,
+                    task="save",
                 )
-
-        return structural_indices
+            else:
+                task_structural_indices[model_name] = model_structural_indices
+                
+        return task_structural_indices
 
     def plot_multiple_consistency_scores(
         self,
@@ -2368,12 +2473,16 @@ class Task:
             global_logger.info(f"{self.id}: Saved {fname} to {data_path}")
         elif task == "load":
             if data_path.exists():
+                # load dictionary
                 try:
-                    # load dictionary
-                    return np.load(data_path, allow_pickle=True).item()
+                    data = np.load(data_path, allow_pickle=True).item()
                 except:
-                    return np.load(data_path, allow_pickle=True)
+                    data = np.load(data_path, allow_pickle=True)
+                    
+                print(f"{self.id}: Loaded {fname} from {data_path}")
+                return data
             else:
+                print(f"{self.id}: No file found at {data_path}")
                 global_logger.warning(f"{self.id}: No file found at {data_path}")
                 return None
         else:

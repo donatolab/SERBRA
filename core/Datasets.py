@@ -1900,7 +1900,7 @@ class Datasets_Neural(Datasets):
         Returns:
             data_object (Data_Photon or Data_Probe): The data object based on the data source
         """
-        imaging_type = self.imaging_type if data_source is None else data_source
+        imaging_type = self.imaging_type if data_source is None else self.define_imaging_type(data_source)
         data_object = getattr(self, imaging_type)
         return data_object
     
