@@ -507,6 +507,7 @@ class Vizualizer:
         plt.xticks(xpos, xticks, rotation=45)
 
     ########################################################################################################################
+    @staticmethod
     def plot_embedding(
         self,
         ax,
@@ -973,7 +974,7 @@ class Vizualizer:
         for ax in axes[num_subplots:]:
             ax.remove()  # Remove any excess subplot axes
         fig.tight_layout()
-        self.plot_ending(title, title_size=preset_figsize_x * cols, as_pdf=as_pdf)
+        self.plot_ending(title, title_size=preset_figsize_x * cols, save_dir=self.save_dir, as_pdf=as_pdf)
 
     def create_rgba_labels(values, alpha=0.8):
         """
@@ -1285,7 +1286,7 @@ class Vizualizer:
             xlabel="n",
             ylabel="Frequency",
         )
-        self.plot_ending(title, save=True)
+        self.plot_ending(title, save_dir=self.save_dir, save=True)
 
     def plot_dist_sal_dims(
         self, distances, saliences, normalized_saliences, title, bins=100
@@ -1341,7 +1342,7 @@ class Vizualizer:
         self.histogam_subplot(
             normalized_saliences[:, 2], "normalized Z", ax5, bins=bins, color=colors[4]
         )
-        self.plot_ending(title, save=True)
+        self.plot_ending(title, save_dir=self.save_dir, save=True)
 
     def plot_dist_sal_dims_2(
         self,
@@ -1448,7 +1449,7 @@ class Vizualizer:
             bins=bins,
             color=colors[4],
         )
-        self.plot_ending(title, save=True)
+        self.plot_ending(title, save_dir=self.save_dir, save=True)
 
     def plot_corr_heat_corr_heat(
         self, correlation1, correlation2, title1, title2, sort=False, figsize=(17, 5)
@@ -1477,14 +1478,16 @@ class Vizualizer:
             color="tab:orange",
         )
         Vizualizer.heatmap_subplot(correlation2, title2, ax4, sort=sort)
-        self.plot_ending(title, save=True)
+        self.plot_ending(title, save_dir=self.save_dir, save=True)
 
-    def plot_ending(self, title, title_size=20, save=True, as_pdf=False, show=True):
+    @staticmethod
+    def plot_ending(self, title, save_dir, title_size=20, save=True, as_pdf=False, show=True):
         plt.suptitle(title, fontsize=title_size)
         plt.tight_layout()  # Ensure subplots fit within figure area
 
         if save:
-            Vizualizer.save_plot(self.save_dir, title, "pdf" if as_pdf else "png")
+            save_dir = save_dir
+            Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
 
         if show:
             plt.show()
@@ -3445,7 +3448,7 @@ class Vizualizer:
 
         session_labels_dict = {"name": "", "labels": session_labels}
 
-        self.plot_embedding(
+        Vizualizer.plot_embedding(
             ax=at,
             embedding=embedding,
             embedding_labels=session_labels_dict,
@@ -3495,7 +3498,7 @@ class Vizualizer:
         )
         plt.tight_layout()
 
-        self.plot_ending(title=title, as_pdf=as_pdf, show=show)
+        Vizualizer.plot_ending(title=title, as_pdf=as_pdf, show=show)
 
     @staticmethod
     def lineplot_from_dict_of_dicts(

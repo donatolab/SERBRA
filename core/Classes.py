@@ -278,7 +278,7 @@ class Multi:
             )
 
         if not embeddings:
-            models = self.models.get_pipeline_models(
+            model_class, models = self.models.get_pipeline_models(
                 manifolds_pipeline=manifolds_pipeline,
                 model_naming_filter_include=model_naming_filter_include,
                 model_naming_filter_exclude=model_naming_filter_exclude,
@@ -588,7 +588,7 @@ class Animal:
 
         for session_date, session in self.sessions.items():
             for task_name, task in session.tasks.items():
-                task_models = task.models.get_pipeline_models(
+                models_class, task_models = task.models.get_pipeline_models(
                     manifolds_pipeline=manifolds_pipeline,
                     model_naming_filter_include=model_naming_filter_include,
                     model_naming_filter_exclude=model_naming_filter_exclude,
@@ -604,10 +604,10 @@ class Animal:
                     continue
                 task_model = next(iter(task_models.values()))
 
-                raws[task.id] = task_model.data["train"]["neural"]
-                embeddings[task.id] = task_model.data["train"]["embedding"]
-                labels["labels"].append(task_model.data["train"]["behavior"])
-                losss[task.id] = task_model.state_dict_["loss"]
+                raws[task.id] = task_model.get_data(type="neural")
+                embeddings[task.id] = task_model.get_data(type="embedding")
+                labels["labels"].append(task_model.get_data(type="behavior"))
+                losss[task.id] = task_model.get_loss()
                         
                 fluorescences[task.id] = task.neural.get_process_data(type="unprocessed")
                 
@@ -665,12 +665,14 @@ class Animal:
         behavior_type : str, optional
             The behavior type to use for labeling the embeddings (default is "position").
         """
-        raw, embeddings, losses, labels = self.get_unique_model_information(
+        info = self.get_unique_model_information(
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
             manifolds_pipeline=manifolds_pipeline,
             labels_name=behavior_type,
+            wanted_information=["embedding", "loss", "label"],
         )
+        embeddings, losses, labels = info["embedding"], info["loss"], info["label"]
 
         # plot embeddings
         embeddings_title = (
@@ -863,7 +865,7 @@ class Session:
         task: Task
         models = {}
         for task_name, task in self.tasks.items():
-            task_models = task.models.get_pipeline_models(
+            models_class, task_models = task.models.get_pipeline_models(
                 model_naming_filter_include=model_naming_filter_include,
                 model_naming_filter_exclude=model_naming_filter_exclude,
                 manifolds_pipeline=manifolds_pipeline,
@@ -1414,7 +1416,7 @@ class Task:
         model_naming_filter_include: List[List[str]] = "12800",  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = "0.",  # or [str] or str
     ):
-        models = self.models.get_pipeline_models(
+        model_class, models = self.models.get_pipeline_models(
             manifolds_pipeline=manifolds_pipeline,
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
@@ -1678,6 +1680,7 @@ class Task:
                 model_naming_filter_exclude=model_naming_filter_exclude,
             )
         )
+        models_original = self.models.get_pipeline_models(m)
         stimulus_type = (
             self.behavior_metadata["stimulus_type"]
             if "stimulus_type" in self.behavior_metadata.keys()
@@ -1782,7 +1785,7 @@ class Task:
             )
 
         if not isinstance(embeddings, dict):
-            models = cls.models.get_pipeline_models(
+            models_class, models = cls.models.get_pipeline_models(
                 manifolds_pipeline=manifolds_pipeline,
                 model_naming_filter_include=model_naming_filter_include,
                 model_naming_filter_exclude=model_naming_filter_exclude,
@@ -1793,9 +1796,9 @@ class Task:
                 embeddings[model_name] = (
                     model.get_data()
                     if not use_raw
-                    else model.get_data("neural")
+                    else model.get_data(type="neural")
                 )
-                labels_dict[model_name] = model.get_data("train", "behavior")
+                labels_dict[model_name] = model.get_data(type="behavior")
 
         # get embedding lables
         if labels is not None:
@@ -1815,15 +1818,14 @@ class Task:
 
     def structural_indices(
         self,
+        params: Dict[str, Union[int, bool, List[int]]],
         manifolds_pipeline: str = "cebra",
         model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
         model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         use_raw: bool = False,
-        params: Dict[str, Union[int, bool, List[int]]] = None,
         embeddings: Optional[Dict[str, np.ndarray]] = None,
         labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
         to_transform_data: Optional[np.ndarray] = None,
-        behavior_data_types: List[str] = None,
         to_2d: bool = False,
         regenerate: bool = False,
         plot: bool=True,
@@ -1847,8 +1849,6 @@ class Task:
         -----------
         First Parameters:
             Are explained in the extract_wanted_embedding_and_labels function.
-        behavior_data_types: list, optional
-            The types of behavior data to use when extracting the labels default is extracting from all.
         as_pdf: bool, optional
             Whether to save the plot as a PDF (default is False).
         params: dict
@@ -1897,6 +1897,24 @@ class Task:
                 Array containing the structure index computed for each shuffling
                 iteration.
         """
+        model_class, models = self.models.get_pipeline_models(
+            manifolds_pipeline=manifolds_pipeline,
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
+        )
+        
+        task_structural_indices = {}
+        for model_name, model in models.items():
+            task_structural_indices[model_name] = model.structur_index(
+                params=params,
+                labels=labels,
+                to_transform_data=to_transform_data,
+                to_2d=to_2d,
+                regenerate=regenerate,
+                plot=plot,
+                as_pdf=as_pdf,
+            )
+            
 
         plot_embeddings, _ = self.extract_wanted_embedding_and_labels(
             cls=self,
@@ -1933,10 +1951,6 @@ class Task:
         task_structural_indices = {}
         for model_name, embedding in embeddings.items():
             global_logger.info(f"Calculating structural indices for {model_name}")
-            if behavior_data_types is not None:
-                for behavior_data_type in behavior_data_types:
-                    if behavior_data_type not in model_name:
-                        continue
             
             labels = labels_dict[model_name]
             
@@ -1967,8 +1981,7 @@ class Task:
                             additional_title=additional_title,
                             as_pdf=as_pdf,
                         )
-                
-                self.npy(
+                npy(
                     fname=ofname,
                     data=task_structural_indices,
                     task="save",
@@ -2400,91 +2413,3 @@ class Task:
             color=colors,
         )
         return zscore, si_rate, si_content
-
-    def npy(
-        self,
-        fname: str,
-        task: str,
-        data: np.ndarray = None,
-    ):
-        """
-        Manages numpy array file operations in a backup directory.
-
-        This method provides functionality to save numpy arrays to a backup location
-        and check for the existence of previously saved files.
-
-        Parameters
-        ----------
-        fname : str
-            The base filename for the numpy file (without .npy extension).
-            This name will be used to create the file in the backup directory.
-
-        task : str
-            Specifies the operation to perform:
-            - "save": Saves the provided data as a numpy file
-            - "exists": Checks if a file with the given name already exists in the backup directory
-
-        data : np.ndarray, optional
-            The numpy array to be saved.
-            Required when task is "save", otherwise ignored.
-            If not a numpy array, it will be converted using np.array().
-
-        Returns
-        -------
-        bool or None
-            - When task is "exists": Returns True if the file exists, False otherwise
-            - When task is "save": Returns None after saving the file
-
-        Raises
-        ------
-        ValueError
-            If task is "save" and no data is provided
-
-        Notes
-        -----
-        - The file is saved in a "backup_npys" directory located one level up from
-        the current data directory
-        - If the backup directory does not exist, it will be created automatically
-        - A log message is generated when a file is successfully saved
-
-        Examples
-        --------
-        # Check if a file exists
-        exists = self.npy("my_data", task="exists")
-
-        # Save a numpy array
-        data = np.random.rand(10, 10)
-        self.npy("my_data", task="save", data=data)
-        """
-        npy_save_location = self.data_dir.parent.joinpath("backup_npys")
-        if not npy_save_location.exists():
-            npy_save_location.mkdir(parents=True)
-        data_path = npy_save_location.joinpath(f"{fname}.npy")
-        if task == "exists":
-            return data_path.exists()
-        elif task == "save":
-            if data is None:
-                global_logger.error(
-                    f"Data must be provided to save npy in {data_path}."
-                )
-                raise ValueError(f"Data must be provided to save npy in {data_path}.")
-            np_data = np.array(data)
-            np.save(data_path, np_data)
-            global_logger.info(f"{self.id}: Saved {fname} to {data_path}")
-        elif task == "load":
-            if data_path.exists():
-                # load dictionary
-                try:
-                    data = np.load(data_path, allow_pickle=True).item()
-                except:
-                    data = np.load(data_path, allow_pickle=True)
-                    
-                print(f"{self.id}: Loaded {fname} from {data_path}")
-                return data
-            else:
-                print(f"{self.id}: No file found at {data_path}")
-                global_logger.warning(f"{self.id}: No file found at {data_path}")
-                return None
-        else:
-            global_logger.error(f"Task {task} not recognized.")
-            raise ValueError(f"Task {task} not recognized.")

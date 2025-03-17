@@ -1783,7 +1783,7 @@ class CaBinCorr(Neural_Processing):
             np.ndarray: The data of the specified type.
         """
         if type=="unprocessed":
-            type="F_detrended"
+            type="F_filtered"
         elif type=="processed":
             type="F_upphase"
         return npz_loader(self.data_path, type)

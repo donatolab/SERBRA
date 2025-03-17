@@ -1,5 +1,5 @@
 # type hints
-from typing import List, Union, Dict, Any, Tuple, Optional, Literal
+from typing import List, Union, Dict, Tuple, Optional, Literal
 
 # show progress bar
 from tqdm import tqdm, trange
@@ -34,6 +34,7 @@ from structure_index import compute_structure_index
 # own
 from Datasets import Datasets, Dataset
 from Helper import *
+from Visualizer import Visualizer
 
 class Models:
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
@@ -127,13 +128,34 @@ class Models:
         manifolds_pipeline="cebra",
         model_naming_filter_include: List[List[str]] = None,  # or [str] or str
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
-    ):
+    ) -> Tuple[object, Dict[str, object]]:
+        """Get models from a specific model class.
+
+        Parameters:
+        -----------
+            manifolds_pipeline : str
+                The pipeline to use.
+            model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+                Filter for model names to include. If None, all models will be included. 3 levels of filtering are possible.
+                1. Include all models containing a specific string: "string"
+                2. Include all models containing a specific combination of strings: ["string1", "string2"]
+                3. Include all models containing one of the string combinations: [["string1", "string2"], ["string3", "string4"]]
+            model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+                Same as model_naming_filter_include but for excluding models.
+                
+        Returns:
+        --------
+            model_class : class
+                The class of the model.
+            models : dict
+                A dictionary containing the models.
+        """
         models_class = self.get_model_class(manifolds_pipeline)
         models = models_class.get_models(
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
         )
-        return models
+        return models_class, models
 
     def get_models_splitted_original_shuffled(
         self,
@@ -144,9 +166,10 @@ class Models:
     ):
         models_original = []
         models_shuffled = []
-        models = models or self.get_pipeline_models(
-            manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude
-        )
+        if not models:
+            models_class, models = self.get_pipeline_models(
+                manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude
+            )
 
         # convert list of model objects to dictionary[model_name] = model
         if isinstance(models, list):
@@ -183,10 +206,10 @@ class Models:
             )
             print(f"No data to transform given. Using model training data.")
 
-        model_class = self.get_model_class(manifolds_pipeline)
-
-        models = model_class.get_models(
-            model_naming_filter_include, model_naming_filter_exclude
+        model_class, models = self.get_pipeline_models(
+            manifolds_pipeline=manifolds_pipeline,
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
         )
 
         embeddings = model_class.create_embeddings(
@@ -209,7 +232,7 @@ class Models:
         model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
         manifolds_pipeline: str = "cebra",
     ):
-        models = self.get_pipeline_models(
+        models_class, models = self.get_pipeline_models(
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
             manifolds_pipeline=manifolds_pipeline,
@@ -1264,6 +1287,9 @@ class CebraOwn(CEBRA):
             return embedding, labels
         return embedding
 
+    def get_loss(self):
+        return self.state_dict_["loss"]
+
     def get_data(self, train_or_test:str = "train", type:str = "embedding") -> np.ndarray:
         """
         Get the data for the model.
@@ -1282,9 +1308,41 @@ class CebraOwn(CEBRA):
         """
         return self.data[train_or_test][type]
 
-    def structural_index(self,
-    ):
-        pass
+    def structure_index(self,
+            params: Dict[str, Union[int, bool, List[int]]],
+            use_raw: bool = False,
+            labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
+            to_transform_data: Optional[np.ndarray] = None,
+            to_2d: bool = False,
+            regenerate: bool = False,
+            plot: bool=True,
+            as_pdf: bool=False,
+        )-> Dict[str, Dict[str, Union[float, np.ndarray]]] : #TODO: finish return types::
+        """
+        Computes the structural index for the model.
+        """
+        if use_raw and not isinstance(to_transform_data, None):
+            raise ValueError("Cannot use raw data and provide data to transform. Raw data is based on the model training data.")
+        elif use_raw:
+            data = self.get_data(train_or_test="train", type="neural")
+        else:
+            data = self.create_embedding(to_transform_data=to_transform_data, to_2d=to_2d)
+            
+        additional_title = {self.id} -{'RAW-' if use_raw else ''} {model_name}
+        
+        #TODO: define file name and location + regenerate or not
+        npy(save_path, data)
+        ??????        
+        
+        struc_ind = structure_index(
+            data=data,
+            labels=labels,
+            params=params,
+            additional_title=additional_title,
+            plot=plot,
+            as_pdf=as_pdf,
+        )
+        return struc_ind
 
 def decode(
     embedding_train: np.ndarray,
@@ -1458,10 +1516,13 @@ def decode(
 
     return results
 
-def structure_index(self, data, labels, params):
-    #TODO: this function needs to be in helper functions
-    #TODO: cebraOwn should have this function so it can be used by the model itself
-    
+def structure_index(data: np.ndarray, 
+                    labels, 
+                    params: Dict[str, Union[int, bool, List[int]]],
+                    additional_title: str = "",
+                    plot: bool = False,
+                    as_pdf: bool = False) -> Dict[str, Dict[str, Union[float, np.ndarray]]] : #TODO: finish return types:
+
     if isinstance(params["n_neighbors"], int) or isinstance(params["n_neighbors"], np.int32) or isinstance(params["n_neighbors"], np.int64):
         parameter_sweep = False
     elif isinstance(params["n_neighbors"], List) or isinstance(params["n_neighbors"], np.ndarray):
@@ -1495,10 +1556,9 @@ def structure_index(self, data, labels, params):
             "overlap_mat": overlapMat,
             "shuf_SI": sSI,
         }
-        additional_title = f"{self.id} -{'RAW-' if use_raw else ''} {model_name}"
         if plot:
-            viz.plot_structure_index(
-                embedding=plot_embeddings[model_name],
+            Visualizer.plot_structure_index(
+                embedding=data,
                 feature=labels,
                 overlapMat=overlapMat,
                 SI=SI,
