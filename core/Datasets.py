@@ -1166,7 +1166,8 @@ class Data_Position(BehaviorDataset):
                 self.plot_attributes["figsize"] = (12, 10)
 
     def plot_data(self):
-        if self.data.ndim == 1:
+        
+        if self.data.shape[1] == 1:
             marker = "^" if self.lap_starts is not None else None
             Vizualizer.data_plot_1D(
                 data=self.data,
@@ -1174,7 +1175,7 @@ class Data_Position(BehaviorDataset):
                 marker_pos=self.lap_starts,
                 marker=marker,
             )
-        elif self.data.ndim == 2:
+        elif self.data.shape[1] == 2:
             Vizualizer.data_plot_2D(
                 data=self.data,
                 position_data=self.data,
@@ -1592,6 +1593,7 @@ class Data_Moving(BehaviorDataset):
         self.brain_processing_delay = {
             "CA1": 2,  # seconds
             "CA3": 2,
+            "MEC": 2,
             "M1": None,
             "S1": None,
             "V1": None,

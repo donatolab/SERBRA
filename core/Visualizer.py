@@ -509,7 +509,6 @@ class Vizualizer:
     ########################################################################################################################
     @staticmethod
     def plot_embedding(
-        self,
         ax,
         embedding,
         embedding_labels: dict,
@@ -1093,7 +1092,7 @@ class Vizualizer:
         ax.set_xlabel("Iterations")
         ax.set_ylabel("InfoNCE Loss")
         plt.legend(bbox_to_anchor=(0.5, 0.3), frameon=False)
-        self.plot_ending(title, as_pdf=as_pdf)
+        self.plot_ending(title, as_pdf=as_pdf, save_dir=self.save_dir)
 
     @staticmethod
     def plot_loss(
@@ -1481,12 +1480,11 @@ class Vizualizer:
         self.plot_ending(title, save_dir=self.save_dir, save=True)
 
     @staticmethod
-    def plot_ending(self, title, save_dir, title_size=20, save=True, as_pdf=False, show=True):
+    def plot_ending(title, save_dir, title_size=20, save=True, as_pdf=False, show=True):
         plt.suptitle(title, fontsize=title_size)
         plt.tight_layout()  # Ensure subplots fit within figure area
 
         if save:
-            save_dir = save_dir
             Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
 
         if show:
@@ -3395,11 +3393,12 @@ class Vizualizer:
         Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
         plt.show()
 
+    @staticmethod
     def plot_structure_index(
-        self,
         embedding: np.ndarray,
         feature: np.ndarray,
         overlapMat: np.ndarray,
+        save_dir: Union[str, Path],
         SI: float,
         binLabel: np.ndarray,
         title: str = "Structural Index",
@@ -3446,22 +3445,33 @@ class Vizualizer:
         at = plt.subplot(1, 3, 1, projection="3d")
         embedding_title = "Embedding"
 
-        session_labels_dict = {"name": "", "labels": session_labels}
+        
+        if embedding.shape[1] != 3 and embedding.shape != 2:
+            dummy_embedding = np.zeros((10, 3))
+            dummy_labels = np.zeros(10)
+            dummy_cmap = "viridis"
+        else:
+            dummy_embedding = None
+            dummy_labels = None
+            dummy_cmap = None
+        
+        session_labels_dict = {"name": "", "labels": session_labels if dummy_labels is None else dummy_labels}
 
         Vizualizer.plot_embedding(
             ax=at,
-            embedding=embedding,
+            embedding=embedding if dummy_embedding is None else dummy_embedding,
             embedding_labels=session_labels_dict,
             title=embedding_title,
             show_hulls=False,
-            cmap=cmap,
+            cmap=cmap if dummy_cmap is None else dummy_cmap,
             plot_legend=False,
             # markersize=markersize,
             # alpha=alpha,
             # dpi=dpi,
         )
-        if len(feature.shape) == 2 and feature.shape[1] == 2:
-            Vizualizer.add_2d_colormap_legend(fig=fig, legend_left=-0.1)
+        if dummy_embedding is None:
+            if len(feature.shape) == 2 and feature.shape[1] == 2:
+                Vizualizer.add_2d_colormap_legend(fig=fig, legend_left=-0.1)
 
         # plot adjacency matrix
         b = ax[1].matshow(
@@ -3498,7 +3508,7 @@ class Vizualizer:
         )
         plt.tight_layout()
 
-        Vizualizer.plot_ending(title=title, as_pdf=as_pdf, show=show)
+        Vizualizer.plot_ending(title=title, as_pdf=as_pdf, show=show, save_dir=save_dir)
 
     @staticmethod
     def lineplot_from_dict_of_dicts(
@@ -3698,6 +3708,8 @@ def pca_component_variance_plot(data: Union[list, np.ndarray], labels: list, per
         plt.scatter(n_components, percentag, color=color)
         #plt.axhline(percentag, color=color, linestyle="--", alpha=0.3)
         plt.axvline(n_components, color=color, linestyle="--", alpha=0.3)
+        
+    plt.title("PCA Component Variance")
     plt.xlabel("Number of components")
     plt.ylabel("Explained variance")
     plt.grid(alpha=0.1)

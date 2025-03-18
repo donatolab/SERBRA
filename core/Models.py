@@ -34,7 +34,7 @@ from structure_index import compute_structure_index
 # own
 from Datasets import Datasets, Dataset
 from Helper import *
-from Visualizer import Visualizer
+from Visualizer import Vizualizer
 
 class Models:
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
@@ -1313,35 +1313,72 @@ class CebraOwn(CEBRA):
             use_raw: bool = False,
             labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
             to_transform_data: Optional[np.ndarray] = None,
-            to_2d: bool = False,
             regenerate: bool = False,
+            to_2d: bool = False,
             plot: bool=True,
             as_pdf: bool=False,
+            folder_name: Optional[str] = "structure_index",
+            plot_save_dir: Optional[Path] = None,
         )-> Dict[str, Dict[str, Union[float, np.ndarray]]] : #TODO: finish return types::
         """
         Computes the structural index for the model.
         """
-        if use_raw and not isinstance(to_transform_data, None):
+        additional_title = f"{self.name}"
+        ofname = f"structrual_indices_{self.name}"
+        return_labels = True if labels is None else True
+        if use_raw and not to_transform_data is None:
             raise ValueError("Cannot use raw data and provide data to transform. Raw data is based on the model training data.")
         elif use_raw:
             data = self.get_data(train_or_test="train", type="neural")
+            labels = self.get_data(train_or_test="train", type="behavior")
+            additional_title += " - RAW"
+            ofname += "_raw"
         else:
-            data = self.create_embedding(to_transform_data=to_transform_data, to_2d=to_2d)
+            if to_transform_data is None:
+                data = self.create_embedding(to_2d=to_2d, return_labels=return_labels)
+                additional_title += " - Embedding"
+            else:
+                data = self.create_embedding(to_transform_data=to_transform_data, to_2d=to_2d, return_labels=return_labels)
+                additional_title += " - Custom Data Embedding"
+                ofname += "_custom"
+            if return_labels:
+                data = data[0]
+                labels = data[1]
+        
+        # check if parameter sweep is performed
+        if isinstance(params["n_neighbors"], List) or isinstance(params["n_neighbors"], np.ndarray):
+            ofname += "_sweep"
+        
+        struc_ind = npy(ofname, task="load", backup_root_folder=self.save_path.parent, backup_folder_name=folder_name)
+        #TODO: remove after enough testing
+        if list(struc_ind.keys())[0] == self.name:
+            struc_ind = struc_ind[self.name]
+            npy(ofname, task="save", data=struc_ind, backup_root_folder=self.save_path.parent, backup_folder_name=folder_name)              
+        
+        if struc_ind is None or regenerate:
+            struc_ind = structure_index(
+                data=data,
+                labels=labels,
+                params=params,
+                additional_title=additional_title,
+                plot=plot,
+                as_pdf=as_pdf,
+            )
+            npy(ofname, task="save", data=struc_ind, backup_root_folder=self.save_path.parent, backup_folder_name=folder_name)              
+        else:
+            if plot:
+                Vizualizer.plot_structure_index(
+                    embedding=data,
+                    feature=labels,
+                    overlapMat=struc_ind["overlap_mat"],
+                    SI=struc_ind["SI"],
+                    binLabel=struc_ind["bin_label"],
+                    additional_title=additional_title,
+                    as_pdf=as_pdf,
+                    save_dir=plot_save_dir or self.save_path.parent.joinpath(folder_name),
+                )
+                
             
-        additional_title = {self.id} -{'RAW-' if use_raw else ''} {model_name}
-        
-        #TODO: define file name and location + regenerate or not
-        npy(save_path, data)
-        ??????        
-        
-        struc_ind = structure_index(
-            data=data,
-            labels=labels,
-            params=params,
-            additional_title=additional_title,
-            plot=plot,
-            as_pdf=as_pdf,
-        )
         return struc_ind
 
 def decode(
@@ -1521,11 +1558,12 @@ def structure_index(data: np.ndarray,
                     params: Dict[str, Union[int, bool, List[int]]],
                     additional_title: str = "",
                     plot: bool = False,
+                    plot_save_dir: Optional[Path] = None,
                     as_pdf: bool = False) -> Dict[str, Dict[str, Union[float, np.ndarray]]] : #TODO: finish return types:
 
-    if isinstance(params["n_neighbors"], int) or isinstance(params["n_neighbors"], np.int32) or isinstance(params["n_neighbors"], np.int64):
+    if is_int_like(params["n_neighbors"]):
         parameter_sweep = False
-    elif isinstance(params["n_neighbors"], List) or isinstance(params["n_neighbors"], np.ndarray):
+    elif is_array_like(params["n_neighbors"]):
         parameter_sweep = True
         sweep_range = deepcopy(params["n_neighbors"])
     else:
@@ -1557,7 +1595,9 @@ def structure_index(data: np.ndarray,
             "shuf_SI": sSI,
         }
         if plot:
-            Visualizer.plot_structure_index(
+            if not plot_save_dir:
+                plot_save_dir = Path.cwd()
+            Vizualizer.plot_structure_index(
                 embedding=data,
                 feature=labels,
                 overlapMat=overlapMat,
@@ -1565,5 +1605,6 @@ def structure_index(data: np.ndarray,
                 binLabel=binLabel,
                 additional_title=additional_title,
                 as_pdf=as_pdf,
+                save_dir=plot_save_dir
             )
     return structural_index

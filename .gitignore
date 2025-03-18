@@ -8,3 +8,5 @@ logs*
 *.egg
 *__pycache__
 *.pyc
+*.npy
+*.mat

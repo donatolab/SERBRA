@@ -313,7 +313,7 @@ class Treadmill_Setup(BehavioralSetup):
         )
         self.outputs = {self.root_dir: [self.data_naming_scheme]}
         self.raw_data_path = self.define_file_path(file_name=self.data_naming_scheme)
-        self.data_path = self.define_data_path(file_name=self.output_data_naming_scheme)
+        self.data_path = self.define_data_path() #file_name=self.output_data_naming_scheme
         self.preprocess = self.get_preprocess()
 
     @staticmethod

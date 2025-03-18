@@ -1438,7 +1438,7 @@ def pairwise_compare(vectors: np.ndarray, metric="pearson"):
         raise ValueError(f"{metric} not supported in function {pairwise_compare}")
     return distances
 
-    
+
 ## normalization
 def normalize_01(vector, axis):
     """
@@ -1671,22 +1671,82 @@ def values_to_groups(
 
 
 def is_integer(array: np.ndarray) -> bool:
+    """Check if a NumPy array has an integer data type.
+
+    Args:
+        array (np.ndarray): Input array.
+
+    Returns:
+        bool: True if the array's data type is an integer type, False otherwise.
+    """
     return np.issubdtype(array.dtype, np.integer)
 
 
 def is_floating(array: np.ndarray) -> bool:
+    """Check if a NumPy array has a floating-point data type.
+
+    Args:
+        array (np.ndarray): Input array.
+
+    Returns:
+        bool: True if the array's data type is a floating-point type, False otherwise.
+    """
     return np.issubdtype(array.dtype, np.floating)
 
 
-def is_list_of_ndarrays(variable):
-    # Check if the variable is a list
-    if isinstance(variable, list):
-        # Check if every element in the list is an instance of np.ndarray
-        return all(isinstance(element, np.ndarray) for element in variable)
-    return False
+def is_int_like(variable) -> bool:
+    """Check if a variable is an integer-like type.
+
+    Args:
+        variable: The input variable to check.
+
+    Returns:
+        bool: True if the variable is an instance of int or a NumPy integer type, False otherwise.
+    """
+    return isinstance(variable, (int, np.integer))
+
+
+def is_float_like(variable) -> bool:
+    """Check if a variable is a floating-point-like type.
+
+    Args:
+        variable: The input variable to check.
+
+    Returns:
+        bool: True if the variable is an instance of float or a NumPy floating-point type, False otherwise.
+    """
+    return isinstance(variable, (float, np.floating))
+
+
+def is_array_like(variable) -> bool:
+    """Check if a variable is an array-like structure.
+
+    Args:
+        variable: The input variable to check.
+
+    Returns:
+        bool: True if the variable is a list, tuple, or NumPy ndarray, False otherwise.
+    """
+    return isinstance(variable, (list, tuple, np.ndarray))
+
+
+def is_list_of_ndarrays(variable) -> bool:
+    """Check if a variable is a list (or tuple) of NumPy ndarrays.
+
+    Args:
+        variable: The input variable to check.
+
+    Returns:
+        bool: True if the variable is a list or tuple where every element is an instance of np.ndarray, False otherwise.
+    """
+    return isinstance(variable, (list, tuple)) and all(
+        isinstance(element, np.ndarray) for element in variable
+    )
 
 
 def force_1_dim_larger(data: np.ndarray):
+    if data is None:
+        return None
     if len(data.shape) == 1 or data.shape[0] < data.shape[1]:
         # global_logger.warning(
         #    f"Data is probably transposed. Needed Shape [Time, cells] Transposing..."
@@ -1733,6 +1793,7 @@ def split_array_by_zscore(array, zscore, threshold=2.5):
     below_threshold = np.where(zscore < threshold)[0]
     return array[above_threshold], array[below_threshold]
 
+
 def npy(
     fname: str,
     task: str,
@@ -1756,6 +1817,7 @@ def npy(
         Specifies the operation to perform:
         - "save": Saves the provided data as a numpy file
         - "exists": Checks if a file with the given name already exists in the backup directory
+        - "load": Loads the numpy file with the given name from the backup directory
 
     data : np.ndarray, optional
         The numpy array to be saved.
@@ -1797,9 +1859,7 @@ def npy(
         return data_path.exists()
     elif task == "save":
         if data is None:
-            global_logger.error(
-                f"Data must be provided to save npy in {data_path}."
-            )
+            global_logger.error(f"Data must be provided to save npy in {data_path}.")
             raise ValueError(f"Data must be provided to save npy in {data_path}.")
         np_data = np.array(data)
         np.save(data_path, np_data)
@@ -1811,7 +1871,7 @@ def npy(
                 data = np.load(data_path, allow_pickle=True).item()
             except:
                 data = np.load(data_path, allow_pickle=True)
-                
+
             print(f"SAVING: Loaded {fname} from {data_path}")
             return data
         else:
@@ -1821,6 +1881,7 @@ def npy(
     else:
         global_logger.error(f"Task {task} not recognized.")
         raise ValueError(f"Task {task} not recognized.")
+
 
 def bin_array_1d(
     arr: List[float],
@@ -1877,8 +1938,8 @@ def bin_array(
     Returns:
     numpy.ndarray: Binned array, starting at bin 0 to n-1.
     """
-    min_bin = make_list_ifnot(min_bin)
-    max_bin = make_list_ifnot(max_bin)
+    min_bin = make_list_ifnot(min_bin or np.min(arr, axis=0))
+    max_bin = make_list_ifnot(max_bin or np.max(arr, axis=0))
     bin_size = make_list_ifnot(bin_size)
     np_arr = np.array(arr)
     if np_arr.ndim == 1:

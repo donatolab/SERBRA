@@ -1680,7 +1680,7 @@ class Task:
                 model_naming_filter_exclude=model_naming_filter_exclude,
             )
         )
-        models_original = self.models.get_pipeline_models(m)
+        
         stimulus_type = (
             self.behavior_metadata["stimulus_type"]
             if "stimulus_type" in self.behavior_metadata.keys()
@@ -1830,6 +1830,7 @@ class Task:
         regenerate: bool = False,
         plot: bool=True,
         as_pdf: bool=False,
+        plot_save_dir: Optional[Path] = None,
     ) -> Dict[str, Dict[str, Union[float, np.ndarray]]]: #TODO: finish return types
         """
         Calculate structural indices for the task given a model.
@@ -1903,91 +1904,27 @@ class Task:
             model_naming_filter_exclude=model_naming_filter_exclude,
         )
         
+        parameter_sweep = is_array_like(params["n_neighbors"])
+        
         task_structural_indices = {}
         for model_name, model in models.items():
-            task_structural_indices[model_name] = model.structur_index(
+            global_logger.info(f"Calculating structural indices for {model_name}")
+            model_structural_indices = model.structure_index(
                 params=params,
                 labels=labels,
                 to_transform_data=to_transform_data,
                 to_2d=to_2d,
+                use_raw=use_raw,
                 regenerate=regenerate,
-                plot=plot,
+                plot=False if parameter_sweep else plot,
                 as_pdf=as_pdf,
+                plot_save_dir=plot_save_dir or self.data_dir.parent.joinpath("figures"),
             )
+            task_structural_indices[model_name] = model_structural_indices
             
-
-        plot_embeddings, _ = self.extract_wanted_embedding_and_labels(
-            cls=self,
-            model_naming_filter_include=model_naming_filter_include,
-            model_naming_filter_exclude=model_naming_filter_exclude,
-            use_raw=False,
-            embeddings=embeddings,
-            manifolds_pipeline=manifolds_pipeline,
-            to_transform_data=to_transform_data,
-            to_2d=to_2d,
-            labels=labels,
-        )
-
-        embeddings, labels_dict = self.extract_wanted_embedding_and_labels(
-            cls=self,
-            model_naming_filter_include=model_naming_filter_include,
-            model_naming_filter_exclude=model_naming_filter_exclude,
-            use_raw=use_raw,
-            embeddings=embeddings,
-            manifolds_pipeline=manifolds_pipeline,
-            to_transform_data=to_transform_data,
-            labels=labels,
-        )
-
-        viz = Vizualizer(self.data_dir.parent.parent)
-        
-        if use_raw:
-            #TODO
-            #TODO
-            #TODO
-            #TODO
+        if parameter_sweep and plot:
+            #TODO: create plotting for parameter sweep
             pass
-        
-        task_structural_indices = {}
-        for model_name, embedding in embeddings.items():
-            global_logger.info(f"Calculating structural indices for {model_name}")
-            
-            labels = labels_dict[model_name]
-            
-            ofname = f"structrual_indices_{model_name}"
-            ofname += "_raw" if use_raw else ""
-            ofname += "_sweep" if parameter_sweep else ""
-            
-            model_structural_indices = self.npy(fname=ofname, task="load") 
-            
-            if model_structural_indices is None or regenerate:
-                model_structural_indices = self.structure_index()
-                task_structural_indices[model_name] = model.structural_indices()
-                if parameter_sweep:
-                    #TODO: plotting for parameter sweep
-                    #TODO
-                    #TODO
-                    #TODO
-                    pass
-                else:
-                    additional_title = f"{self.id} -{'RAW-' if use_raw else ''} {model_name}"
-                    if plot:
-                        viz.plot_structure_index(
-                            embedding=plot_embeddings[model_name],
-                            feature=labels,
-                            overlapMat=overlapMat,
-                            SI=SI,
-                            binLabel=binLabel,
-                            additional_title=additional_title,
-                            as_pdf=as_pdf,
-                        )
-                npy(
-                    fname=ofname,
-                    data=task_structural_indices,
-                    task="save",
-                )
-            else:
-                task_structural_indices[model_name] = model_structural_indices
                 
         return task_structural_indices
 
