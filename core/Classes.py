@@ -557,6 +557,7 @@ class Animal:
         wanted_information : list
             A list containing the wanted information to extract from the models (default is ["embedding", "loss"]).
             Options are
+                - "model": the unique models
                 - "embedding": the embeddings of the unique models
                 - "loss": the training losses of the unique models
                 - "raw": the raw data used for training the unique models, which is binarized neural data for models based on cebra
@@ -583,6 +584,7 @@ class Animal:
 
         """
         # extract embeddings and losses
+        models = {}
         raws = {}
         embeddings = {}
         losss = {}
@@ -608,7 +610,7 @@ class Animal:
                 if len(task_models) == 0:
                     continue
                 task_model = next(iter(task_models.values()))
-
+                models[task.id] = task_model
                 raws[task.id] = task_model.get_data(
                     train_or_test=train_or_test, type="neural"
                 )
@@ -762,6 +764,139 @@ class Animal:
                 plot_iterations=False,
                 as_pdf=as_pdf,
             )
+
+    def session_model_cross_decode(
+        self,
+        manifolds_pipeline: str = "cebra",
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+        n_neighbors: Optional[int] = 36,
+    ):
+        """
+        Calculates the decoding performance between models from all tasks based on the wanted model names.
+
+        Parameters
+        ----------
+        manifolds_pipeline : str, optional
+            The name of the manifolds pipeline to use for decoding (default is "cebra").
+        model_naming_filter_include : list, optional
+            A list of lists containing the model naming parts to include (default is None).
+            If None, all models will be included.
+        model_naming_filter_exclude : list, optional
+            A list of lists containing the model naming parts to exclude (default is None).
+            If None, no models will be excluded.
+        n_neighbors : int, optional
+            The number of neighbors to use for the KNN algorithm (default is 36).
+
+        Returns
+        -------
+        task_decoding_statistics : dict
+            A dictionary containing the decoding statistics between models based on the wanted model names.
+        """
+        info = self.get_unique_model_information(
+            wanted_information=["model"],
+            manifolds_pipeline=manifolds_pipeline,
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
+        )
+        unique_models = info["model"]
+        
+        data_labels = []
+        task_decoding_statistics = {}
+        global_logger.info(
+            f"""Start calculating decoding statistics for all sessions, tasks and models found from {manifolds_pipeline} pipeline using naming filter including {model_naming_filter_include} and excluding {model_naming_filter_exclude}"""
+        )
+        for task_name, task_model in iter_dict_with_progress(unique_models):
+            global_logger.info(f"Decoding statistics for {task_name}")
+            task_model.define_decoding_statistics(regenerate=True, n_neighbors=n_neighbors)
+            mean = task_model.get_decoding_statistics("mean")
+            variance = task_model.get_decoding_statistics("variance")
+
+            if "relative" in task_model.name:
+                print("WARNING: Numbers are relavtive")
+                """global_logger.warning(
+                    f"Detected relative in task_model name {task_model.name}. Converting relative performance to absolute using max possible value possible."
+                )
+                behavior_type = task_model.name.split("_")[1]
+                absolute_data = self.tasks[task_name].behavior.get_multi_data(
+                    sources=behavior_type
+                )[0]
+                # convert percentage to cm
+                max_position_absolute_model_data = np.max(absolute_data)
+                mean = mean * max_position_absolute_model_data
+                variance = variance * max_position_absolute_model_data"""
+
+            #stimulus_type = self.tasks[task_name].behavior_metadata["stimulus_type"]
+            stimulus_type = ""
+            task_name_type = f"{task_name} ({stimulus_type})"
+            task_decoding_statistics[task_name_type] = {}
+            data_labels.append(task_name_type)
+            task_decoding_statistics[task_name_type][stimulus_type] = {
+                "mean": mean,
+                "variance": variance,
+            }
+
+            for task_name2, task_models2 in unique_models.items():
+                if task_name == task_name2:
+                    continue
+                #stimulus_type2 = self.tasks[task_name2].behavior_metadata[
+                #    "stimulus_type"
+                #]
+                stimulus_type2 = ""
+                model2 = task_models2 # [list(task_models2.keys())[0]]
+                stimulus_decoding = f"{task_name_type}_{stimulus_type2}"
+
+                neural_data_test_to_embedd = model2.get_data(train_or_test="test", type="neural")
+                labels_test = model2.get_data(train_or_test="test", type="behavior")
+                if task_model.get_data(type="neural").shape[1] != model2.get_data(type="neural").shape[1]:
+                    print(f"WARNING: Number of Neurons in Datasets not equal. ADAPTING MODEL")
+                    adapted_task_model = task_model.fit(neural_data_test_to_embedd, labels_test, adapt=True)
+                    decoding_of_other_task = adapted_task_model.define_decoding_statistics(
+                        neural_data_test_to_embedd=neural_data_test_to_embedd,
+                        labels_test=labels_test,
+                        n_neighbors=n_neighbors,
+                    )
+                else:
+                    decoding_of_other_task = task_model.define_decoding_statistics(
+                        neural_data_test_to_embedd=neural_data_test_to_embedd,
+                        labels_test=labels_test,
+                        n_neighbors=n_neighbors,
+                    )
+
+                mean = decoding_of_other_task["rmse"]["mean"]
+                variance = decoding_of_other_task["rmse"]["variance"]
+
+                if "relative" in task_model.name:
+                    print("WARNING: Numbers are relavtive")
+                    """global_logger.warning(
+                        f"Detected relative in model name {model.name}. Converting relative performance to absolute using max possible value possible."
+                    )
+                    behavior_type = model.name.split("_")[1]
+                    absolute_data = self.tasks[task_name].behavior.get_multi_data(
+                        sources=behavior_type
+                    )[0]
+                    # convert percentage to cm
+                    max_position_absolute_model_data = np.max(absolute_data)
+                    mean = mean * max_position_absolute_model_data
+                    variance = variance * max_position_absolute_model_data"""
+
+                if stimulus_decoding in task_decoding_statistics[task_name_type]:
+                    stimulus_decoding = f"{stimulus_decoding}_2"
+                task_decoding_statistics[task_name_type][stimulus_decoding] = {
+                    "mean": mean,
+                    "variance": variance,
+                }
+                data_labels.append(stimulus_decoding)
+
+        global_logger.info(task_decoding_statistics)
+
+        Vizualizer.barplot_from_dict_of_dicts(
+            task_decoding_statistics,
+            data_labels=data_labels,
+            figsize=(20, 6),
+            additional_title=f"- Decoding perfomance between Models based on Environments (moving) - {self.id}",
+        )
+        return task_decoding_statistics
 
     def structural_indices(
         self,
@@ -1055,9 +1190,12 @@ class Session:
                 "variance": variance,
             }
 
+            stimulus_typ2_list = [
+                self.tasks[task_name2].behavior_metadata["stimulus_type"] for task_name2 in session_models.keys()
+            ]
+
             for task_name2, task_models2 in session_models.items():
                 if task_name == task_name2:
-
                     continue
                 stimulus_type2 = self.tasks[task_name2].behavior_metadata[
                     "stimulus_type"

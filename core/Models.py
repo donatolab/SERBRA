@@ -1,3 +1,4 @@
+from __future__ import annotations
 # type hints
 from typing import List, Union, Dict, Tuple, Optional, Literal
 
@@ -345,6 +346,14 @@ class Models:
         else:
             raise ValueError(f"Pipeline {pipeline} not supported. Choose 'cebra'.")
         return models_class
+    
+    @staticmethod
+    def model_cross_decoding(self, ref_model: Model, models: Dict[str, Model], labels: List[str]=None):
+        """
+        Cross-decoding between models.
+        """
+        #TODO: Implement cross-decoding between models
+        raise NotImplementedError(f"Cross-decoding between models not implemented yet in {self.__class__}")
 
 
 class ModelsWrapper:
@@ -1565,7 +1574,6 @@ def decode(
         # print(f"Root Mean Squared Error: {rmse}")
         # print(f"Variance of Absolute Error: {error_var}")
         # print(f"R²: {r2}")
-
         rmse_dict = {"mean": rmse, "variance": error_var}
         r2_dict = {"mean": r2}
         results = {"rmse": rmse_dict, "r2": r2_dict}
