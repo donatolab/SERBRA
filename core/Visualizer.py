@@ -509,9 +509,9 @@ class Vizualizer:
     ########################################################################################################################
     @staticmethod
     def plot_embedding(
-        ax,
         embedding,
         embedding_labels: dict,
+        ax: Optional[matplotlib.axes.Axes] = None,
         show_hulls=False,
         title="Embedding",
         cmap="rainbow",
@@ -521,6 +521,7 @@ class Vizualizer:
         alpha=None,
         figsize=(10, 10),
         dpi=300,
+        additional_title="",
     ):
         embedding, labels = force_equal_dimensions(
             embedding, embedding_labels["labels"]
@@ -538,6 +539,7 @@ class Vizualizer:
                 figsize=figsize,
                 dpi=dpi,
                 plot_legend=plot_legend,
+                additional_title=additional_title,
             )
         elif embedding.shape[1] == 3:
             ax = Vizualizer.plot_embedding_3d(
@@ -552,6 +554,7 @@ class Vizualizer:
                 figsize=figsize,
                 dpi=dpi,
                 plot_legend=plot_legend,
+                additional_title=additional_title,
             )
         else:
             raise NotImplementedError(
@@ -568,6 +571,7 @@ class Vizualizer:
         alpha: float = 0.4,
         cmap: str = "cool",
         title: str = "2D Embedding",
+        additional_title: str = "",
         axis: Optional[matplotlib.axes.Axes] = None,
         figsize: tuple = (5, 5),
         dpi: float = 100,
@@ -644,7 +648,7 @@ class Vizualizer:
         # ax.spines['left'].set_visible(False)
         ax.set_xlim(embedding[:, idx1].min(), embedding[:, idx1].max())
         ax.grid(False)
-        ax.set_title(title, y=1.0, pad=-10)
+        ax.set_title(title + additional_title, y=1.0, pad=-10)
 
         if plot_legend:
             Vizualizer.add_2d_colormap_legend(fig, discret_n_colors=embedding_labels)
@@ -660,6 +664,7 @@ class Vizualizer:
         alpha: float = 0.4,
         cmap: str = "cool",
         title: str = "3D Embedding",
+        additional_title: str = "",
         axis: Optional[matplotlib.axes.Axes] = None,
         figsize: tuple = (5, 5),
         dpi: float = 100,
@@ -710,7 +715,7 @@ class Vizualizer:
         ax.xaxis.pane.set_edgecolor("w")
         ax.yaxis.pane.set_edgecolor("w")
         ax.zaxis.pane.set_edgecolor("w")
-        ax.set_title(title, y=1.08, pad=-10)
+        ax.set_title(title + additional_title, y=1.08, pad=-10)
 
         if grey_fig:
             ax.xaxis.pane.set_edgecolor("grey")
@@ -850,6 +855,8 @@ class Vizualizer:
         self,
         embeddings: dict,
         labels: dict,
+        min_val=None,
+        max_val=None,
         ticks=None,
         title="Embeddings",
         cmap="rainbow",
@@ -906,8 +913,8 @@ class Vizualizer:
             # create 2D RGBA labels to overwrite 1D cmap coloring
             rgba_colors = None
             if session_labels.shape[1] == 2:
-                min_vals = np.min(session_labels, axis=0)
-                max_vals = np.max(session_labels, axis=0)
+                min_vals = min_val or np.min(session_labels, axis=0)
+                max_vals = max_val or np.max(session_labels, axis=0)
                 # steps = 5
                 xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
                 yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
@@ -916,8 +923,8 @@ class Vizualizer:
             elif is_rgba(session_labels):
                 first_embedding = list(embeddings.values())[0]
                 if first_embedding.shape[1] == 2:
-                    min_vals = np.min(first_embedding, axis=0)
-                    max_vals = np.max(first_embedding, axis=0)
+                    min_vals = min_val or np.min(first_embedding, axis=0)
+                    max_vals = max_val or np.max(first_embedding, axis=0)
                     xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
                     yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
                 else:
@@ -973,7 +980,12 @@ class Vizualizer:
         for ax in axes[num_subplots:]:
             ax.remove()  # Remove any excess subplot axes
         fig.tight_layout()
-        self.plot_ending(title, title_size=preset_figsize_x * cols, save_dir=self.save_dir, as_pdf=as_pdf)
+        self.plot_ending(
+            title,
+            title_size=preset_figsize_x * cols,
+            save_dir=self.save_dir,
+            as_pdf=as_pdf,
+        )
 
     def create_rgba_labels(values, alpha=0.8):
         """
@@ -3445,7 +3457,6 @@ class Vizualizer:
         at = plt.subplot(1, 3, 1, projection="3d")
         embedding_title = "Embedding"
 
-        
         if embedding.shape[1] != 3 and embedding.shape != 2:
             dummy_embedding = np.zeros((10, 3))
             dummy_labels = np.zeros(10)
@@ -3454,8 +3465,11 @@ class Vizualizer:
             dummy_embedding = None
             dummy_labels = None
             dummy_cmap = None
-        
-        session_labels_dict = {"name": "", "labels": session_labels if dummy_labels is None else dummy_labels}
+
+        session_labels_dict = {
+            "name": "",
+            "labels": session_labels if dummy_labels is None else dummy_labels,
+        }
 
         Vizualizer.plot_embedding(
             ax=at,
@@ -3662,16 +3676,19 @@ def plot_line(
         plt.tight_layout()
         plt.show()
 
-def mds(distances: Union[np.ndarray, pd.DataFrame], 
-        n_components: int = 2,
-        labels: Optional[Union[np.ndarray, pd.Series]] = None,):
+
+def mds(
+    distances: Union[np.ndarray, pd.DataFrame],
+    n_components: int = 2,
+    labels: Optional[Union[np.ndarray, pd.Series]] = None,
+):
     """
     Apply Multidimensional Scaling (MDS) to a distance matrix.
 
     Args:
         distances: Distance matrix as a NumPy array or Pandas DataFrame.
         n_components: Number of dimensions to reduce to (default: 2).
-    
+
     Returns:
         np.ndarray: Reduced-dimensional embeddings.
     """
@@ -3685,18 +3702,22 @@ def mds(distances: Union[np.ndarray, pd.DataFrame],
     plt.scatter(coords[:, 0], coords[:, 1])
     if not isinstance(labels, type(None)):
         for i, (x, y) in zip(labels, coords):
-            plt.text(x, y, str(i), fontsize=12, ha='right')
+            plt.text(x, y, str(i), fontsize=12, ha="right")
 
     plt.xlabel("MDS Dimension 1")
     plt.ylabel("MDS Dimension 2")
     plt.title("2D Representation of Procrustes Distances")
     plt.show()
 
-def pca_component_variance_plot(data: Union[list, np.ndarray], labels: list, percentag=0.8):
+
+def pca_component_variance_plot(
+    data: Union[list, np.ndarray], labels: list, percentag=0.8
+):
     from sklearn.decomposition import PCA
+
     datas = make_list_ifnot(data)
     labels = make_list_ifnot(labels)
-    #discrete colors
+    # discrete colors
     colors = plt.cm.tab10(np.linspace(0, 1, len(datas)))
     plt.figure(figsize=(8, 5))
     for data, color, label in zip(datas, colors, labels):
@@ -3706,9 +3727,9 @@ def pca_component_variance_plot(data: Union[list, np.ndarray], labels: list, per
         n_components = np.argmax(cumulative_variance > percentag)
         plt.plot(cumulative_variance, color=color, label=f"{label}: {n_components}")
         plt.scatter(n_components, percentag, color=color)
-        #plt.axhline(percentag, color=color, linestyle="--", alpha=0.3)
+        # plt.axhline(percentag, color=color, linestyle="--", alpha=0.3)
         plt.axvline(n_components, color=color, linestyle="--", alpha=0.3)
-        
+
     plt.title("PCA Component Variance")
     plt.xlabel("Number of components")
     plt.ylabel("Explained variance")

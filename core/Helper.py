@@ -1462,6 +1462,25 @@ def normalize_01(vector, axis):
     normalized_vector = (vector - min_val) / (max_val - min_val)
     return normalized_vector
 
+def create_list_of_lists(data: Union[str, List[str], List[List[str]]]):
+    """
+    Create a list of lists from a string or a list of strings.
+    
+    Args:
+    ------
+    - data (Union[str, List[str], List[List[str]]): Input data to convert to a list of lists.
+    
+    Returns:
+    ------
+    - data (List[List[str]]): List of lists.
+    """
+    if not isinstance(data, list):
+        data = [data]
+    elif isinstance(data, list) and all(
+            isinstance(prop, str) for prop in data
+        ):
+            data = [data] 
+    return data
 
 # strings
 def filter_strings_by_properties(
@@ -1483,28 +1502,19 @@ def filter_strings_by_properties(
     filtered_strings = []
 
     if include_properties:
-        if not isinstance(include_properties, list):
-            include_properties = [include_properties]
-        elif isinstance(include_properties, list) and all(
-            isinstance(prop, str) for prop in include_properties
-        ):
-            include_properties = [include_properties]
+        include_properties = create_list_of_lists(include_properties)
 
     if exclude_properties:
-        if isinstance(exclude_properties, str):
-            exclude_properties = [exclude_properties]
-        elif isinstance(exclude_properties, list) and all(
-            isinstance(prop, str) for prop in exclude_properties
-        ):
-            exclude_properties = [exclude_properties]
+        exclude_properties = create_list_of_lists(exclude_properties)
 
     for string in strings:
+        string = string.lower()
         include_check = False
         if include_properties:
             # Check if any of the include properties lists are present in the string
             for props in include_properties:
                 props = make_list_ifnot(props)
-                if all(prop.lower() in string.lower() for prop in props):
+                if all(prop.lower() in string for prop in props):
                     include_check = True
                     break
         else:
@@ -1515,7 +1525,7 @@ def filter_strings_by_properties(
             # Check if any of the exclude properties lists are present in the string
             for props in exclude_properties:
                 props = make_list_ifnot(props)
-                if all(prop.lower() in string.lower() for prop in props):
+                if all(prop.lower() in string for prop in props):
                     exclude_check = True
                     break
         else:

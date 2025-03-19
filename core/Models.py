@@ -36,6 +36,7 @@ from Datasets import Datasets, Dataset
 from Helper import *
 from Visualizer import Vizualizer
 
+
 class Models:
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
         if not model_settings:
@@ -142,7 +143,7 @@ class Models:
                 3. Include all models containing one of the string combinations: [["string1", "string2"], ["string3", "string4"]]
             model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
                 Same as model_naming_filter_include but for excluding models.
-                
+
         Returns:
         --------
             model_class : class
@@ -168,7 +169,9 @@ class Models:
         models_shuffled = []
         if not models:
             models_class, models = self.get_pipeline_models(
-                manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude
+                manifolds_pipeline,
+                model_naming_filter_include,
+                model_naming_filter_exclude,
             )
 
         # convert list of model objects to dictionary[model_name] = model
@@ -303,6 +306,9 @@ class Models:
                 shuffle=shuffle,
                 split_ratio=split_ratio,
             )
+        else:
+            behavior_data_test = None
+
         model = model.train(
             neural_data=neural_data_train,
             behavior_data=behavior_data_train,
@@ -328,8 +334,8 @@ class Models:
             )
             test_embedding = model.create_embedding(to_transform_data=neural_data_test)
 
-        model.data["train"]["embedding"] = train_embedding
-        model.data["test"]["embedding"] = test_embedding
+        model.set_data(data=train_embedding, train_or_test="train", type="embedding")
+        model.set_data(data=test_embedding, train_or_test="test", type="embedding")
 
         return model
 
@@ -1100,6 +1106,7 @@ class CebraOwn(CEBRA):
         neural_data_test_to_embedd: np.ndarray = None,
         labels_train: np.ndarray = None,
         labels_test: np.ndarray = None,
+        n_neighbors: int = 36,
         regenerate: bool = False,
     ):
         """
@@ -1129,28 +1136,35 @@ class CebraOwn(CEBRA):
                 to_transform_data=neural_data_train_to_embedd
             )
         else:
-            if self.data["train"]["embedding"] is None:
-                self.data["train"]["embedding"] = self.create_embedding(
-                    to_transform_data=self.data["train"]["neural"]
+            if self.get_data() is None:
+                self.set_data(
+                    data=self.create_embedding(
+                        to_transform_data=self.get_data(type="neural")
+                    )
                 )
-            neural_data_train = self.data["train"]["embedding"]
+            neural_data_train = self.get_data()
 
         if neural_data_test_to_embedd is not None:
             neural_data_test = self.create_embedding(
                 to_transform_data=neural_data_test_to_embedd
             )
         else:
-            if self.data["test"]["embedding"] is None:
-                self.data["test"]["embedding"] = self.create_embedding(
-                    to_transform_data=self.data["test"]["neural"]
+            if self.get_data(train_or_test="test") is None:
+                self.set_data(
+                    data=self.create_embedding(
+                        to_transform_data=get_data(train_or_test="test", type="neural")
+                    ),
+                    train_or_test="test",
                 )
-            neural_data_test = self.data["test"]["embedding"]
+            neural_data_test = self.get_data(train_or_test="test")
 
         labels_train = (
-            self.data["train"]["behavior"] if labels_train is None else labels_train
+            self.get_data(type="behavior") if labels_train is None else labels_train
         )
         labels_test = (
-            self.data["test"]["behavior"] if labels_test is None else labels_test
+            self.get_data(train_or_test="test", type="behavior")
+            if labels_test is None
+            else labels_test
         )
 
         if neural_data_train is None or neural_data_train.shape[0] < 10:
@@ -1167,6 +1181,7 @@ class CebraOwn(CEBRA):
                     embedding_test=neural_data_test,
                     labels_train=labels_train,
                     labels_test=labels_test,
+                    n_neighbors=n_neighbors,
                 )
         return self.decoding_statistics
 
@@ -1219,21 +1234,35 @@ class CebraOwn(CEBRA):
         self,
         session_id=None,
         to_transform_data=None,
+        transform_data_labels=None,
+        train_or_test="train",
         to_2d=False,
         save=False,
         return_labels=False,
+        plot=False,
+        additional_title="",
     ):
         embedding = None
         labels = None
         if self.fitted:
             if to_transform_data is None:
-                to_transform_data = self.data["train"]["neural"]
-                label = self.data["train"]["behavior"]
+                to_transform_data = self.get_data(
+                    train_or_test=train_or_test, type="neural"
+                )
+                label = self.get_data(train_or_test=train_or_test, type="behavior")
+            else:
+                label = transform_data_labels
+                if label is None:
+                    global_logger.warning(
+                        f"WARNING: Proper Plotting of transformed data only possible with provided labels."
+                    )
+                    label = np.zeros(to_transform_data.shape[0])
 
             if isinstance(to_transform_data, list) and len(to_transform_data) == 1:
                 to_transform_data = to_transform_data[0]
 
             if isinstance(to_transform_data, np.ndarray):
+
                 if session_id is not None:
                     # single session embedding from multi-session model
                     embedding = (
@@ -1259,6 +1288,18 @@ class CebraOwn(CEBRA):
 
                     with open("multi_embeddings.pkl", "wb") as f:
                         pickle.dump(embedding, f)
+
+                if plot:
+                    plot_labels = {
+                        "name": self.name,
+                        "labels": label,
+                    }
+                    Vizualizer.plot_embedding(
+                        embedding=embedding,
+                        embedding_labels=plot_labels,
+                        markersize=2,
+                        additional_title=additional_title,
+                    )
             else:
                 embedding = {}
                 # multi-session embedding
@@ -1283,6 +1324,7 @@ class CebraOwn(CEBRA):
             global_logger.warning(f"Skipping {self.name} model")
             print(f"{self.name} model. Not fitted.")
             print(f"Skipping {self.name} model")
+
         if return_labels:
             return embedding, labels
         return embedding
@@ -1290,17 +1332,19 @@ class CebraOwn(CEBRA):
     def get_loss(self):
         return self.state_dict_["loss"]
 
-    def get_data(self, train_or_test:str = "train", type:str = "embedding") -> np.ndarray:
+    def get_data(
+        self, train_or_test: str = "train", type: str = "embedding"
+    ) -> np.ndarray:
         """
         Get the data for the model.
-        
+
         Parameters
         ----------
         train_or_test : str
             The type of data to get (either "train" or "test").
         type : str
             The type of data to get (either "neural", "embedding" or "behavior").
-        
+
         Returns
         -------
         np.ndarray
@@ -1308,18 +1352,56 @@ class CebraOwn(CEBRA):
         """
         return self.data[train_or_test][type]
 
-    def structure_index(self,
-            params: Dict[str, Union[int, bool, List[int]]],
-            use_raw: bool = False,
-            labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
-            to_transform_data: Optional[np.ndarray] = None,
-            regenerate: bool = False,
-            to_2d: bool = False,
-            plot: bool=True,
-            as_pdf: bool=False,
-            folder_name: Optional[str] = "structure_index",
-            plot_save_dir: Optional[Path] = None,
-        )-> Dict[str, Dict[str, Union[float, np.ndarray]]] : #TODO: finish return types::
+    def set_data(
+        self, data: np.ndarray, train_or_test: str = "train", type: str = "embedding"
+    ):
+        """
+        Set the data for the model.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            The data to set.
+        train_or_test : str
+            The type of data to set (either "train" or "test").
+        type : str
+            The type of data to set (either "neural", "embedding" or "behavior").
+        """
+        self.data[train_or_test][type] = data
+
+    def get_decoding_statistics(
+        self, mean_or_variance: str = "mean", type: str = "rmse"
+    ):
+        """
+        Get the decoding statistics for the model.
+
+        Parameters
+        ----------
+        mean_or_variance : str
+            The type of statistics to get (either "mean" or "variance").
+        type : str
+            The type of statistics to get (either "rmse" or "r2").
+
+        Returns
+        -------
+        Union[float, np.ndarray]
+            The decoding statistics for the model.
+        """
+        return self.decoding_statistics[type][mean_or_variance]
+
+    def structure_index(
+        self,
+        params: Dict[str, Union[int, bool, List[int]]],
+        use_raw: bool = False,
+        labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
+        to_transform_data: Optional[np.ndarray] = None,
+        regenerate: bool = False,
+        to_2d: bool = False,
+        plot: bool = True,
+        as_pdf: bool = False,
+        folder_name: Optional[str] = "structure_index",
+        plot_save_dir: Optional[Path] = None,
+    ) -> Dict[str, Dict[str, Union[float, np.ndarray]]]:  # TODO: finish return types::
         """
         Computes the structural index for the model.
         """
@@ -1327,7 +1409,9 @@ class CebraOwn(CEBRA):
         ofname = f"structrual_indices_{self.name}"
         return_labels = True if labels is None else True
         if use_raw and not to_transform_data is None:
-            raise ValueError("Cannot use raw data and provide data to transform. Raw data is based on the model training data.")
+            raise ValueError(
+                "Cannot use raw data and provide data to transform. Raw data is based on the model training data."
+            )
         elif use_raw:
             data = self.get_data(train_or_test="train", type="neural")
             labels = self.get_data(train_or_test="train", type="behavior")
@@ -1338,23 +1422,40 @@ class CebraOwn(CEBRA):
                 data = self.create_embedding(to_2d=to_2d, return_labels=return_labels)
                 additional_title += " - Embedding"
             else:
-                data = self.create_embedding(to_transform_data=to_transform_data, to_2d=to_2d, return_labels=return_labels)
+                data = self.create_embedding(
+                    to_transform_data=to_transform_data,
+                    to_2d=to_2d,
+                    return_labels=return_labels,
+                )
                 additional_title += " - Custom Data Embedding"
                 ofname += "_custom"
             if return_labels:
                 data = data[0]
                 labels = data[1]
-        
+
         # check if parameter sweep is performed
-        if isinstance(params["n_neighbors"], List) or isinstance(params["n_neighbors"], np.ndarray):
+        if isinstance(params["n_neighbors"], List) or isinstance(
+            params["n_neighbors"], np.ndarray
+        ):
             ofname += "_sweep"
-        
-        struc_ind = npy(ofname, task="load", backup_root_folder=self.save_path.parent, backup_folder_name=folder_name)
-        #TODO: remove after enough testing
+
+        struc_ind = npy(
+            ofname,
+            task="load",
+            backup_root_folder=self.save_path.parent,
+            backup_folder_name=folder_name,
+        )
+        # TODO: remove after enough testing
         if list(struc_ind.keys())[0] == self.name:
             struc_ind = struc_ind[self.name]
-            npy(ofname, task="save", data=struc_ind, backup_root_folder=self.save_path.parent, backup_folder_name=folder_name)              
-        
+            npy(
+                ofname,
+                task="save",
+                data=struc_ind,
+                backup_root_folder=self.save_path.parent,
+                backup_folder_name=folder_name,
+            )
+
         if struc_ind is None or regenerate:
             struc_ind = structure_index(
                 data=data,
@@ -1364,7 +1465,13 @@ class CebraOwn(CEBRA):
                 plot=plot,
                 as_pdf=as_pdf,
             )
-            npy(ofname, task="save", data=struc_ind, backup_root_folder=self.save_path.parent, backup_folder_name=folder_name)              
+            npy(
+                ofname,
+                task="save",
+                data=struc_ind,
+                backup_root_folder=self.save_path.parent,
+                backup_folder_name=folder_name,
+            )
         else:
             if plot:
                 Vizualizer.plot_structure_index(
@@ -1375,11 +1482,12 @@ class CebraOwn(CEBRA):
                     binLabel=struc_ind["bin_label"],
                     additional_title=additional_title,
                     as_pdf=as_pdf,
-                    save_dir=plot_save_dir or self.save_path.parent.joinpath(folder_name),
+                    save_dir=plot_save_dir
+                    or self.save_path.parent.joinpath(folder_name),
                 )
-                
-            
+
         return struc_ind
+
 
 def decode(
     embedding_train: np.ndarray,
@@ -1438,10 +1546,11 @@ def decode(
     labels_test = Dataset.force_2d(labels_test)
     # labels_test = force_1_dim_larger(labels_test)
 
-    fit_labels_train = (
-        labels_train.flatten() if labels_train.shape[1] == 1 else labels_train
-    )
-    knn.fit(embedding_train, fit_labels_train)
+    # fit_labels_train = (
+    #    labels_train.flatten() if labels_train.shape[1] == 1 else labels_train
+    # )
+    # knn.fit(embedding_train, fit_labels_train)
+    knn.fit(embedding_train, labels_train)
 
     # Predict the targets for data ``X``
     labels_pred = knn.predict(embedding_test)
@@ -1553,13 +1662,16 @@ def decode(
 
     return results
 
-def structure_index(data: np.ndarray, 
-                    labels, 
-                    params: Dict[str, Union[int, bool, List[int]]],
-                    additional_title: str = "",
-                    plot: bool = False,
-                    plot_save_dir: Optional[Path] = None,
-                    as_pdf: bool = False) -> Dict[str, Dict[str, Union[float, np.ndarray]]] : #TODO: finish return types:
+
+def structure_index(
+    data: np.ndarray,
+    labels,
+    params: Dict[str, Union[int, bool, List[int]]],
+    additional_title: str = "",
+    plot: bool = False,
+    plot_save_dir: Optional[Path] = None,
+    as_pdf: bool = False,
+) -> Dict[str, Dict[str, Union[float, np.ndarray]]]:  # TODO: finish return types:
 
     if is_int_like(params["n_neighbors"]):
         parameter_sweep = False
@@ -1569,8 +1681,7 @@ def structure_index(data: np.ndarray,
     else:
         global_logger.error("n_neighbors must be an integer or a list of integers.")
         raise ValueError("n_neighbors must be an integer or a list of integers.")
-    
-    
+
     if parameter_sweep:
         structural_index = {}
         for n_neighbors in tqdm(sweep_range):
@@ -1585,9 +1696,7 @@ def structure_index(data: np.ndarray,
                 "shuf_SI": sSI,
             }
     else:
-        SI, binLabel, overlapMat, sSI = compute_structure_index(
-            data, labels, **params
-        )
+        SI, binLabel, overlapMat, sSI = compute_structure_index(data, labels, **params)
         structural_index = {
             "SI": SI,
             "bin_label": binLabel,
@@ -1605,6 +1714,6 @@ def structure_index(data: np.ndarray,
                 binLabel=binLabel,
                 additional_title=additional_title,
                 as_pdf=as_pdf,
-                save_dir=plot_save_dir
+                save_dir=plot_save_dir,
             )
     return structural_index

@@ -258,6 +258,7 @@ class Multi:
         dpi: int = 300,
         as_pdf: bool = False,
     ):
+        # FIXME: This function is outdated
         # FIXME: merge this function with tasks plot_embeddings
 
         # models = self.get_pipeline_models(manifolds_pipeline, model_naming_filter_include, model_naming_filter_exclude)
@@ -535,12 +536,14 @@ class Animal:
                 filtered_tasks.update(filtered_session_tasks)
         return filtered_tasks
 
-    def get_unique_model_information(self,
+    def get_unique_model_information(
+        self,
         labels_name: str = "",
         wanted_information: List[str] = ["embedding", "loss"],
         manifolds_pipeline: str = "cebra",
         model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
         model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+        train_or_test: str = "train",
     ):
         """
         Get the unique model information all sessions and tasks.
@@ -553,7 +556,7 @@ class Animal:
             The name of the labels describing the behavior used for labeling the embeddings.
         wanted_information : list
             A list containing the wanted information to extract from the models (default is ["embedding", "loss"]).
-            Options are 
+            Options are
                 - "embedding": the embeddings of the unique models
                 - "loss": the training losses of the unique models
                 - "raw": the raw data used for training the unique models, which is binarized neural data for models based on cebra
@@ -568,7 +571,7 @@ class Animal:
         model_naming_filter_exclude : list, optional
             A list of lists containing the model naming parts to exclude (default is None).
             If None, no models will be excluded.
-        
+
         Returns
         -------
         embeddings : dict
@@ -598,30 +601,47 @@ class Animal:
                         if labels_name not in model_name:
                             task_models.pop(model_name)
                     if len(task_models) > 1:
-                        raise ValueError("More than one model found. Improve filtering.")
-                
+                        raise ValueError(
+                            "More than one model found. Improve filtering."
+                        )
+
                 if len(task_models) == 0:
                     continue
                 task_model = next(iter(task_models.values()))
 
-                raws[task.id] = task_model.get_data(type="neural")
-                embeddings[task.id] = task_model.get_data(type="embedding")
-                labels["labels"].append(task_model.get_data(type="behavior"))
+                raws[task.id] = task_model.get_data(
+                    train_or_test=train_or_test, type="neural"
+                )
+                embeddings[task.id] = task_model.get_data(
+                    train_or_test=train_or_test, type="embedding"
+                )
+                labels["labels"].append(
+                    task_model.get_data(train_or_test=train_or_test, type="behavior")
+                )
                 losss[task.id] = task_model.get_loss()
-                        
-                fluorescences[task.id] = task.neural.get_process_data(type="unprocessed")
-                
-        
+
+                if "fluorescence" in wanted_information and train_or_test == "test":
+                    global_logger.warning(
+                        "WARNING: RAW Fluorescence data is not available, for test data. Only Binarized Fluoresence"
+                    )
+                    fluorescences[task.id] = None
+                else:
+                    fluorescences[task.id] = task.neural.get_process_data(
+                        type="unprocessed"
+                    )
+
         information = {}
         for wanted_info in wanted_information:
-            information[wanted_info] = locals()[wanted_info+"s"]
-            
+            information[wanted_info] = locals()[wanted_info + "s"]
+
         return information
 
     def plot_task_models(
         self,
         model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
         model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
+        train_or_test: str = "train",
+        plot: Union[str, List[str]] = ["embedding", "loss"],
         to_2d: bool = False,
         behavior_type: str = "position",
         manifolds_pipeline: str = "cebra",
@@ -638,9 +658,9 @@ class Animal:
         """
         Plot model embeddings and losses nearby each other for every task in every session.
 
-        Only possible if a unique model is found for each task. Losses can be 
+        Only possible if a unique model is found for each task. Losses can be
         colored by rainbow, distinct, or mono colors.
-        
+
         Parameters
         ----------
         model_naming_filter_include : list, optional
@@ -650,7 +670,7 @@ class Animal:
                 - single string: only one property has to be included
                 - list of strings: all properties have to be included
                 - list of lists of strings: Either one of the properties in the inner list has to be included
-            
+
         model_naming_filter_exclude : list, optional
             A list of lists containing the model naming parts to exclude (default is None).
             If None, no models will be excluded.
@@ -658,21 +678,42 @@ class Animal:
                 - single string: only one property has to be excluded
                 - list of strings: all properties have to be excluded
                 - list of lists of strings: Either one of the properties in the inner list has to be excluded
-                
+
+        plot : str or list oi str, optional
+            A list containing the plots to show (default is ["embedding", "loss"]).
+
+        train_or_test : str, optional
+            The data type to plot (default is "train").
+
         to_2d : bool, optional
             If True, the embeddings will be plotted in 2D (default is False).
-        
+
         behavior_type : str, optional
             The behavior type to use for labeling the embeddings (default is "position").
         """
+        plot = make_list_ifnot(plot)
+
         info = self.get_unique_model_information(
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
             manifolds_pipeline=manifolds_pipeline,
             labels_name=behavior_type,
+            train_or_test=train_or_test,
             wanted_information=["embedding", "loss", "label"],
         )
         embeddings, losses, labels = info["embedding"], info["loss"], info["label"]
+
+        train_info = self.get_unique_model_information(
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
+            manifolds_pipeline=manifolds_pipeline,
+            labels_name=behavior_type,
+            train_or_test="train",
+            wanted_information=["label"],
+        )
+        train_labels = train_info["label"]
+        min_val_labels = np.min(train_labels)
+        max_val_labels = np.max(train_labels)
 
         # plot embeddings
         embeddings_title = (
@@ -685,40 +726,45 @@ class Animal:
         )
 
         viz = Vizualizer(root_dir=self.root_dir)
-        # embeddings nearby each other
-        viz.plot_multiple_embeddings(
-            embeddings=embeddings,
-            labels=labels,
-            title=embeddings_title,
-            projection="2d" if to_2d else "3d",
-            show_hulls=False,
-            markersize=markersize,
-            figsize=figsize,
-            alpha=alpha,
-            dpi=dpi,
-            as_pdf=as_pdf,
-        )
+        if "embedding" in plot:
+            # embeddings nearby each other
+            viz.plot_multiple_embeddings(
+                embeddings=embeddings,
+                labels=labels,
+                min_val=min_val_labels,
+                max_val=max_val_labels,
+                title=embeddings_title,
+                projection="2d" if to_2d else "3d",
+                show_hulls=False,
+                markersize=markersize,
+                figsize=figsize,
+                alpha=alpha,
+                dpi=dpi,
+                as_pdf=as_pdf,
+            )
 
-        losses_title = (
-            f"{manifolds_pipeline.upper()} losses {self.id}"
-            if not losses_title
-            else losses_title
-        )
-        losses_title = add_descriptive_metadata(
-            text=losses_title, comment=title_comment, metadata=None, keys=None
-        )
-        # losses nearby each other
-        viz.plot_losses(
-            losses=losses,
-            title=losses_title,
-            alpha=0.8,
-            figsize=figsize,
-            coloring_type=losses_coloring,
-            plot_iterations=False,
-            as_pdf=as_pdf,
-        )
+        if "loss" in plot:
+            losses_title = (
+                f"{manifolds_pipeline.upper()} losses {self.id}"
+                if not losses_title
+                else losses_title
+            )
+            losses_title = add_descriptive_metadata(
+                text=losses_title, comment=title_comment, metadata=None, keys=None
+            )
+            # losses nearby each other
+            viz.plot_losses(
+                losses=losses,
+                title=losses_title,
+                alpha=0.8,
+                figsize=figsize,
+                coloring_type=losses_coloring,
+                plot_iterations=False,
+                as_pdf=as_pdf,
+            )
 
-    def structural_indices(self, 
+    def structural_indices(
+        self,
         manifolds_pipeline: str = "cebra",
         model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
         model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
@@ -730,31 +776,32 @@ class Animal:
         behavior_data_types: List[str] = None,
         to_2d: bool = False,
         regenerate: bool = False,
-        plot: bool=True,
-        as_pdf: bool=False,     
-        ):
+        plot: bool = True,
+        as_pdf: bool = False,
+    ):
         animal_structrual_indices = {}
         for date, session in self.sessions.items():
-            session : Session
+            session: Session
             global_logger.info(f"Calculating structural indices for {session.id}")
             session_structrual_indices = session.structural_indices(
-                            manifolds_pipeline=manifolds_pipeline,
-                            model_naming_filter_include=model_naming_filter_include,
-                            model_naming_filter_exclude=model_naming_filter_exclude,
-                            regenerate = regenerate,
-                            embeddings=embeddings,
-                            labels=labels,
-                            to_transform_data=to_transform_data,
-                            behavior_data_types=behavior_data_types,
-                            to_2d=to_2d,
-                            params=params,
-                            plot=plot,
-                            use_raw=use_raw,
-                            as_pdf=as_pdf,
-                            )
+                manifolds_pipeline=manifolds_pipeline,
+                model_naming_filter_include=model_naming_filter_include,
+                model_naming_filter_exclude=model_naming_filter_exclude,
+                regenerate=regenerate,
+                embeddings=embeddings,
+                labels=labels,
+                to_transform_data=to_transform_data,
+                behavior_data_types=behavior_data_types,
+                to_2d=to_2d,
+                params=params,
+                plot=plot,
+                use_raw=use_raw,
+                as_pdf=as_pdf,
+            )
             animal_structrual_indices[date] = session_structrual_indices
-        #TODO: plotting
+        # TODO: plotting
         return animal_structrual_indices
+
 
 class Session:
     """Represents a session in the dataset."""
@@ -938,6 +985,7 @@ class Session:
         manifolds_pipeline: str = "cebra",
         model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
         model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+        n_neighbors: Optional[int] = 36,
     ):
         """
         Calculates the decoding performance between models from all tasks based on the wanted model names.
@@ -952,6 +1000,8 @@ class Session:
         model_naming_filter_exclude : list, optional
             A list of lists containing the model naming parts to exclude (default is None).
             If None, no models will be excluded.
+        n_neighbors : int, optional
+            The number of neighbors to use for the KNN algorithm (default is 36).
 
         Returns
         -------
@@ -979,9 +1029,9 @@ class Session:
                     "Only one model per task is allowed for cross decoding"
                 )
             model = task_models[list(task_models.keys())[0]]
-            model.define_decoding_statistics(regenerate=True)
-            mean = model.decoding_statistics["rmse"]["mean"]
-            variance = model.decoding_statistics["rmse"]["variance"]
+            model.define_decoding_statistics(regenerate=True, n_neighbors=n_neighbors)
+            mean = model.get_decoding_statistics("mean")
+            variance = model.get_decoding_statistics("variance")
 
             if "relative" in model.name:
                 global_logger.warning(
@@ -1016,15 +1066,22 @@ class Session:
                 stimulus_decoding = f"{task_name_type}_{stimulus_type2}"
 
                 neural_data_test_to_embedd = np.concatenate(
-                    (model2.data["train"]["neural"], model2.data["test"]["neural"])
+                    (
+                        model2.get_data(type="neural"),
+                        model2.get_data(train_or_test="test", type="neural"),
+                    )
                 )
                 labels_test = np.concatenate(
-                    (model2.data["train"]["behavior"], model2.data["test"]["behavior"])
+                    (
+                        model2.get_data(type="behavior"),
+                        model2.get_data(train_or_test="test", type="behavior"),
+                    )
                 )
 
                 decoding_of_other_task = model.define_decoding_statistics(
                     neural_data_test_to_embedd=neural_data_test_to_embedd,
                     labels_test=labels_test,
+                    n_neighbors=n_neighbors,
                 )
 
                 mean = decoding_of_other_task["rmse"]["mean"]
@@ -1057,7 +1114,7 @@ class Session:
             task_decoding_statistics,
             data_labels=data_labels,
             figsize=(20, 6),
-            additional_title="- Decoding perfomance between Models based on Environments (moving)",
+            additional_title=f"- Decoding perfomance between Models based on Environments (moving) - {self.id}",
         )
         return task_decoding_statistics
 
@@ -1074,10 +1131,10 @@ class Session:
         behavior_data_types: List[str] = None,
         to_2d: bool = False,
         regenerate: bool = False,
-        plot: bool=True,
-        as_pdf: bool=False,     
+        plot: bool = True,
+        as_pdf: bool = False,
     ):
-        task : Task
+        task: Task
         session_structrual_indices = {}
         for task_name, task in self.tasks.items():
             global_logger.info(f"Calculating structural indices for {task.id}")
@@ -1085,7 +1142,7 @@ class Session:
                 manifolds_pipeline=manifolds_pipeline,
                 model_naming_filter_include=model_naming_filter_include,
                 model_naming_filter_exclude=model_naming_filter_exclude,
-                regenerate = regenerate,
+                regenerate=regenerate,
                 embeddings=embeddings,
                 labels=labels,
                 to_transform_data=to_transform_data,
@@ -1095,13 +1152,12 @@ class Session:
                 plot=plot,
                 use_raw=use_raw,
                 as_pdf=as_pdf,
-                )
+            )
             session_structrual_indices[task_name] = task_structrual_indices
-        
-            #TODO: plotting
+
+            # TODO: plotting
         return session_structrual_indices
-            
-                
+
     # Place Cells for all sessions
     def plot_cell_activity_pos_by_time(
         self,
@@ -1556,6 +1612,7 @@ class Task:
         model_naming_filter_include: Union[str, List[str], List[List[str]]] = None,
         model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         embeddings: Optional[Dict[str, np.ndarray]] = None,
+        train_or_test: str = "train",
         to_2d: bool = False,
         show_hulls: bool = False,
         to_transform_data: Optional[np.ndarray] = None,
@@ -1581,6 +1638,19 @@ class Task:
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
             embeddings=embeddings,
+            train_or_test=train_or_test,
+            manifolds_pipeline=manifolds_pipeline,
+            to_transform_data=to_transform_data,
+            labels=labels,
+            to_2d=to_2d,
+        )
+
+        _, train_labels_dict = self.extract_wanted_embedding_and_labels(
+            cls=self,
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
+            embeddings=embeddings,
+            train_or_test=train_or_test,
             manifolds_pipeline=manifolds_pipeline,
             to_transform_data=to_transform_data,
             labels=labels,
@@ -1614,11 +1684,15 @@ class Task:
                 if behavior_data_type not in embedding_title:
                     continue
                 labels_dict["labels"].append(labels)
+                min_val_labels = np.min(labels)
+                max_val_labels = np.max(labels)
                 embeddings_to_plot[embedding_title] = embeddings[embedding_title]
 
             viz.plot_multiple_embeddings(
                 embeddings_to_plot,
                 labels=labels_dict,
+                min_val=min_val_labels,
+                max_val=max_val_labels,
                 ticks=colorbar_ticks,
                 title=title,
                 projection=projection,
@@ -1680,7 +1754,7 @@ class Task:
                 model_naming_filter_exclude=model_naming_filter_exclude,
             )
         )
-        
+
         stimulus_type = (
             self.behavior_metadata["stimulus_type"]
             if "stimulus_type" in self.behavior_metadata.keys()
@@ -1739,6 +1813,7 @@ class Task:
         model_naming_filter_exclude: Union[str, List[str], List[List[str]]] = None,
         embeddings: Optional[Dict[str, np.ndarray]] = None,
         manifolds_pipeline: str = "cebra",
+        train_or_test: str = "train",
         to_transform_data: Optional[np.ndarray] = None,
         use_raw: bool = False,
         labels: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
@@ -1796,9 +1871,11 @@ class Task:
                 embeddings[model_name] = (
                     model.get_data()
                     if not use_raw
-                    else model.get_data(type="neural")
+                    else model.get_data(train_or_test=train_or_test, type="neural")
                 )
-                labels_dict[model_name] = model.get_data(type="behavior")
+                labels_dict[model_name] = model.get_data(
+                    train_or_test=train_or_test, type="behavior"
+                )
 
         # get embedding lables
         if labels is not None:
@@ -1828,15 +1905,15 @@ class Task:
         to_transform_data: Optional[np.ndarray] = None,
         to_2d: bool = False,
         regenerate: bool = False,
-        plot: bool=True,
-        as_pdf: bool=False,
+        plot: bool = True,
+        as_pdf: bool = False,
         plot_save_dir: Optional[Path] = None,
-    ) -> Dict[str, Dict[str, Union[float, np.ndarray]]]: #TODO: finish return types
+    ) -> Dict[str, Dict[str, Union[float, np.ndarray]]]:  # TODO: finish return types
         """
         Calculate structural indices for the task given a model.
 
 
-        Raw or Embedded data as well as labels are extracted from the models that fit the naming filter. 
+        Raw or Embedded data as well as labels are extracted from the models that fit the naming filter.
         If n_neighbors is a list, then a parameter sweep is performed.
 
         This Method is based on a graph-based topological metric able to quantify the amount of structure
@@ -1903,9 +1980,9 @@ class Task:
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
         )
-        
+
         parameter_sweep = is_array_like(params["n_neighbors"])
-        
+
         task_structural_indices = {}
         for model_name, model in models.items():
             global_logger.info(f"Calculating structural indices for {model_name}")
@@ -1921,11 +1998,11 @@ class Task:
                 plot_save_dir=plot_save_dir or self.data_dir.parent.joinpath("figures"),
             )
             task_structural_indices[model_name] = model_structural_indices
-            
+
         if parameter_sweep and plot:
-            #TODO: create plotting for parameter sweep
+            # TODO: create plotting for parameter sweep
             pass
-                
+
         return task_structural_indices
 
     def plot_multiple_consistency_scores(
