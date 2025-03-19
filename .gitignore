@@ -10,3 +10,4 @@ logs*
 *.pyc
 *.npy
 *.mat
+*.vscode

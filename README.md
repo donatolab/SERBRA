@@ -101,6 +101,47 @@ The folder structure is important for the pipeline to work. The following names 
        ...
 ```
 
+## Custom Data (Example Renan)
+```bash
+Renan
+    └───VR
+        └───DON-000000
+            │   DON-000000.yaml
+            │
+            └───20250318
+                │   20250318.yaml
+                │
+                ├───1-no-VR
+                │   ├───002P-F
+                │   │   └───tif
+                │   │       └───suite2p
+                │   │           └───plane0
+                │   │                   DON-000000_20250318_1-no-VR_photon.npy
+                │   │
+                │   └───TRD-2P
+                │           DON-000000_20250318_1-no-VR_position.npy
+                │
+                ├───2-dark-corridor
+                │   ├───002P-F
+                │   │   └───tif
+                │   │       └───suite2p
+                │   │           └───plane0
+                │   │                   DON-000000_20250318_2-dark-corridor_photon.npy
+                │   │
+                │   └───TRD-2P
+                │           DON-000000_20250318_2-dark-corridor_position.npy
+                │
+                └───3-light-corridor
+                    ├───002P-F
+                    │   └───tif
+                    │       └───suite2p
+                    │           └───plane0
+                    │                   DON-000000_20250318_3-light-corridor_photon.npy
+                    │
+                    └───TRD-2P
+                            DON-000000_20250318_3-light-corridor_position.npy
+```
+
 # Metadata Variables
 ## Python Variables
 The pipeline has some important variables that need to be defined in the python script. These variables are important for defining what data to load and how to analyze it. 
