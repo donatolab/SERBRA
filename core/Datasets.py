@@ -1161,7 +1161,7 @@ class Data_Position(BehaviorDataset):
     def define_plot_attributes(self):
         if self.metadata["environment_dimensions"] is not None:
             if len(self.metadata["environment_dimensions"]) == 1:
-                self.plot_attributes["ylable"] = "position cm"
+                self.plot_attributes["ylable"] = "position m"
             elif len(self.metadata["environment_dimensions"]) == 2:
                 self.plot_attributes["figsize"] = (12, 10)
 
