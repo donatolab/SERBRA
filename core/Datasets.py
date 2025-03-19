@@ -228,7 +228,7 @@ class Dataset:
         self.plot_attributes["save_path"] = (
             self.plot_attributes["save_path"]
             or save_path
-            or self.path.parent.parent.parent.joinpath(
+            or self.root_dir.parent.joinpath(
                 "figures", self.path.stem + ".png"
             )
         )

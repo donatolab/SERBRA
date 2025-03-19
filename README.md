@@ -102,6 +102,7 @@ The folder structure is important for the pipeline to work. The following names 
 ```
 
 ## Custom Data (Example Renan)
+If you want to use custom data the data file naming should have exactly the following format.
 ```bash
 Renan
     └───VR
