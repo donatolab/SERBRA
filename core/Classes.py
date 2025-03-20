@@ -828,7 +828,8 @@ class Animal:
 
             #stimulus_type = self.tasks[task_name].behavior_metadata["stimulus_type"]
             stimulus_type = ""
-            task_name_type = f"{task_name} ({stimulus_type})"
+            #task_name_type = f"{task_name} ({stimulus_type})"
+            task_name_type = f"{task_name.split('_')[-1]}"
             task_decoding_statistics[task_name_type] = {}
             data_labels.append(task_name_type)
             task_decoding_statistics[task_name_type][stimulus_type] = {
@@ -837,19 +838,21 @@ class Animal:
             }
 
             for task_name2, task_models2 in unique_models.items():
-                if task_name == task_name2:
-                    continue
+                #if task_name == task_name2:
+                #    continue
                 #stimulus_type2 = self.tasks[task_name2].behavior_metadata[
                 #    "stimulus_type"
                 #]
-                stimulus_type2 = ""
+                stimulus_type2 = task_name2.split('_')[-1]
                 model2 = task_models2 # [list(task_models2.keys())[0]]
                 stimulus_decoding = f"{task_name_type}_{stimulus_type2}"
 
                 neural_data_test_to_embedd = model2.get_data(train_or_test="test", type="neural")
                 labels_test = model2.get_data(train_or_test="test", type="behavior")
-                if task_model.get_data(type="neural").shape[1] != model2.get_data(type="neural").shape[1]:
+                #if task_model.get_data(type="neural").shape[1] != model2.get_data(type="neural").shape[1]:
+                if True:
                     print(f"WARNING: Number of Neurons in Datasets not equal. ADAPTING MODEL")
+                    task_model.max_adapt_iterations = 500
                     adapted_task_model = task_model.fit(neural_data_test_to_embedd, labels_test, adapt=True)
                     decoding_of_other_task = adapted_task_model.define_decoding_statistics(
                         neural_data_test_to_embedd=neural_data_test_to_embedd,

@@ -3118,13 +3118,13 @@ class Vizualizer:
                 if isinstance(value, dict):
                     variance = value["variance"]
                     value = value["mean"]
+                    variances.append(variance * 100)
                 if not data_labels:
                     label = f"{source}: {task.split('_')[-3][-3:]}"
                 else:
                     label = str(data_labels[source_num + task_num])
                 tasks.append(label)
                 values.append(value * 100)
-                variances.append(variance * 100)
                 colors.append(
                     mcolors.to_rgba(color_map(source_num), alpha=1 - 0.1 * task_num)
                 )
@@ -3145,7 +3145,7 @@ class Vizualizer:
             plt.errorbar(
                 positions,
                 values,
-                yerr=variances,
+                yerr=None if len(variances) == 0 else variances,
                 fmt="none",  # No connecting line
                 ecolor="white",  # Color of the error bars
                 capsize=5,  # Adding caps to the error bars
@@ -3168,8 +3168,11 @@ class Vizualizer:
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.title(title, fontsize=figsize[0])
+        
+        # xticks = data_labels[: len(all_positions)]
+        xticks = [""] * len(all_positions) if not data_labels else data_labels
         plt.xticks(
-            all_positions, data_labels[: len(all_positions)], rotation=45, ha="right"
+            all_positions, xticks, rotation=45, ha="right"
         )
         plt.tight_layout()
         plt.legend(title=legend_title, bbox_to_anchor=(1.05, 1), loc="upper left")
