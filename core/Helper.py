@@ -1803,6 +1803,50 @@ def split_array_by_zscore(array, zscore, threshold=2.5):
     below_threshold = np.where(zscore < threshold)[0]
     return array[above_threshold], array[below_threshold]
 
+def find_min_max_values(data: Union[List, np.ndarray, List[np.ndarray]], axis: int = 0) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute the minimum and maximum values along a specified axis for a list of arrays or a single array.
+
+    Parameters:
+        data (Union[List[np.ndarray], np.ndarray]): Input data, which can be a single NumPy array or a list of NumPy arrays.
+        axis (int): The axis along which to compute the min and max values. Default is 0.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: A tuple containing two arrays:
+            - min_val_labels: Array of minimum values along the specified axis.
+            - max_val_labels: Array of maximum values along the specified axis.
+
+    Raises:
+        ValueError: If the input data is empty or if the specified axis is invalid for the input data.
+    """
+    if not data:
+        raise ValueError("Input data cannot be empty.")
+    
+    data = make_list_ifnot(data)
+    # Check if the axis is valid for the first array in the data
+    if axis >= data[0].ndim:
+        global_logger.error(
+            f"Axis {axis} is invalid for input data with {data[0].ndim} dimensions.")
+        raise ValueError(f"Axis {axis} is invalid for input data with {data[0].ndim} dimensions.")
+    # Determine the shape of the output arrays based on the specified axis
+    output_shape = list(data[0].shape)
+    del output_shape[axis]  # Remove the axis dimension
+
+    # Initialize min and max values with infinity and negative infinity
+    min_val_labels = np.full(output_shape, np.inf)
+    max_val_labels = np.full(output_shape, -np.inf)
+
+    # Iterate over each model's labels
+    for model_labels in data:
+        # Calculate the min and max along the columns (axis=0)
+        current_min = np.min(model_labels, axis=axis)
+        current_max = np.max(model_labels, axis=axis)
+        
+        # Update min_val_labels and max_val_labels element-wise
+        min_val_labels = np.minimum(min_val_labels, current_min)
+        max_val_labels = np.maximum(max_val_labels, current_max)
+
+    return min_val_labels, max_val_labels
 
 def npy(
     fname: str,

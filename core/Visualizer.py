@@ -913,8 +913,8 @@ class Vizualizer:
             # create 2D RGBA labels to overwrite 1D cmap coloring
             rgba_colors = None
             if session_labels.shape[1] == 2:
-                min_vals = min_val or np.min(session_labels, axis=0)
-                max_vals = max_val or np.max(session_labels, axis=0)
+                min_vals = min_val if min_val is not None else np.min(session_labels, axis=0)
+                max_vals = max_val if min_val is not None else np.max(session_labels, axis=0)
                 # steps = 5
                 xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
                 yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)

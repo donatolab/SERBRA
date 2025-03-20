@@ -713,13 +713,13 @@ class Animal:
             train_or_test="train",
             wanted_information=["label"],
         )
+
         train_labels = train_info["label"]
-        min_val_labels = np.min(train_labels)
-        max_val_labels = np.max(train_labels)
+        min_val_labels, max_val_labels = find_min_max_values(train_labels["labels"])
 
         # plot embeddings
         embeddings_title = (
-            f"{manifolds_pipeline.upper()} embeddings {self.id}"
+            f"{manifolds_pipeline.upper()} embeddings {self.id} - {train_or_test}"
             if not embeddings_title
             else embeddings_title
         )
