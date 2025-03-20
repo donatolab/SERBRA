@@ -1397,7 +1397,7 @@ class Environment(Behavior_Processing):
         return positions
 
     @staticmethod
-    def get_cumdist_from_position(position: np.ndarray):
+    def get_cumdist_from_position(position: np.ndarray, imaging_fps: float=None, smooth:bool=True):
         """
         Get cumulative distance from position on the 1D or 2D track.
         output:
@@ -1407,12 +1407,16 @@ class Environment(Behavior_Processing):
             position = position.reshape(1, -1)
 
         distance = np.diff(position, axis=0)
+        # remove big negative distance jumps when position is reset
+        global_logger.info(f"Max position: {max(position)}. Removing big negative distance jumps. Position reset is expected.")
+        distance_threshold = - np.max(position, axis=0) * 0.75
+        distance[distance < distance_threshold] = 0
         cumulative_distance = np.cumsum(np.abs(distance), axis=0)
         return cumulative_distance
 
     @staticmethod
     def get_velocity_from_cumdist(
-        cumulative_distance: np.ndarray, imaging_fps: float = None, smooth=True
+        cumulative_distance: np.ndarray, imaging_fps: float = None, smooth: bool=True
     ):
         if cumulative_distance.ndim == 1:
             cumulative_distance = cumulative_distance.reshape(1, -1)

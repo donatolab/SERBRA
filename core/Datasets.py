@@ -1455,9 +1455,9 @@ class Data_Distance(BehaviorDataset):
             return encoded_data, self.category_map
         return encoded_data
 
-    def process_raw_data(self, save=True):
+    def process_raw_data(self, smooth=True, save=True):
         track_positions = self.raw_data_object.data
-        self.data = Environment.get_cumdist_from_position(track_positions)
+        self.data = Environment.get_cumdist_from_position(track_positions, imaging_fps=self.metadata["imaging_fps"])
         return self.data
 
 
