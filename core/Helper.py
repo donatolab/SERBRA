@@ -1484,8 +1484,10 @@ def create_list_of_lists(data: Union[str, List[str], List[List[str]]]):
 
 # strings
 def filter_strings_by_properties(
-    strings, include_properties=None, exclude_properties=None
-):
+    strings: List[str], 
+    include_properties: Union[List[List[str]], List[str], str] = None,
+    exclude_properties: Union[List[List[str]], List[str], str] = None,
+) -> List[str]:
     """
     Filters a list of strings based on given properties.
 
@@ -2315,10 +2317,10 @@ def uncode_categories(data: Union[dict, np.ndarray, list], category_map: dict):
 
 
 def filter_dict_by_properties(
-    dictionary,
+    dictionary: Dict[str, Any],
     include_properties: List[List[str]] = None,  # or [str] or str
     exclude_properties: List[List[str]] = None,  # or [str] or str):
-):
+) -> Dict[str, Any]:
     """
     Filter a dictionary with descriptive keys based on given properties.
     """

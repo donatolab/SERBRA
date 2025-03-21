@@ -128,21 +128,21 @@ class Models:
     def get_pipeline_models(
         self,
         manifolds_pipeline="cebra",
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
-    ) -> Tuple[object, Dict[str, object]]:
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+    ) -> Tuple[Models, Dict[str, Model]]:
         """Get models from a specific model class.
 
         Parameters:
         -----------
             manifolds_pipeline : str
                 The pipeline to use.
-            model_naming_filter_include: List[List[str]] = None,  # or [str] or str
+            model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
                 Filter for model names to include. If None, all models will be included. 3 levels of filtering are possible.
                 1. Include all models containing a specific string: "string"
                 2. Include all models containing a specific combination of strings: ["string1", "string2"]
                 3. Include all models containing one of the string combinations: [["string1", "string2"], ["string3", "string4"]]
-            model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+            model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
                 Same as model_naming_filter_include but for excluding models.
 
         Returns:
@@ -163,8 +163,8 @@ class Models:
         self,
         models=None,
         manifolds_pipeline="cebra",
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
     ):
         models_original = []
         models_shuffled = []
@@ -201,8 +201,8 @@ class Models:
         return_labels=False,
     ):
         """
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
         """
         if not type(to_transform_data) == np.ndarray:
             global_logger.warning(
@@ -232,8 +232,8 @@ class Models:
 
     def define_decoding_statistics(
         self,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
         manifolds_pipeline: str = "cebra",
     ):
         models_class, models = self.get_pipeline_models(
@@ -369,9 +369,9 @@ class ModelsWrapper:
 
     def get_models(
         self,
-        model_naming_filter_include: List[List[str]] = None,  # or [str] or str
-        model_naming_filter_exclude: List[List[str]] = None,  # or [str] or str):
-    ):
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+    ) -> Dict[str, Model]:
         filtered_models = filter_dict_by_properties(
             dictionary=self.models,
             include_properties=model_naming_filter_include,

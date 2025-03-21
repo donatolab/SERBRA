@@ -2676,7 +2676,7 @@ class Vizualizer:
         if xticks is not None:
             if xticks_pos is not None:
                 ax.set_xticks(xticks_pos)
-            ax.set_xticklabels(xticks, rotation=rotation)
+            ax.set_xticklabels(xticks, rotation=rotation, ha='right')
         if yticks is not None:
             if yticks_pos is not None:
                 ax.set_yticks(yticks_pos)
@@ -2701,8 +2701,8 @@ class Vizualizer:
         title="Heatmap",
         additional_title="",
         figsize=(6, 5),
-        xlabel="Bin (x, y)",
-        ylabel="Bin (x, y)",
+        xlabel="",
+        ylabel="",
         no_diag: bool = False,
         xticks=None,
         xticks_pos=None,

@@ -544,7 +544,7 @@ class Animal:
         model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
         model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
         train_or_test: str = "train",
-    ):
+    ) -> Dict[str, Dict[str, Union[str, np.ndarray, List[np.ndarray]]]]:
         """
         Get the unique model information all sessions and tasks.
 
@@ -847,15 +847,25 @@ class Animal:
                 model2 = task_models2 # [list(task_models2.keys())[0]]
                 stimulus_decoding = f"{task_name_type}_{stimulus_type2}"
 
-                neural_data_test_to_embedd = model2.get_data(train_or_test="test", type="neural")
-                labels_test = model2.get_data(train_or_test="test", type="behavior")
+
+                neural_data_train_to_embedd = model2.get_data(train_or_test="test", type="neural")
+                neural_data_test_to_embedd = model2.get_data(train_or_test="train", type="neural")
+                labels_train = model2.get_data(train_or_test="test", type="behavior")
+                labels_test = model2.get_data(train_or_test="train", type="behavior")
+                # neural_data_train_to_embedd = model2.get_data(train_or_test="train", type="neural")
+                # neural_data_test_to_embedd = model2.get_data(train_or_test="test", type="neural")
+                # labels_train = model2.get_data(train_or_test="train", type="behavior")
+                # labels_test = model2.get_data(train_or_test="test", type="behavior")
                 #if task_model.get_data(type="neural").shape[1] != model2.get_data(type="neural").shape[1]:
                 if True:
+                    import copy
                     print(f"WARNING: Number of Neurons in Datasets not equal. ADAPTING MODEL")
                     task_model.max_adapt_iterations = 500
-                    adapted_task_model = task_model.fit(neural_data_test_to_embedd, labels_test, adapt=True)
+                    adapted_task_model = copy.deepcopy(task_model).fit(neural_data_test_to_embedd, labels_test, adapt=True)
                     decoding_of_other_task = adapted_task_model.define_decoding_statistics(
+                        neural_data_train_to_embedd=neural_data_train_to_embedd,
                         neural_data_test_to_embedd=neural_data_test_to_embedd,
+                        labels_train=labels_train,
                         labels_test=labels_test,
                         n_neighbors=n_neighbors,
                     )
