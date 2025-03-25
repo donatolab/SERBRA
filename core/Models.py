@@ -1249,7 +1249,10 @@ class CebraOwn(CEBRA):
         save=False,
         return_labels=False,
         plot=False,
+        markersize=2,
         additional_title="",
+        as_pdf=False,
+        save_dir=None,
     ):
         embedding = None
         labels = None
@@ -1258,6 +1261,7 @@ class CebraOwn(CEBRA):
                 to_transform_data = self.get_data(
                     train_or_test=train_or_test, type="neural"
                 )
+                embedding = self.get_data(train_or_test=train_or_test, type="embedding")
                 label = self.get_data(train_or_test=train_or_test, type="behavior")
             else:
                 label = transform_data_labels
@@ -1272,19 +1276,20 @@ class CebraOwn(CEBRA):
 
             if isinstance(to_transform_data, np.ndarray):
 
-                if session_id is not None:
-                    # single session embedding from multi-session model
-                    embedding = (
-                        self.transform(to_transform_data, session_id=session_id)
-                        if to_transform_data.shape[0] > 10
-                        else None
-                    )
-                else:
-                    embedding = (
-                        self.transform(to_transform_data)
-                        if to_transform_data.shape[0] > 10
-                        else None
-                    )
+                if embedding is None:
+                    if session_id is not None:
+                        # single session embedding from multi-session model
+                            embedding = (
+                                self.transform(to_transform_data, session_id=session_id)
+                                if to_transform_data.shape[0] > 10
+                                else None
+                            )
+                    else:
+                        embedding = (
+                            self.transform(to_transform_data)
+                            if to_transform_data.shape[0] > 10
+                            else None
+                        )
 
                 if to_2d:
                     if embedding.shape[1] > 2:
@@ -1306,8 +1311,11 @@ class CebraOwn(CEBRA):
                     Vizualizer.plot_embedding(
                         embedding=embedding,
                         embedding_labels=plot_labels,
-                        markersize=2,
+                        markersize=markersize,
                         additional_title=additional_title,
+                        as_pdf=as_pdf,
+                        save_dir=save_dir,
+                        show=True,
                     )
             else:
                 embedding = {}
@@ -1670,6 +1678,116 @@ def decode(
 
     return results
 
+def one_to_decoding(ref_models: Union[Model, List[Model], Dict[str, Model]],
+                    models: Union[Model, List[Model], Dict[str, Model]]=None,
+                    multiply_by: Optional[Union[int, float]]=1,
+                    xticks:  Optional[List[str]]=None,
+                    adapt: bool=True, 
+                    n_neighbors: int =36, 
+                    plot: bool=True,
+                    fig_size: tuple=(5,7),) -> Dict[str, Dict[str, Union[float, np.ndarray]]]:
+    """
+    Decodes the data using the one-to-one decoding method.
+
+    Parameters
+    ----------
+    ref_models : Union[Model, List[Model]]
+        The reference models to use for decoding.
+    models : Union[Model, List[Model]], optional
+        The models with data to adapt to the reference models (default is None). 
+        If not provided, the reference models will be used.
+    multiply_by : Optional[Union[int, float]], optional
+        The factor to multiply the decoding results by to normalize the results. (default is 1). 
+        Shape must match the number of models, not the number of comparisons.
+    xticks : Optional[List[str]], optional
+        The labels for the x-axis (default is None). If not provided, the model names will be used.
+        xticks must match the number of comparisons.
+    adapt : bool, optional
+        Whether to adapt the model (default is True). Currently only CEBRA models can be adapted.
+    n_neighbors : int, optional
+        The number of neighbors to use for decoding (default is 36).
+    plot : bool, optional
+        Whether to plot the decoding results (default is True).
+        
+    Returns
+    -------
+    model_decoding_statistics : Dict[str, Dict[str, Union[float, np.ndarray]]]
+        A dictionary containing the decoding statistics.
+    """
+    
+    # convert models to dict
+    if not isinstance(ref_models, dict):
+        ref_models = make_list_ifnot(ref_models)
+        # ensure that model_name is unique 
+        unique_ref_models = {}
+        for model in ref_models:
+            model_name = create_unique_dict_key(unique_ref_models, model.name) if model.name in unique_ref_models.keys() else model.name
+            unique_ref_models[model_name] = model
+        ref_models = unique_ref_models
+    
+    if models is None:
+        models = ref_models
+    
+    cross_model_decoding_statistics = {}
+    for ref_model in ref_models:
+        ref_model_decoding_statistics = {ref_model.name : ref_model.define_decoding_statistics()}
+        cross_model_decoding_statistics[ref_model.name] = ref_model.define_decoding_statistics()
+        
+        # convert models to dict
+        if not isinstance(models, dict):
+            models = make_list_ifnot(models)
+            # ensure that model_name is unique 
+            unique_models = {}
+            for model in models:
+                model_name = create_unique_dict_key(unique_models, model.name) if model.name in unique_models.keys() else model.name
+                unique_models[model_name] = model
+            
+            models = unique_models
+            
+        for model_name, model2 in models.items():
+            neural_data_train_to_embedd = model2.get_data(train_or_test="train", type="neural")
+            neural_data_test_to_embedd = model2.get_data(train_or_test="test", type="neural")
+            labels_train = model2.get_data(train_or_test="train", type="behavior")
+            labels_test = model2.get_data(train_or_test="test", type="behavior")
+            
+            adapted_model = ref_model.fit(neural_data_train_to_embedd, labels_train, adapt=True) if adapt else ref_model
+            cross_model_decoding_statistics["to "+model_name] = adapted_model.define_decoding_statistics(
+                                neural_data_train_to_embedd=neural_data_train_to_embedd,
+                                neural_data_test_to_embedd=neural_data_test_to_embedd,
+                                labels_train=labels_train,
+                                labels_test=labels_test,
+                                n_neighbors=n_neighbors,
+                            )
+
+        # multiply by normalization factor
+        if multiply_by == 1:
+            multiply_by = [1] * len(cross_model_decoding_statistics)
+        for (dec_name, values), norm_factor in zip(cross_model_decoding_statistics.items(), multiply_by):
+            values["rmse"]["mean"] *= norm_factor
+            values["rmse"]["variance"] *= norm_factor
+
+    if plot:
+        if xticks is not None and len(xticks) != len(ref_models) * len(models):
+            global_logger.warning(f"Plotting one to tone decoding xticks must be a list of length {len(ref_models) * len(models)}, got {len(xticks)}. Using model names instead.")
+            xticks = None
+        
+        plot_dict = {}
+        if len(cross_model_decoding_statistics) == 1:
+            plot_cross_model_decoding_statistics = list(cross_model_decoding_statistics.values())[0]
+            if xticks is None:
+                xticks = plot_cross_model_decoding_statistics.keys()
+            for (key, value), x_tick in zip(plot_cross_model_decoding_statistics.items(), xticks):
+                plot_dict[x_tick] = {"mean": value["rmse"]["mean"], 
+                                    "variance": value["rmse"]["variance"]}
+            Vizualizer.barplot_from_dict(plot_dict, ylabel= "RMSE (cm)", xlabel="Models")
+        elif len(cross_model_decoding_statistics) > 1:
+            .... continue doing plot dict of dicts
+
+    return model_decoding_statistics
+
+def model_cross_decoding(models, ):
+    raise NotImplementedError("model_cross_decoding not implemented yet.")
+    return cross_decodings
 
 def structure_index(
     data: np.ndarray,

@@ -521,11 +521,17 @@ class Vizualizer:
         alpha=None,
         figsize=(10, 10),
         dpi=300,
+        as_pdf=False,
+        show=True,
+        save_dir=None,
         additional_title="",
     ):
         embedding, labels = force_equal_dimensions(
             embedding, embedding_labels["labels"]
         )
+        
+        labels, min_vals, max_vals = Vizualizer.create_RGBA_colors_from_2d(labels)
+        
         if embedding.shape[1] == 2:
             ax = Vizualizer.plot_embedding_2d(
                 axis=ax,
@@ -538,6 +544,9 @@ class Vizualizer:
                 title=title,
                 figsize=figsize,
                 dpi=dpi,
+                as_pdf=as_pdf,
+                show=show,
+                save_dir=save_dir,
                 plot_legend=plot_legend,
                 additional_title=additional_title,
             )
@@ -552,7 +561,9 @@ class Vizualizer:
                 cmap=cmap,
                 title=title,
                 figsize=figsize,
-                dpi=dpi,
+                as_pdf=as_pdf,
+                show=show,
+                save_dir=save_dir,
                 plot_legend=plot_legend,
                 additional_title=additional_title,
             )
@@ -576,6 +587,9 @@ class Vizualizer:
         figsize: tuple = (5, 5),
         dpi: float = 100,
         plot_legend: bool = True,
+        as_pdf: bool = False,
+        show: bool = True,
+        save_dir: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -648,11 +662,15 @@ class Vizualizer:
         # ax.spines['left'].set_visible(False)
         ax.set_xlim(embedding[:, idx1].min(), embedding[:, idx1].max())
         ax.grid(False)
-        ax.set_title(title + additional_title, y=1.0, pad=-10)
+        title = title + additional_title
+        ax.set_title(title, y=1.0, pad=-10)
 
         if plot_legend:
             Vizualizer.add_2d_colormap_legend(fig, discret_n_colors=embedding_labels)
 
+        if axis is None:
+            Vizualizer.plot_ending(title=title, as_pdf=as_pdf, show=show, save_dir=save_dir)
+        
         return ax
 
     def plot_embedding_3d(
@@ -661,15 +679,20 @@ class Vizualizer:
         show_hulls: bool = False,
         idx_order: Optional[Tuple[int]] = None,
         markersize: float = 0.05,
+        marker: str = ".",
         alpha: float = 0.4,
         cmap: str = "cool",
         title: str = "3D Embedding",
         additional_title: str = "",
         axis: Optional[matplotlib.axes.Axes] = None,
         figsize: tuple = (5, 5),
-        dpi: float = 100,
-        grey_fig: bool = False,
+        dpi: float = 300,
+        background: str =None,
+        grid: bool=False,
         plot_legend: bool = True,
+        as_pdf: bool = False,
+        show: bool = True,
+        save_dir: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -697,6 +720,7 @@ class Vizualizer:
             c=embedding_labels,
             cmap=cmap,
             alpha=alpha,
+            marker=marker,
             s=markersize,
             **kwargs,
         )
@@ -708,19 +732,28 @@ class Vizualizer:
                     points, ax, hull_alpha=0.2, facecolor=color, edgecolor="r"
                 )
 
-        ax.grid(False)
-        ax.xaxis.pane.fill = False
-        ax.yaxis.pane.fill = False
-        ax.zaxis.pane.fill = False
+        
+        if grid:
+            ax.grid(grid, alpha=0.5)
+        else:
+            ax.grid(False)
+            
+        if background:
+            ax.xaxis.pane.set_facecolor(background)
+            ax.yaxis.pane.set_facecolor(background)
+            ax.zaxis.pane.set_facecolor(background)
+        else:
+            ax.xaxis.pane.fill = False
+            ax.yaxis.pane.fill = False
+            ax.zaxis.pane.fill = False
+            
         ax.xaxis.pane.set_edgecolor("w")
         ax.yaxis.pane.set_edgecolor("w")
         ax.zaxis.pane.set_edgecolor("w")
-        ax.set_title(title + additional_title, y=1.08, pad=-10)
+            
+        title = title + additional_title
+        ax.set_title(title, y=1.08, pad=-10)
 
-        if grey_fig:
-            ax.xaxis.pane.set_edgecolor("grey")
-            ax.yaxis.pane.set_edgecolor("grey")
-            ax.zaxis.pane.set_edgecolor("grey")
 
         if plot_legend:
             if embedding_labels.ndim == 1:
@@ -736,6 +769,8 @@ class Vizualizer:
             else:
                 raise ValueError("Invalid labels dimension. Choose 2D or 3D labels.")
 
+        if axis is None:
+            Vizualizer.plot_ending(title=title, as_pdf=as_pdf, show=show, save_dir=save_dir)
         return ax
 
     def add_1d_colormap_legend(
@@ -909,31 +944,7 @@ class Vizualizer:
             # Get the labels for the current subplot
 
             session_labels = labels_list[i]
-
-            # create 2D RGBA labels to overwrite 1D cmap coloring
-            rgba_colors = None
-            if session_labels.shape[1] == 2:
-                min_vals = min_val if min_val is not None else np.min(session_labels, axis=0)
-                max_vals = max_val if min_val is not None else np.max(session_labels, axis=0)
-                # steps = 5
-                xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
-                yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
-
-                rgba_colors = Vizualizer.create_rgba_labels(session_labels)
-            elif is_rgba(session_labels):
-                first_embedding = list(embeddings.values())[0]
-                if first_embedding.shape[1] == 2:
-                    min_vals = min_val or np.min(first_embedding, axis=0)
-                    max_vals = max_val or np.max(first_embedding, axis=0)
-                    xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
-                    yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
-                else:
-                    xticks_2d_colormap = None
-                    yticks_2d_colormap = None
-                rgba_colors = session_labels
-
-            if rgba_colors is not None:
-                session_labels = rgba_colors
+            session_labels, min_vals, max_vals = Vizualizer.create_RGBA_colors_from_2d(session_labels, min_val=min_val, max_val=max_val)
 
             session_labels_dict = {"name": labels["name"], "labels": session_labels}
 
@@ -968,6 +979,18 @@ class Vizualizer:
                     if legend_cmap is None
                     else None
                 )
+
+                first_embedding = list(embeddings.values())[0]
+                if first_embedding.shape[1] == 2:
+                    min_vals = min_val or np.min(first_embedding, axis=0)
+                    max_vals = max_val or np.max(first_embedding, axis=0)
+                    xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
+                    yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
+                    raise ValueError("This coloring is probably shit but lets see")
+                else:
+                    xticks_2d_colormap = None
+                    yticks_2d_colormap = None
+                    
                 Vizualizer.add_2d_colormap_legend(
                     fig,
                     Legend=legend_cmap,
@@ -1019,6 +1042,32 @@ class Vizualizer:
         elif values.ndim == 3:
             raise ValueError("3D values not supported yet.")
         return rgba_colors
+
+    @staticmethod
+    def create_RGBA_colors_from_2d(values, 
+                                   min_val=None, 
+                                   max_val=None,
+                                   alpha=0.8, 
+                                   ):
+        # create 2D RGBA labels to overwrite 1D cmap coloring
+        rgba_colors = None
+        min_vals = None
+        max_vals = None
+        if len(values.shape) == 1:
+            min_vals = min_val if min_val is not None else np.min(values)
+            max_vals = max_val if min_val is not None else np.max(values)
+            rgba_colors = Vizualizer.create_rgba_labels(values, alpha=alpha)
+            global_logger.info(f"Created 1D RGBA labels for {values.shape[0]} values.")
+        elif values.shape[1] == 2:
+            min_vals = min_val if min_val is not None else np.min(values, axis=0)
+            max_vals = max_val if min_val is not None else np.max(values, axis=0)
+            rgba_colors = Vizualizer.create_rgba_labels(values, alpha=alpha)
+            global_logger.info(f"Created 2D RGBA labels for {values.shape[0]} values.")
+        elif is_rgba(values):
+            rgba_colors = values
+        else:
+            raise ValueError(f"Invalid labels shape: {values.shape}")
+        return rgba_colors, min_vals, max_vals
 
     def plot_losses(
         self,
@@ -3070,116 +3119,130 @@ class Vizualizer:
             plt.savefig(save_path, dpi=300, bbox_inches="tight", format=format)
 
     @staticmethod
+    def _get_colors(num_items: int, base_index: int = 0) -> List:
+        """Generate consistent colors from tab20 colormap"""
+        color_map = plt.cm.get_cmap("tab20")
+        return [mcolors.to_rgba(color_map(base_index + i), alpha=1 - 0.1 * i) 
+                for i in range(num_items)]
+
+    @staticmethod
+    def _add_bars_and_labels(ax, positions, values, colors, width, variances=None):
+        """Add bars, error bars, and value labels to the plot"""
+        bars = ax.bar(positions, values, width=width, color=colors)
+        
+        if variances:
+            ax.errorbar(positions, values, yerr=variances, fmt="none",ecolor="white", capsize=5, alpha=0.3)
+        
+        for bar, value in zip(bars, values):
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f"{int(value)}", ha="center", va="bottom", fontsize=9)
+        return bars
+
+    @staticmethod
+    def barplot_from_dict(
+        data: Dict[str, Union[float, int]],
+        title: str = "Bar Plot",
+        xlabel: str = "Categories",
+        ylabel: str = "",
+        x_ticks: List[str] = None,
+        figsize: tuple = (5,7),
+        bar_width: float = 0.8,
+        save_dir: str = None,
+        as_pdf: bool = False
+    ):
+        """Plot a simple bar chart from a single dictionary"""
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Prepare data
+        categories = list(data.keys()) if x_ticks is None else x_ticks
+        values = [v * 100 if isinstance(v, (int, float)) else v["mean"] * 100 for v in data.values()]
+        variances = [v["variance"] * 100 if isinstance(v, dict) else None for v in data.values()]
+        colors = Vizualizer._get_colors(len(categories))
+        positions = np.arange(len(categories))
+
+        # Plot bars
+        Vizualizer._add_bars_and_labels(ax, positions, values, colors, bar_width, [v for v in variances if v is not None])
+
+        # Customize plot
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        ax.set_xticks(positions)
+        ax.set_xticklabels(categories, rotation=45, ha="right")
+        
+        plt.tight_layout()
+        
+        if save_dir:
+            ext = "pdf" if as_pdf else "png"
+            plt.savefig(f"{save_dir}/{title}.{ext}", bbox_inches="tight")
+        
+        plt.show()
+
+    @staticmethod
     def barplot_from_dict_of_dicts(
         data: Dict[str, Dict[str, Union[float, int]]],
         title: str = "Decoding of Position",
         additional_title: str = "",
         legend_title: str = "Source: Mean RMSE",
-        data_labels: List[str] = None,
+        x_ticks: List[str] = None,
         xlabel: str = "Model Based on Source and compared to Task",
         ylabel: str = "RMSE (cm)",
-        base_bar_width=1,
-        distance_between_bars=0,
-        distace_between_sources=None,
-        figsize=(10, 6),
-        save_dir=None,
-        as_pdf=False,
+        figsize: tuple = (10, 6),
+        base_bar_width: float = 1,
+        distance_between_bars: float = 0,
+        distance_between_sources: float = None,
+        save_dir: str = None,
+        as_pdf: bool = False
     ):
-        """
-        Plots a group of bars per source with different tasks as subgroups. Values in the dictionary will be multiplied by 100 to create a RMSE value in cm.
-
-        Attributes:
-            data: {source: {task: value}}
-                values are RMSE values in m
-
-        """
-        # Flatten the dictionary for plotting
-        color_map = matplotlib.cm.get_cmap("tab20")
-
-        plt.figure(figsize=figsize)
-
+        """Plot grouped bar chart from dictionary of dictionaries"""
+        fig, ax = plt.subplots(figsize=figsize)
+        
         num_sources = len(data)
-        bar_width = base_bar_width / num_sources  # Width of each bar
-        distace_between_sources = (
-            bar_width * 2
-            if distace_between_sources is None
-            else distace_between_sources
-        )
-
+        bar_width = base_bar_width / num_sources
+        distance_between_sources = bar_width * 2 if distance_between_sources is None else distance_between_sources
+        
         position = 0
         all_positions = []
+        all_labels = []
+
         for source_num, (source, task_dict) in enumerate(data.items()):
-            tasks = []
-            values = []
-            variances = []
-            colors = []
-            positions = []
-            for task_num, (task, value) in enumerate(task_dict.items()):
-                if isinstance(value, dict):
-                    variance = value["variance"]
-                    value = value["mean"]
-                    variances.append(variance * 100)
-                if not data_labels:
-                    label = f"{source}: {task.split('_')[-3][-3:]}"
-                else:
-                    label = str(data_labels[source_num + task_num])
-                tasks.append(label)
-                values.append(value * 100)
-                colors.append(
-                    mcolors.to_rgba(color_map(source_num), alpha=1 - 0.1 * task_num)
-                )
-                positions.append(position)
-                position += bar_width + distance_between_bars
+            tasks = list(task_dict.keys())
+            values = [v * 100 if isinstance(v, (int, float)) else v["mean"] * 100 
+                     for v in task_dict.values()]
+            variances = [v["variance"] * 100 if isinstance(v, dict) else None 
+                        for v in task_dict.values()]
+            colors = Vizualizer._get_colors(len(tasks), source_num)
+            positions = [position + i * (bar_width + distance_between_bars) 
+                        for i in range(len(tasks))]
+            
+            # Plot bars
+            bars = Vizualizer._add_bars_and_labels(ax, positions, values, colors, 
+                                              bar_width, 
+                                              [v for v in variances if v is not None])
+            
+            # Update positions and labels
+            position = positions[-1] + bar_width + distance_between_sources
+            all_positions.extend(positions)
+            all_labels.extend([f"{source}: {task.split('_')[-3][-3:]}" 
+                             for task in tasks] if not x_ticks else x_ticks)
+            
+            ax.legend(handles=[bars], labels=[f"{source}: {np.mean(values):.2f}"],
+                     title=legend_title, bbox_to_anchor=(1.05, 1), loc="upper left")
 
-            position += distace_between_sources
-            all_positions += positions
-
-            bars = plt.bar(
-                positions,
-                height=values,
-                width=bar_width,
-                color=colors,
-                label=f"{source}: {np.mean(values):.2f}",
-            )
-            # Adding error bars using plt.errorbar
-            plt.errorbar(
-                positions,
-                values,
-                yerr=None if len(variances) == 0 else variances,
-                fmt="none",  # No connecting line
-                ecolor="white",  # Color of the error bars
-                capsize=5,  # Adding caps to the error bars
-                alpha=0.3,  # Transparency of the error bars
-            )
-            for bar, value in zip(bars, values):
-                # Adding labels to each bar
-                plt.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    bar.get_height(),
-                    f"{int(value)}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=9,
-                )
-
-        title = f"{title} {additional_title}" if additional_title else title
-
-        # Plotting
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.title(title, fontsize=figsize[0])
+        # Customize plot
+        full_title = f"{title} {additional_title}" if additional_title else title
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(full_title)
+        ax.set_xticks(all_positions)
+        ax.set_xticklabels(all_labels if x_ticks else ["" for _ in all_positions], 
+                          rotation=45, ha="right")
         
-        # xticks = data_labels[: len(all_positions)]
-        xticks = [""] * len(all_positions) if not data_labels else data_labels
-        plt.xticks(
-            all_positions, xticks, rotation=45, ha="right"
-        )
         plt.tight_layout()
-        plt.legend(title=legend_title, bbox_to_anchor=(1.05, 1), loc="upper left")
-
-        Vizualizer.save_plot(save_dir, title, "pdf" if as_pdf else "png")
-
-        # Show the plot
+        
+        if save_dir:
+            ext = "pdf" if as_pdf else "png"
+            plt.savefig(f"{save_dir}/{full_title}.{ext}", bbox_inches="tight")
+        
         plt.show()
 
     @staticmethod
@@ -3428,34 +3491,8 @@ class Vizualizer:
         title += f" {additional_title}" if additional_title != "" else ""
         fig.suptitle(title, fontsize=20)
 
-        # create 2D RGBA labels to overwrite 1D cmap coloring
-        rgba_colors = None
-        if len(feature.shape) == 1:
-            session_labels = feature
-        else:
-            if len(feature.shape) == 2 and feature.shape[1] == 2:
-                min_vals = np.min(feature, axis=0)
-                max_vals = np.max(feature, axis=0)
-                # steps = 5
-                xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
-                yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
-
-                rgba_colors = Vizualizer.create_rgba_labels(feature)
-            elif is_rgba(feature):
-                first_embedding = embedding.values()
-                if first_embedding.shape[1] == 2:
-                    min_vals = np.min(first_embedding, axis=0)
-                    max_vals = np.max(first_embedding, axis=0)
-                    xticks_2d_colormap = np.linspace(min_vals[0], max_vals[0], 5)
-                    yticks_2d_colormap = np.linspace(min_vals[1], max_vals[1], 5)
-                else:
-                    xticks_2d_colormap = None
-                    yticks_2d_colormap = None
-                rgba_colors = feature
-
-            if rgba_colors is not None:
-                session_labels = rgba_colors
-
+        session_labels, min_vals, max_vals = Vizualizer.create_RGBA_colors_from_2d(feature)
+            
         # plot 3D scatters
         at = plt.subplot(1, 3, 1, projection="3d")
         embedding_title = "Embedding"

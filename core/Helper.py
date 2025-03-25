@@ -1,5 +1,6 @@
 import sys, os
 from pathlib import Path
+import copy
 
 # type hints
 from typing import List, Union, Dict, Any, Tuple, Optional
@@ -1510,6 +1511,7 @@ def filter_strings_by_properties(
         exclude_properties = create_list_of_lists(exclude_properties)
 
     for string in strings:
+        org_string = copy.deepcopy(string)
         string = string.lower()
         include_check = False
         if include_properties:
@@ -1535,7 +1537,7 @@ def filter_strings_by_properties(
 
         # Only include the string if it matches include properties and does not match exclude properties
         if include_check and not exclude_check:
-            filtered_strings.append(string)
+            filtered_strings.append(org_string)
 
     return filtered_strings
 
@@ -1994,8 +1996,8 @@ def bin_array(
     Returns:
     numpy.ndarray: Binned array, starting at bin 0 to n-1.
     """
-    min_bin = make_list_ifnot(min_bin or np.min(arr, axis=0))
-    max_bin = make_list_ifnot(max_bin or np.max(arr, axis=0))
+    min_bin = make_list_ifnot(min_bin if min_bin is not None else np.min(arr, axis=0))
+    max_bin = make_list_ifnot(max_bin if max_bin is not None else np.max(arr, axis=0))
     bin_size = make_list_ifnot(bin_size)
     np_arr = np.array(arr)
     if np_arr.ndim == 1:
@@ -2207,6 +2209,23 @@ def dict_value_keylist(dict, keylist):
         dict = dict[key]
     return dict
 
+def create_unique_dict_key(dictionary, key):
+    """
+    Create a unique key for a dictionary by appending a number to the key.
+
+    Parameters:
+    dictionary (dict): The dictionary to check for existing keys.
+    key (str): The key to check for uniqueness.
+
+    Returns:
+    str: A unique key based on the input key.
+    """
+    unique_key = key
+    count = 1
+    while unique_key in dictionary:
+        unique_key = f"{key}_{count}"
+        count += 1
+    return unique_key
 
 def is_dict_of_dicts(dict):
     return all(type(value) == type(dict) for value in dict.values())

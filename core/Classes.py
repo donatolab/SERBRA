@@ -814,7 +814,7 @@ class Animal:
 
             if "relative" in task_model.name:
                 print("WARNING: Numbers are relavtive")
-                """global_logger.warning(
+                global_logger.warning(
                     f"Detected relative in task_model name {task_model.name}. Converting relative performance to absolute using max possible value possible."
                 )
                 behavior_type = task_model.name.split("_")[1]
@@ -824,11 +824,10 @@ class Animal:
                 # convert percentage to cm
                 max_position_absolute_model_data = np.max(absolute_data)
                 mean = mean * max_position_absolute_model_data
-                variance = variance * max_position_absolute_model_data"""
+                variance = variance * max_position_absolute_model_data
 
             #stimulus_type = self.tasks[task_name].behavior_metadata["stimulus_type"]
             stimulus_type = ""
-            #task_name_type = f"{task_name} ({stimulus_type})"
             task_name_type = f"{task_name.split('_')[-1]}"
             task_decoding_statistics[task_name_type] = {}
             data_labels.append(task_name_type)
@@ -837,61 +836,36 @@ class Animal:
                 "variance": variance,
             }
 
-            for task_name2, task_models2 in unique_models.items():
-                #if task_name == task_name2:
-                #    continue
-                #stimulus_type2 = self.tasks[task_name2].behavior_metadata[
-                #    "stimulus_type"
-                #]
-                stimulus_type2 = task_name2.split('_')[-1]
-                model2 = task_models2 # [list(task_models2.keys())[0]]
+            xticks = []
+            max_position_absolute_model_data = []
+            for task_modle_name2, task_models2 in unique_models.items():
+                stimulus_type2 = task_modle_name2.split('_')[-1]
                 stimulus_decoding = f"{task_name_type}_{stimulus_type2}"
 
-
-                neural_data_train_to_embedd = model2.get_data(train_or_test="test", type="neural")
-                neural_data_test_to_embedd = model2.get_data(train_or_test="train", type="neural")
-                labels_train = model2.get_data(train_or_test="test", type="behavior")
-                labels_test = model2.get_data(train_or_test="train", type="behavior")
-                # neural_data_train_to_embedd = model2.get_data(train_or_test="train", type="neural")
-                # neural_data_test_to_embedd = model2.get_data(train_or_test="test", type="neural")
-                # labels_train = model2.get_data(train_or_test="train", type="behavior")
-                # labels_test = model2.get_data(train_or_test="test", type="behavior")
-                #if task_model.get_data(type="neural").shape[1] != model2.get_data(type="neural").shape[1]:
-                if True:
-                    import copy
-                    print(f"WARNING: Number of Neurons in Datasets not equal. ADAPTING MODEL")
-                    task_model.max_adapt_iterations = 500
-                    adapted_task_model = copy.deepcopy(task_model).fit(neural_data_test_to_embedd, labels_test, adapt=True)
-                    decoding_of_other_task = adapted_task_model.define_decoding_statistics(
-                        neural_data_train_to_embedd=neural_data_train_to_embedd,
-                        neural_data_test_to_embedd=neural_data_test_to_embedd,
-                        labels_train=labels_train,
-                        labels_test=labels_test,
-                        n_neighbors=n_neighbors,
-                    )
-                else:
-                    decoding_of_other_task = task_model.define_decoding_statistics(
-                        neural_data_test_to_embedd=neural_data_test_to_embedd,
-                        labels_test=labels_test,
-                        n_neighbors=n_neighbors,
-                    )
-
-                mean = decoding_of_other_task["rmse"]["mean"]
-                variance = decoding_of_other_task["rmse"]["variance"]
-
-                if "relative" in task_model.name:
+                if "relative" in task_modle_name2:
                     print("WARNING: Numbers are relavtive")
-                    """global_logger.warning(
-                        f"Detected relative in model name {model.name}. Converting relative performance to absolute using max possible value possible."
+                    global_logger.warning(
+                        f"Detected relative in model name {task_modle_name2}. Converting relative performance to absolute using max possible value possible."
                     )
-                    behavior_type = model.name.split("_")[1]
-                    absolute_data = self.tasks[task_name].behavior.get_multi_data(
+                    behavior_type = task_modle_name2.split("_")[1]
+                    absolute_data = self.sessions[task_name].behavior.get_multi_data(
                         sources=behavior_type
                     )[0]
                     # convert percentage to cm
-                    max_position_absolute_model_data = np.max(absolute_data)
-                    mean = mean * max_position_absolute_model_data
-                    variance = variance * max_position_absolute_model_data"""
+                    max_position_absolute_model_data.append(np.max(absolute_data))
+                else:
+                    max_position_absolute_model_data.append(1)
+
+            from Models import one_to_decoding
+            decoding_of_other_task = one_to_decoding(ref_models=task_model, 
+                                                models=unique_models, 
+                                                n_neighbors=n_neighbors,
+                                                multiply_by=max_position_absolute_model_data,
+                                                plot=True
+                                                )
+            raise ValueError("Not implemented yet")
+            ##############################################
+            for task_name2, task_models2 in unique_models.items():
 
                 if stimulus_decoding in task_decoding_statistics[task_name_type]:
                     stimulus_decoding = f"{stimulus_decoding}_2"
