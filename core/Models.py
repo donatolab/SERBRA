@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # type hints
 from typing import List, Union, Dict, Tuple, Optional, Literal
 
@@ -346,14 +347,18 @@ class Models:
         else:
             raise ValueError(f"Pipeline {pipeline} not supported. Choose 'cebra'.")
         return models_class
-    
+
     @staticmethod
-    def model_cross_decoding(self, ref_model: Model, models: Dict[str, Model], labels: List[str]=None):
+    def model_cross_decoding(
+        self, ref_model: Model, models: Dict[str, Model], labels: List[str] = None
+    ):
         """
         Cross-decoding between models.
         """
-        #TODO: Implement cross-decoding between models
-        raise NotImplementedError(f"Cross-decoding between models not implemented yet in {self.__class__}")
+        # TODO: Implement cross-decoding between models
+        raise NotImplementedError(
+            f"Cross-decoding between models not implemented yet in {self.__class__}"
+        )
 
 
 class ModelsWrapper:
@@ -924,18 +929,13 @@ class SpatialInformation(Model):
 
 
 class Cebras(ModelsWrapper, Model):
+    # TODO: restructure this and mode Model to CebraOwn class as well as other functions
     def __init__(self, model_dir, model_id, model_settings=None, **kwargs):
         super().__init__(model_dir, model_settings, **kwargs)
         self.model_id = model_id
         # self.time_model = self.time()
         # self.behavior_model = self.behavior()
         # self.hybrid_model = self.hybrid()
-
-    def define_parameter_save_path(self, model):
-        save_path = self.model_dir.joinpath(
-            f"cebra_{model.name}_dim-{model.output_dimension}_model-{self.model_id}.pt"
-        )
-        return save_path
 
     def init_model(self, model_settings_dict):
         if len(model_settings_dict) == 0:
@@ -949,41 +949,17 @@ class Cebras(ModelsWrapper, Model):
         initial_model.decoding_statistics = None
         return initial_model
 
-    def load_fitted_model(self, model):
-        fitted_model_path = model.save_path
-        if fitted_model_path.exists():
-            fitted_model = model.load(fitted_model_path)
-            if fitted_model.get_params() == model.get_params():
-                # load_cebra_with_sklearn_backend
-                copy_attributes_to_object(
-                    propertie_name_list=fitted_model.__dict__.keys(),
-                    set_object=model,
-                    get_object=fitted_model,
-                )
-                global_logger.info(f"Loaded matching model {fitted_model_path}")
-                print(f"Loaded matching model {fitted_model_path}")
-            else:
-                for mkey, mvalue in model.get_params().items():
-                    for fmkey, fmvalue in fitted_model.get_params().items():
-                        if mkey == fmkey and mvalue != fmvalue:
-                            global_logger.error(
-                                f"Parameter {mkey} with value {mvalue} does not match to {fmvalue}"
-                            )
-                global_logger.error(
-                    f"Loaded model parameters do not match to initialized model. Not loading {fitted_model_path}"
-                )
-
-        model.fitted = model.is_fitted(model)
-        return model
-
     def model_settings_start(self, name, model_settings_dict):
         model = self.init_model(model_settings_dict)
         model.name = name
         return model
 
     def model_settings_end(self, model):
-        model.save_path = self.define_parameter_save_path(model)
-        model = self.load_fitted_model(model)
+        save_path = model.define_parameter_save_path(
+            model_dir=self.model_dir, model_id=self.model_id
+        )
+        model = model.load_fitted_model()
+        model.model_id = self.model_id
         self.models[model.name] = model
         return model
 
@@ -1109,6 +1085,24 @@ class CebraOwn(CEBRA):
         self.data = None
         self.save_path = None
 
+    def define_parameter_save_path(
+        self, model_dir: Union[str, Path] = None, model_id: str = None
+    ):
+        if model_dir is not None:
+            self.model_dir = Path(model_dir)
+        else:
+            self.model_dir = self.save_path.parent
+        if model_id is None:
+            model_id = self.model_id
+        self.save_path = self.model_dir.joinpath(
+            f"cebra_{self.name}_dim-{self.output_dimension}_model-{model_id}.pt"
+        )
+        return self.save_path
+
+    def set_name(self, name):
+        self.name = name
+        self.define_parameter_save_path()
+
     def define_decoding_statistics(
         self,
         neural_data_train_to_embedd: np.ndarray = None,
@@ -1194,8 +1188,40 @@ class CebraOwn(CEBRA):
                 )
         return self.decoding_statistics
 
-    def is_fitted(self, model):
-        return sklearn_utils.check_fitted(model)
+    def load_fitted_model(self):
+        fitted_model_path = self.save_path
+        if fitted_model_path.exists():
+            fitted_model = self.load(fitted_model_path)
+            if fitted_model.get_params() == self.get_params():
+                # load_cebra_with_sklearn_backend
+                copy_attributes_to_object(
+                    propertie_name_list=fitted_model.__dict__.keys(),
+                    set_object=self,
+                    get_object=fitted_model,
+                )
+                global_logger.info(f"Loaded matching model {fitted_model_path}")
+                print(f"Loaded matching model {fitted_model_path}")
+            else:
+                for mkey, mvalue in self.get_params().items():
+                    for fmkey, fmvalue in fitted_model.get_params().items():
+                        if mkey == fmkey and mvalue != fmvalue:
+                            global_logger.error(
+                                f"Parameter {mkey} with value {mvalue} does not match to {fmvalue}"
+                            )
+                global_logger.error(
+                    f"Loaded model parameters do not match to initialized model. Not loading {fitted_model_path}"
+                )
+            self.fitted = self.is_fitted()
+        else:
+            self.fitted = False
+        return self
+
+    def is_fitted(self):
+        return sklearn_utils.check_fitted(self)
+
+    def remove_fitting(self):
+        if "n_features" in self.__dict__:
+            del self.n_features_
 
     def train(
         self,
@@ -1231,8 +1257,7 @@ class CebraOwn(CEBRA):
                     neural_data, behavior_data = force_equal_dimensions(
                         neural_data, behavior_data
                     )
-                    self.fit(neural_data, behavior_data)
-                self.fitted = self.is_fitted(self)
+                self.fitted = self.is_fitted()
                 self.save(self.save_path)
         else:
             global_logger.info(f"{self.name} model already trained. Skipping.")
@@ -1279,11 +1304,11 @@ class CebraOwn(CEBRA):
                 if embedding is None:
                     if session_id is not None:
                         # single session embedding from multi-session model
-                            embedding = (
-                                self.transform(to_transform_data, session_id=session_id)
-                                if to_transform_data.shape[0] > 10
-                                else None
-                            )
+                        embedding = (
+                            self.transform(to_transform_data, session_id=session_id)
+                            if to_transform_data.shape[0] > 10
+                            else None
+                        )
                     else:
                         embedding = (
                             self.transform(to_transform_data)
@@ -1505,6 +1530,54 @@ class CebraOwn(CEBRA):
 
         return struc_ind
 
+    def make_random(self, regenerate: bool = False, create_embedding: bool = True):
+        random_self = copy.deepcopy(self)
+        random_self.set_name(f"{self.name}_random")
+        # randomize neural data
+        train_data = random_self.get_data(train_or_test="train", type="neural")
+        test_data = random_self.get_data(train_or_test="test", type="neural")
+        random_self.set_data(
+            train_or_test="train",
+            type="neural",
+            data=Dataset.shuffle(train_data),
+        )
+        random_self.set_data(
+            train_or_test="test", type="neural", data=Dataset.shuffle(test_data)
+        )
+        # randomize behavior
+        train_labels = random_self.get_data(train_or_test="train", type="behavior")
+        test_labels = random_self.get_data(train_or_test="test", type="behavior")
+        random_self.set_data(
+            train_or_test="train",
+            type="behavior",
+            data=Dataset.shuffle(train_labels),
+        )
+        random_self.set_data(
+            train_or_test="test", type="behavior", data=Dataset.shuffle(test_labels)
+        )
+
+        random_self.remove_fitting()
+        random_self.load_fitted_model()
+
+        random_self.train(
+            neural_data=random_self.get_data(train_or_test="train"),
+            behavior_data=random_self.get_data(train_or_test="train", type="behavior"),
+            regenerate=regenerate,
+        )
+
+        if create_embedding:
+            train_embedding = random_self.create_embedding(train_or_test="train")
+            test_embedding = random_self.create_embedding(train_or_test="test")
+
+        random_self.set_data(
+            data=train_embedding, train_or_test="train", type="embedding"
+        )
+        random_self.set_data(
+            data=test_embedding, train_or_test="test", type="embedding"
+        )
+
+        return random_self
+
 
 def decode(
     embedding_train: np.ndarray,
@@ -1678,26 +1751,34 @@ def decode(
 
     return results
 
-def one_to_decoding(ref_models: Union[Model, List[Model], Dict[str, Model]],
-                    models: Union[Model, List[Model], Dict[str, Model]]=None,
-                    multiply_by: Optional[Union[int, float]]=1,
-                    xticks:  Optional[List[str]]=None,
-                    adapt: bool=True, 
-                    n_neighbors: int =36, 
-                    plot: bool=True,
-                    fig_size: tuple=(5,7),) -> Dict[str, Dict[str, Union[float, np.ndarray]]]:
+
+def cross_decoding(
+    ref_models: Union[CebraOwn, List[CebraOwn], Dict[str, CebraOwn]],
+    models: Union[CebraOwn, List[CebraOwn], Dict[str, CebraOwn]] = None,
+    multiply_by: Optional[Union[int, float]] = 1,
+    title="Decoding perfomance between Models",
+    additional_title: str = "",
+    xticks: Optional[List[str]] = None,
+    adapt: bool = True,
+    n_neighbors: int = 36,
+    plot: bool = True,
+    fig_size: tuple = (5, 7),
+) -> Dict[str, Dict[str, Union[float, np.ndarray]]]:
     """
     Decodes the data using the one-to-one decoding method.
+
+    It is important to mention, that the model name "random" is reserved for the random model.
+    The behavior variables will be shuffled for decoding.
 
     Parameters
     ----------
     ref_models : Union[Model, List[Model]]
         The reference models to use for decoding.
     models : Union[Model, List[Model]], optional
-        The models with data to adapt to the reference models (default is None). 
+        The models with data to adapt to the reference models (default is None).
         If not provided, the reference models will be used.
     multiply_by : Optional[Union[int, float]], optional
-        The factor to multiply the decoding results by to normalize the results. (default is 1). 
+        The factor to multiply the decoding results by to normalize the results. (default is 1).
         Shape must match the number of models, not the number of comparisons.
     xticks : Optional[List[str]], optional
         The labels for the x-axis (default is None). If not provided, the model names will be used.
@@ -1708,86 +1789,156 @@ def one_to_decoding(ref_models: Union[Model, List[Model], Dict[str, Model]],
         The number of neighbors to use for decoding (default is 36).
     plot : bool, optional
         Whether to plot the decoding results (default is True).
-        
+
     Returns
     -------
     model_decoding_statistics : Dict[str, Dict[str, Union[float, np.ndarray]]]
         A dictionary containing the decoding statistics.
     """
-    
-    # convert models to dict
+
+    # convert reference models to dict
     if not isinstance(ref_models, dict):
         ref_models = make_list_ifnot(ref_models)
-        # ensure that model_name is unique 
+        # ensure that model_name is unique
         unique_ref_models = {}
         for model in ref_models:
-            model_name = create_unique_dict_key(unique_ref_models, model.name) if model.name in unique_ref_models.keys() else model.name
+            model_name = (
+                create_unique_dict_key(unique_ref_models, model.name)
+                if model.name in unique_ref_models.keys()
+                else model.name
+            )
             unique_ref_models[model_name] = model
         ref_models = unique_ref_models
-    
+
     if models is None:
         models = ref_models
-    
+
+    # convert models to dict
+    if not isinstance(models, dict):
+        models = make_list_ifnot(models)
+        # ensure that model_name is unique
+        unique_models = {}
+        for model in models:
+            model_name = (
+                create_unique_dict_key(unique_models, model.name)
+                if model.name in unique_models.keys()
+                else model.name
+            )
+            unique_models[model_name] = model
+        models = unique_models
+
     cross_model_decoding_statistics = {}
-    for ref_model in ref_models:
-        ref_model_decoding_statistics = {ref_model.name : ref_model.define_decoding_statistics()}
-        cross_model_decoding_statistics[ref_model.name] = ref_model.define_decoding_statistics()
-        
-        # convert models to dict
-        if not isinstance(models, dict):
-            models = make_list_ifnot(models)
-            # ensure that model_name is unique 
-            unique_models = {}
-            for model in models:
-                model_name = create_unique_dict_key(unique_models, model.name) if model.name in unique_models.keys() else model.name
-                unique_models[model_name] = model
-            
-            models = unique_models
-            
+    for ref_model_name, ref_model in iter_dict_with_progress(ref_models):
+        global_logger.info(f"Decoding statistics for {ref_model_name}")
+        ref_model_decoding_statistics = {
+            ref_model_name: ref_model.define_decoding_statistics(
+                regenerate=True, n_neighbors=n_neighbors
+            )
+        }
+
         for model_name, model2 in models.items():
-            neural_data_train_to_embedd = model2.get_data(train_or_test="train", type="neural")
-            neural_data_test_to_embedd = model2.get_data(train_or_test="test", type="neural")
+            neural_data_train_to_embedd = model2.get_data(
+                train_or_test="train", type="neural"
+            )
+            neural_data_test_to_embedd = model2.get_data(
+                train_or_test="test", type="neural"
+            )
             labels_train = model2.get_data(train_or_test="train", type="behavior")
             labels_test = model2.get_data(train_or_test="test", type="behavior")
-            
-            adapted_model = ref_model.fit(neural_data_train_to_embedd, labels_train, adapt=True) if adapt else ref_model
-            cross_model_decoding_statistics["to "+model_name] = adapted_model.define_decoding_statistics(
-                                neural_data_train_to_embedd=neural_data_train_to_embedd,
-                                neural_data_test_to_embedd=neural_data_test_to_embedd,
-                                labels_train=labels_train,
-                                labels_test=labels_test,
-                                n_neighbors=n_neighbors,
-                            )
+            # ref_model.max_adapt_iterations = 10000
+            adapted_model = (
+                ref_model.fit(neural_data_train_to_embedd, labels_train, adapt=True)
+                if adapt
+                else ref_model
+            )
+
+            ref_model_decoding_statistics["to " + model_name] = (
+                adapted_model.define_decoding_statistics(
+                    neural_data_train_to_embedd=neural_data_train_to_embedd,
+                    neural_data_test_to_embedd=neural_data_test_to_embedd,
+                    labels_train=labels_train,
+                    labels_test=labels_test,
+                    n_neighbors=n_neighbors,
+                )
+            )
 
         # multiply by normalization factor
         if multiply_by == 1:
-            multiply_by = [1] * len(cross_model_decoding_statistics)
-        for (dec_name, values), norm_factor in zip(cross_model_decoding_statistics.items(), multiply_by):
+            multiply_by = [1] * len(ref_model_decoding_statistics)
+        for (dec_name, values), norm_factor in zip(
+            ref_model_decoding_statistics.items(), multiply_by
+        ):
             values["rmse"]["mean"] *= norm_factor
             values["rmse"]["variance"] *= norm_factor
 
+        cross_model_decoding_statistics[ref_model_name] = ref_model_decoding_statistics
+
     if plot:
-        if xticks is not None and len(xticks) != len(ref_models) * len(models):
-            global_logger.warning(f"Plotting one to tone decoding xticks must be a list of length {len(ref_models) * len(models)}, got {len(xticks)}. Using model names instead.")
+        if xticks is not None and len(xticks) != len(ref_models) * len(models) + len(
+            ref_models
+        ):
+            global_logger.warning(
+                f"Plotting one to tone decoding xticks must be a list of length {len(ref_models) * len(models)}, got {len(xticks)}. Using model names instead."
+            )
             xticks = None
-        
+
         plot_dict = {}
         if len(cross_model_decoding_statistics) == 1:
-            plot_cross_model_decoding_statistics = list(cross_model_decoding_statistics.values())[0]
-            if xticks is None:
-                xticks = plot_cross_model_decoding_statistics.keys()
-            for (key, value), x_tick in zip(plot_cross_model_decoding_statistics.items(), xticks):
-                plot_dict[x_tick] = {"mean": value["rmse"]["mean"], 
-                                    "variance": value["rmse"]["variance"]}
-            Vizualizer.barplot_from_dict(plot_dict, ylabel= "RMSE (cm)", xlabel="Models")
+            # format decoding ouput for plotting
+            plot_cross_model_decoding_statistics = list(
+                cross_model_decoding_statistics.values()
+            )[0]
+
+            for key, value in plot_cross_model_decoding_statistics.items():
+                plot_dict[key] = {
+                    "mean": value["rmse"]["mean"],
+                    "variance": value["rmse"]["variance"],
+                }
+            Vizualizer.barplot_from_dict(
+                plot_dict,
+                xticks=xticks,
+                title=title,
+                ylabel="RMSE (cm)",
+                xlabel="Models",
+                additional_title=additional_title,
+                figsize=fig_size,
+            )
+
         elif len(cross_model_decoding_statistics) > 1:
-            .... continue doing plot dict of dicts
+            # format decoding ouput for plotting
+            plot_cross_model_decoding_statistics = {}
+            for i, (ref_model_name, ref_to_decodings) in enumerate(
+                cross_model_decoding_statistics.items()
+            ):
+                plot_ref_model_decoding_statistics = {}
+                for j, (ref_to_name, ref_to_decoding) in enumerate(
+                    ref_to_decodings.items()
+                ):
+                    plot_ref_model_decoding_statistics[f"{ref_to_name}"] = {
+                        "mean": ref_to_decoding["rmse"]["mean"],
+                        "variance": ref_to_decoding["rmse"]["variance"],
+                    }
+                plot_cross_model_decoding_statistics[ref_model_name] = (
+                    plot_ref_model_decoding_statistics
+                )
 
-    return model_decoding_statistics
+            Vizualizer.barplot_from_dict_of_dicts(
+                plot_cross_model_decoding_statistics,
+                title=title,
+                xticks=xticks,
+                figsize=(20, 6),
+                additional_title=additional_title,
+            )
 
-def model_cross_decoding(models, ):
+    return cross_model_decoding_statistics
+
+
+def model_cross_decoding(
+    models,
+):
     raise NotImplementedError("model_cross_decoding not implemented yet.")
     return cross_decodings
+
 
 def structure_index(
     data: np.ndarray,

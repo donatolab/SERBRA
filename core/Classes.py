@@ -10,7 +10,7 @@ from pathlib import Path
 from Setups import *
 from Helper import *
 from Visualizer import *
-from Models import Models, PlaceCellDetectors, decode
+from Models import Models, PlaceCellDetectors, cross_decoding, decode
 from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
 
 # calculations
@@ -770,7 +770,9 @@ class Animal:
         manifolds_pipeline: str = "cebra",
         model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
         model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+        add_random: Optional[bool] = False,
         n_neighbors: Optional[int] = 36,
+        plot=True,
     ):
         """
         Calculates the decoding performance between models from all tasks based on the wanted model names.
@@ -785,6 +787,8 @@ class Animal:
         model_naming_filter_exclude : list, optional
             A list of lists containing the model naming parts to exclude (default is None).
             If None, no models will be excluded.
+        add_random : bool, optional
+            If True, a random model will be added to the decoding (default is False).
         n_neighbors : int, optional
             The number of neighbors to use for the KNN algorithm (default is 36).
 
@@ -800,47 +804,21 @@ class Animal:
             model_naming_filter_exclude=model_naming_filter_exclude,
         )
         unique_models = info["model"]
-        
-        data_labels = []
-        task_decoding_statistics = {}
-        global_logger.info(
-            f"""Start calculating decoding statistics for all sessions, tasks and models found from {manifolds_pipeline} pipeline using naming filter including {model_naming_filter_include} and excluding {model_naming_filter_exclude}"""
-        )
-        for task_name, task_model in iter_dict_with_progress(unique_models):
-            global_logger.info(f"Decoding statistics for {task_name}")
-            task_model.define_decoding_statistics(regenerate=True, n_neighbors=n_neighbors)
-            mean = task_model.get_decoding_statistics("mean")
-            variance = task_model.get_decoding_statistics("variance")
 
-            if "relative" in task_model.name:
-                print("WARNING: Numbers are relavtive")
-                global_logger.warning(
-                    f"Detected relative in task_model name {task_model.name}. Converting relative performance to absolute using max possible value possible."
-                )
-                behavior_type = task_model.name.split("_")[1]
-                absolute_data = self.tasks[task_name].behavior.get_multi_data(
-                    sources=behavior_type
-                )[0]
-                # convert percentage to cm
-                max_position_absolute_model_data = np.max(absolute_data)
-                mean = mean * max_position_absolute_model_data
-                variance = variance * max_position_absolute_model_data
+        if add_random:
+            first_unique_model = next(iter(unique_models.values()))
+            unique_models["random"] = first_unique_model.make_random()
 
-            #stimulus_type = self.tasks[task_name].behavior_metadata["stimulus_type"]
-            stimulus_type = ""
+        xticks = []
+        for task_name, task_model in unique_models.items():
+            # stimulus_type = self.tasks[task_name].behavior_metadata["stimulus_type"]
             task_name_type = f"{task_name.split('_')[-1]}"
-            task_decoding_statistics[task_name_type] = {}
-            data_labels.append(task_name_type)
-            task_decoding_statistics[task_name_type][stimulus_type] = {
-                "mean": mean,
-                "variance": variance,
-            }
-
-            xticks = []
+            xticks.append(task_name_type)
             max_position_absolute_model_data = []
             for task_modle_name2, task_models2 in unique_models.items():
-                stimulus_type2 = task_modle_name2.split('_')[-1]
-                stimulus_decoding = f"{task_name_type}_{stimulus_type2}"
+                stimulus_type2 = task_modle_name2.split("_")[-1]
+                stimulus_decoding_name = f"{task_name_type} to {stimulus_type2}"
+                xticks.append(stimulus_decoding_name)
 
                 if "relative" in task_modle_name2:
                     print("WARNING: Numbers are relavtive")
@@ -856,32 +834,18 @@ class Animal:
                 else:
                     max_position_absolute_model_data.append(1)
 
-            from Models import one_to_decoding
-            decoding_of_other_task = one_to_decoding(ref_models=task_model, 
-                                                models=unique_models, 
-                                                n_neighbors=n_neighbors,
-                                                multiply_by=max_position_absolute_model_data,
-                                                plot=True
-                                                )
-            raise ValueError("Not implemented yet")
-            ##############################################
-            for task_name2, task_models2 in unique_models.items():
+        global_logger.info(
+            f"""Start calculating decoding statistics for all sessions, tasks and models found from {manifolds_pipeline} pipeline using naming filter including {model_naming_filter_include} and excluding {model_naming_filter_exclude}"""
+        )
 
-                if stimulus_decoding in task_decoding_statistics[task_name_type]:
-                    stimulus_decoding = f"{stimulus_decoding}_2"
-                task_decoding_statistics[task_name_type][stimulus_decoding] = {
-                    "mean": mean,
-                    "variance": variance,
-                }
-                data_labels.append(stimulus_decoding)
-
-        global_logger.info(task_decoding_statistics)
-
-        Vizualizer.barplot_from_dict_of_dicts(
-            task_decoding_statistics,
-            data_labels=data_labels,
-            figsize=(20, 6),
-            additional_title=f"- Decoding perfomance between Models based on Environments (moving) - {self.id}",
+        task_decoding_statistics = cross_decoding(
+            ref_models=unique_models,
+            # models=models,
+            n_neighbors=n_neighbors,
+            multiply_by=max_position_absolute_model_data,
+            xticks=xticks,
+            additional_title=f" - {self.id}",
+            plot=plot,
         )
         return task_decoding_statistics
 
@@ -1178,7 +1142,8 @@ class Session:
             }
 
             stimulus_typ2_list = [
-                self.tasks[task_name2].behavior_metadata["stimulus_type"] for task_name2 in session_models.keys()
+                self.tasks[task_name2].behavior_metadata["stimulus_type"]
+                for task_name2 in session_models.keys()
             ]
 
             for task_name2, task_models2 in session_models.items():
