@@ -10,6 +10,8 @@ from tqdm import tqdm, trange
 import numpy as np
 import sklearn
 from sklearn.preprocessing import label_binarize
+from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
+from sklearn.model_selection import KFold
 from sklearn.metrics import (
     r2_score,
     accuracy_score,
@@ -29,7 +31,6 @@ from numba import cuda  # @jit(target='cuda')
 
 # manifolds
 from cebra import CEBRA
-import cebra
 import cebra.integrations.sklearn.utils as sklearn_utils
 from structure_index import compute_structure_index
 
@@ -1534,27 +1535,12 @@ class CebraOwn(CEBRA):
         random_self = copy.deepcopy(self)
         random_self.set_name(f"{self.name}_random")
         # randomize neural data
-        train_data = random_self.get_data(train_or_test="train", type="neural")
-        test_data = random_self.get_data(train_or_test="test", type="neural")
-        random_self.set_data(
-            train_or_test="train",
-            type="neural",
-            data=Dataset.shuffle(train_data),
-        )
-        random_self.set_data(
-            train_or_test="test", type="neural", data=Dataset.shuffle(test_data)
-        )
-        # randomize behavior
-        train_labels = random_self.get_data(train_or_test="train", type="behavior")
-        test_labels = random_self.get_data(train_or_test="test", type="behavior")
-        random_self.set_data(
-            train_or_test="train",
-            type="behavior",
-            data=Dataset.shuffle(train_labels),
-        )
-        random_self.set_data(
-            train_or_test="test", type="behavior", data=Dataset.shuffle(test_labels)
-        )
+        for train_or_test in ["train", "test"]:
+            for type in ["neural", "behavior", "embedding"]:
+                data = random_self.get_data(train_or_test=train_or_test, type=type)
+                random_self.set_data(
+                    data=Dataset.shuffle(data), train_or_test=train_or_test, type=type
+                )
 
         random_self.remove_fitting()
         random_self.load_fitted_model()
@@ -1568,13 +1554,12 @@ class CebraOwn(CEBRA):
         if create_embedding:
             train_embedding = random_self.create_embedding(train_or_test="train")
             test_embedding = random_self.create_embedding(train_or_test="test")
-
-        random_self.set_data(
-            data=train_embedding, train_or_test="train", type="embedding"
-        )
-        random_self.set_data(
-            data=test_embedding, train_or_test="test", type="embedding"
-        )
+            random_self.set_data(
+                data=train_embedding, train_or_test="train", type="embedding"
+            )
+            random_self.set_data(
+                data=test_embedding, train_or_test="test", type="embedding"
+            )
 
         return random_self
 
@@ -1584,170 +1569,227 @@ def decode(
     embedding_test: np.ndarray,
     labels_train: np.ndarray,
     labels_test: np.ndarray,
-    n_neighbors: int = 36,
+    n_neighbors: Optional[int] = None,
     metric: str = "cosine",
-    detailed_accuracy: bool = False,
-):
+    n_folds: int = 5,
+    detailed_metrics: bool = False,
+    include_cv_stats: bool = False,
+) -> Dict[str, Dict[str, Union[float, Dict]]]:
     """
-    Decodes the neural data using the kNN decoder.
+    Decodes neural embeddings using k-Nearest Neighbors with automatic k selection.
 
     Parameters
     ----------
     embedding_train : np.ndarray
-        The training data.
+        Training embedding data
     embedding_test : np.ndarray
-        The testing data.
+        Testing embedding data
     labels_train : np.ndarray
-        The training labels.
+        Training target labels
     labels_test : np.ndarray
-        The testing labels.
+        Testing target labels
     n_neighbors : int, optional
-        The number of neighbors to use for decoding (default is 36).
+        Number of neighbors for kNN (default: None, auto-determined via CV)
     metric : str, optional
-        The metric to use for decoding (default is "cosine").
-    detailed_accuracy : bool, optional
-        Whether to return detailed accuracy metrics (default is False).
+        Distance metric for kNN (default: "cosine")
+    n_folds : int, optional
+        Number of folds for cross-validation (default: 5)
+    detailed_metrics : bool, optional
+        Whether to return detailed per-class metrics (default: False)
+    include_cv_stats : bool, optional
+        Whether to include cross-validation statistics (default: False)
 
     Returns
     -------
-    decoding_statistics : Dict[Dict[str, Any]]
-        A dictionary containing the decoding.
-        - If data is continuous, the dictionary will contain
-        the root mean squared error (rmse), the variance of the absolute error, and the R² score.
-        - If the data is discrete, the dictionary will contain the accuracy, precision, recall, F1 score,
-        ROC AUC, and the area under the curve (AUC).
-
+    Dict[str, Any]
+        Dictionary containing decoding performance metrics
     """
-    # Define decoding function with kNN decoder. For a simple demo, we will use the fixed number of neighbors 36.
-    if is_floating(labels_train):
-        knn = sklearn.neighbors.KNeighborsRegressor(
-            n_neighbors=n_neighbors, metric=metric
+    # Input validation
+    if not all(
+        isinstance(x, np.ndarray)
+        for x in [embedding_train, embedding_test, labels_train, labels_test]
+    ):
+        raise ValueError("All input arrays must be numpy arrays")
+
+    # Ensure 2D arrays
+    labels_train = np.atleast_2d(labels_train)
+    labels_test = np.atleast_2d(labels_test)
+
+    # Determine if regression or classification
+    is_regression = is_floating(labels_train)
+    knn_class = KNeighborsRegressor if is_regression else KNeighborsClassifier
+
+    # Define range of k values to test if n_neighbors is None
+    if n_neighbors is None:
+        max_k = min(embedding_train.shape[0] - 1, 50)  # Cap at 50 or n_samples-1
+        k_range = np.unique(
+            np.logspace(0, np.log10(max_k), num=10, base=10).astype(int)
         )
-    elif is_integer(labels_train):
-        knn = sklearn.neighbors.KNeighborsClassifier(
-            n_neighbors=n_neighbors, metric=metric
+        # Internal CV to select best k
+        global_logger.info(f"Performing internal CV to select best k")
+        kf = KFold(n_splits=n_folds, shuffle=True, random_state=42)
+        k_scores = []
+
+        for k in k_range:
+            knn_model = knn_class(n_neighbors=k, metric=metric)
+            fold_scores = []
+
+            for train_idx, val_idx in kf.split(embedding_train):
+                X_train_fold = embedding_train[train_idx]
+                X_val_fold = embedding_train[val_idx]
+                y_train_fold = labels_train[train_idx]
+                y_val_fold = labels_train[val_idx]
+
+                knn_model.fit(X_train_fold, y_train_fold)
+                y_pred_fold = knn_model.predict(X_val_fold)
+
+                score = (
+                    r2_score(y_val_fold, y_pred_fold)
+                    if is_regression
+                    else accuracy_score(y_val_fold, y_pred_fold)
+                )
+                fold_scores.append(score)
+
+            k_scores.append(np.mean(fold_scores))
+
+        # Select best k
+        best_k = k_range[np.argmax(k_scores)]
+        global_logger.info(f"Best k: {best_k}")
+
+    else:
+        best_k = n_neighbors
+
+    # Initialize final kNN model with best k
+    knn_model = knn_class(n_neighbors=best_k, metric=metric)
+
+    # Optional k-fold cross-validation for statistics (if requested)
+    cv_results = []
+    if include_cv_stats:
+        for train_idx, val_idx in kf.split(embedding_train):
+            X_train_fold = embedding_train[train_idx]
+            X_val_fold = embedding_train[val_idx]
+            y_train_fold = labels_train[train_idx]
+            y_val_fold = labels_train[val_idx]
+
+            knn_model.fit(X_train_fold, y_train_fold)
+            y_pred_fold = knn_model.predict(X_val_fold)
+            cv_results.append({"true": y_val_fold, "pred": np.atleast_2d(y_pred_fold)})
+
+    # Final fit on full training data and predict on test
+    knn_model.fit(embedding_train, labels_train)
+    test_predictions = np.atleast_2d(knn_model.predict(embedding_test))
+
+    # Calculate metrics based on label type
+    results = {"best_k": int(best_k)}  # Include best k in output
+    if is_regression:
+        results.update(
+            _compute_regression_metrics(
+                labels_test, test_predictions, cv_results if include_cv_stats else None
+            )
         )
     else:
-        raise NotImplementedError(
-            f"Invalid tlabels_trainpe: targets must be either floats or integers, got labels_train:{labels_train.dtype}."
+        results.update(
+            _compute_classification_metrics(
+                labels_test,
+                test_predictions,
+                cv_results if include_cv_stats else None,
+                detailed_metrics,
+            )
         )
-    labels_train = Dataset.force_2d(labels_train)
-    # labels_train = force_1_dim_larger(labels_train)
-    labels_test = Dataset.force_2d(labels_test)
-    # labels_test = force_1_dim_larger(labels_test)
 
-    # fit_labels_train = (
-    #    labels_train.flatten() if labels_train.shape[1] == 1 else labels_train
-    # )
-    # knn.fit(embedding_train, fit_labels_train)
-    knn.fit(embedding_train, labels_train)
+    return results
 
-    # Predict the targets for data ``X``
-    labels_pred = knn.predict(embedding_test)
-    labels_pred = Dataset.force_2d(labels_pred)
 
-    if is_floating(labels_test):
-        # Use regression metrics
-        abs_error = abs(labels_test - labels_pred)
-        error_var = np.var(abs_error)
-        rmse = np.mean(abs_error)
-        r2 = r2_score(labels_test, labels_pred)
-        # print(f"Root Mean Squared Error: {rmse}")
-        # print(f"Variance of Absolute Error: {error_var}")
-        # print(f"R²: {r2}")
-        rmse_dict = {"mean": rmse, "variance": error_var}
-        r2_dict = {"mean": r2}
-        results = {"rmse": rmse_dict, "r2": r2_dict}
+def _compute_regression_metrics(
+    labels_test: np.ndarray,
+    test_predictions: np.ndarray,
+    cv_results: Optional[list] = None,
+) -> Dict[str, Union[float, Dict[str, Union[float, Dict]]]]:
+    """Compute regression metrics with optional cross-validation results."""
+    # Test set metrics
+    absolute_errors = np.abs(labels_test - test_predictions)
+    rmse = np.mean(absolute_errors)
+    error_variance = np.var(absolute_errors)
+    r2 = r2_score(labels_test, test_predictions)
 
-    elif is_integer(labels_test):
-        accuracies = []
-        precisions = []
-        recalls = []
-        f1s = []
+    results = {
+        "rmse": {"mean": float(rmse), "variance": float(error_variance)},
+        "r2": float(r2),
+    }
 
-        # handle multi-classification
-        for i in range(labels_test.shape[1]):
-            if labels_pred.ndim == 1:
-                labels_pred = labels_pred.reshape(-1, 1)
+    # Include CV stats if requested
+    if cv_results is not None:
+        cv_rmse = [np.mean(np.abs(r["true"] - r["pred"])) for r in cv_results]
+        cv_r2 = [r2_score(r["true"], r["pred"]) for r in cv_results]
+        results["cv_metrics"] = {
+            "rmse": {"mean": float(np.mean(cv_rmse)), "std": float(np.std(cv_rmse))},
+            "r2": {"mean": float(np.mean(cv_r2)), "std": float(np.std(cv_r2))},
+        }
 
-            # Classification metrics for each output
-            if detailed_accuracy:
-                classes = np.unique(labels_test[:, i])
-                accuracy = {}
-                for class_ in classes:
-                    label_test_class_idx = labels_test[:, i] == class_
-                    labels_test_class = labels_test[label_test_class_idx, i]
-                    labels_pred_class = labels_pred[label_test_class_idx, i]
-                    accuracy[class_] = accuracy_score(
-                        labels_test_class, labels_pred_class
-                    )
-            else:
-                accuracy = accuracy_score(labels_test[:, i], labels_pred[:, i])
+    return results
 
-            precision = precision_score(
-                labels_test[:, i],
-                labels_pred[:, i],
-                average="macro",
-            )
-            recall = recall_score(
-                labels_test[:, i],
-                labels_pred[:, i],
-                average="macro",
-            )
-            f1 = f1_score(
-                labels_test[:, i],
-                labels_pred[:, i],
-                average="macro",
-            )
 
-            accuracies.append(accuracy)
-            precisions.append(precision)
-            recalls.append(recall)
-            f1s.append(f1)
+def _compute_classification_metrics(
+    labels_test: np.ndarray,
+    test_predictions: np.ndarray,
+    cv_results: Optional[list] = None,
+    detailed_metrics: bool = False,
+) -> Dict[str, Union[float, Dict[str, Union[float, List[float]]]]]:
+    """Compute classification metrics with optional cross-validation results."""
+    n_outputs = labels_test.shape[1]
+    test_metrics = {"accuracy": [], "precision": [], "recall": [], "f1": []}
+    roc_auc_data = {}
 
-            # ROC and AUC for each output
-            # only for converting mutliclass to binary
-            y_test_bin = label_binarize(
-                labels_test[:, i],
-                classes=np.unique(labels_test[:, i]),
-            )
-            y_pred_bin = label_binarize(
-                labels_pred[:, i],
-                classes=np.unique(labels_test[:, i]),
-            )
-            n_classes = y_test_bin.shape[1]
+    for i in range(n_outputs):
+        # Test metrics
+        test_true = labels_test[:, i]
+        test_pred = test_predictions[:, i]
 
-            class_roc_auc_scores = {}
-            for j in range(n_classes):
-                fpr, tpr, _ = roc_curve(y_test_bin[:, j], y_pred_bin[:, j])
-                auc = roc_auc_score(y_test_bin[:, j], y_pred_bin[:, j])
-                class_roc_auc_scores[np.unique(labels_test)[j]] = {
-                    "fpr": fpr,
-                    "tpr": tpr,
-                    "auc": auc,
+        metric_funcs = {
+            "accuracy": accuracy_score,
+            "precision": lambda x, y: precision_score(
+                x, y, average="macro", zero_division=0
+            ),
+            "recall": lambda x, y: recall_score(x, y, average="macro", zero_division=0),
+            "f1": lambda x, y: f1_score(x, y, average="macro", zero_division=0),
+        }
+
+        for metric_name, func in metric_funcs.items():
+            test_metrics[metric_name].append(func(test_true, test_pred))
+
+        # ROC/AUC if requested
+        if detailed_metrics:
+            classes = np.unique(test_true)
+            y_true_bin = label_binarize(test_true, classes=classes)
+            y_pred_bin = label_binarize(test_pred, classes=classes)
+            roc_auc_data[f"output_{i}"] = {}
+            for j, cls in enumerate(classes):
+                fpr, tpr, _ = roc_curve(y_true_bin[:, j], y_pred_bin[:, j])
+                auc = roc_auc_score(y_true_bin[:, j], y_pred_bin[:, j])
+                roc_auc_data[f"output_{i}"][f"class_{cls}"] = {
+                    "fpr": fpr.tolist(),
+                    "tpr": tpr.tolist(),
+                    "auc": float(auc),
                 }
 
-            # print(f"Accuracy for output {i}: {accuracy}")
-            # print(f"Classification Report for output {i}:")
-            # print(f"Average Accuracy: {np.mean(accuracies)}")
-            # print(f"Average Precision: {np.mean(precisions)}")
-            # print(f"Average Recall: {np.mean(recalls)}")
-            # print(f"Average F1 Score: {np.mean(f1s)}")
+    results = {k: [float(x) for x in v] for k, v in test_metrics.items()}
+    if detailed_metrics:
+        results["roc_auc"] = roc_auc_data
 
-            if detailed_accuracy:
-                results = accuracy
-            else:
-                results = {
-                    "accuracy": accuracies,
-                    "precision": precisions,
-                    "recall": recalls,
-                    "f1-score": f1s,
-                    "roc_auc": class_roc_auc_scores,
-                }
-    else:
-        raise NotImplementedError(
-            f"Invalid label_test type: targets must be either floats or integers, got label_test:{labels_test.dtype}."
-        )
+    # Include CV stats if requested
+    if cv_results is not None:
+        cv_metrics = {"accuracy": [], "precision": [], "recall": [], "f1": []}
+        for metric_name, func in metric_funcs.items():
+            cv_scores = [
+                func(r["true"][:, i], r["pred"][:, i])
+                for r in cv_results
+                for i in range(n_outputs)
+            ]
+            cv_metrics[metric_name] = {
+                "mean": float(np.mean(cv_scores)),
+                "std": float(np.std(cv_scores)),
+            }
+        results["cv_metrics"] = cv_metrics
 
     return results
 
@@ -1931,13 +1973,6 @@ def cross_decoding(
             )
 
     return cross_model_decoding_statistics
-
-
-def model_cross_decoding(
-    models,
-):
-    raise NotImplementedError("model_cross_decoding not implemented yet.")
-    return cross_decodings
 
 
 def structure_index(
