@@ -53,6 +53,7 @@ from Setups import (
 
 class Dataset:
     needed_keys = ["setup"]
+    labels_describe_space = ["position", "velocity", "acceleration"]
 
     def __init__(
         self,

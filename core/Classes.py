@@ -10,7 +10,7 @@ from pathlib import Path
 from Setups import *
 from Helper import *
 from Visualizer import *
-from Models import Models, PlaceCellDetectors, cross_decoding, decode
+from Models import Models, PlaceCellDetectors, decode, CebraOwn
 from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
 
 # calculations
@@ -224,7 +224,7 @@ class Multi:
             neural_data=datas,
             behavior_data=labels,
             model_type=model_type,
-            model_name=model_name,
+            name_comment=model_name,
             movement_state=movement_state,
             shuffle=shuffle,
             binned=binned,
@@ -385,7 +385,122 @@ class Multi:
         return embeddings
 
 
-class Animal:
+class MetaClass:
+    """Metaclass for any type of Animal related object."""
+
+    def model_cross_decode(
+        self,
+        models_source: Union[Animal, Session, Task],
+        manifolds_pipeline: str = "cebra",
+        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
+        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
+        add_random: Optional[bool] = False,
+        n_neighbors: Optional[int] = None,
+        additional_title: Optional[str] = None,
+        plot=True,
+    ):
+        """
+        Calculates the decoding performance between models from all tasks based on the wanted model names.
+
+        Parameters
+        ----------
+        manifolds_pipeline : str, optional
+            The name of the manifolds pipeline to use for decoding (default is "cebra").
+        model_naming_filter_include : list, optional
+            A list of lists containing the model naming parts to include (default is None).
+            If None, all models will be included.
+        model_naming_filter_exclude : list, optional
+            A list of lists containing the model naming parts to exclude (default is None).
+            If None, no models will be excluded.
+        add_random : bool, optional
+            If True, a random model will be added to the decoding (default is False).
+        n_neighbors : int, optional
+            The number of neighbors to use for the KNN algorithm (default is 36).
+
+        Returns
+        -------
+        task_decoding_statistics : dict
+            A dictionary containing the decoding statistics between models based on the wanted model names.
+        """
+        info = self.get_unique_model_information(
+            wanted_information=["model"],
+            manifolds_pipeline=manifolds_pipeline,
+            model_naming_filter_include=model_naming_filter_include,
+            model_naming_filter_exclude=model_naming_filter_exclude,
+        )
+        unique_models = info["model"]
+
+        if add_random:
+            first_unique_model = next(iter(unique_models.values()))
+            unique_models["random"] = first_unique_model.make_random()
+
+        xticks = []
+        labels_describe_space = False
+        for task_name, task_model in unique_models.items():
+            # check if all vars in list are in another list
+            labels_describe_space = list_vars_in_list(
+                task_model.behavior_data_types, Dataset.labels_describe_space
+            )
+            # stimulus_type = self.tasks[task_name].behavior_metadata["stimulus_type"]
+            task_name_type = task_model.get_metadata("behavior", "task_id").split("_")[
+                -1
+            ]
+            stimulus_type = task_model.get_metadata("behavior", "stimulus_type")
+            task_plot_name1 = f"{task_name_type}_{stimulus_type}"
+            xticks.append(task_name_type)
+            max_position_absolute_model_data = []
+            for task_modle_name2, task_model2 in unique_models.items():
+                second_model_labels = list_vars_in_list(
+                    task_model2.behavior_data_types, Dataset.labels_describe_space
+                )
+                if not second_model_labels == labels_describe_space:
+                    global_logger.error(
+                        f"Labels between models are not describing the same behavior types {task_model.behavior_data_types} and {task_model2.behavior_data_types}."
+                    )
+                    raise ValueError(
+                        f"Labels between models are not describing the same behavior types {task_model.behavior_data_types} and {task_model2.behavior_data_types}."
+                    )
+                task_name_type2 = task_model2.get_metadata("behavior", "task_id").split(
+                    "_"
+                )[-1]
+                stimulus_type2 = task_model2.get_metadata("behavior", "stimulus_type")
+                task_plot_name2 = f"{task_name_type2}_{stimulus_type2}"
+                stimulus_decoding_name = f"{task_plot_name1} to {task_plot_name2}"
+                xticks.append(stimulus_decoding_name)
+
+                if "relative" in task_modle_name2:
+                    global_logger.warning(
+                        f"Detected relative in model name {task_modle_name2}. Converting relative performance to absolute using max possible value possible."
+                    )
+                    absolute_data = models_source[task_name].behavior.get_multi_data(
+                        sources=task_modle_name2.behavior_type
+                    )[0]
+
+                    # convert percentage to cm
+                    max_position_absolute_model_data.append(
+                        np.max(absolute_data, axis=1)
+                    )
+                else:
+                    max_position_absolute_model_data.append(1)
+
+        global_logger.info(
+            f"""Start calculating decoding statistics for all sessions, tasks and models found from {manifolds_pipeline} pipeline using naming filter including {model_naming_filter_include} and excluding {model_naming_filter_exclude}"""
+        )
+
+        task_decoding_statistics = Models.cross_decoding(
+            ref_models=unique_models,
+            # models=models,
+            n_neighbors=n_neighbors,
+            multiply_by=max_position_absolute_model_data,
+            labels_describe_space=labels_describe_space,
+            xticks=xticks,
+            additional_title=additional_title,
+            plot=plot,
+        )
+        return task_decoding_statistics
+
+
+class Animal(MetaClass):
     """Represents an animal in the dataset."""
 
     descriptive_metadata_keys = []
@@ -771,7 +886,7 @@ class Animal:
         model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
         model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
         add_random: Optional[bool] = False,
-        n_neighbors: Optional[int] = 36,
+        n_neighbors: Optional[int] = None,
         plot=True,
     ):
         """
@@ -797,53 +912,14 @@ class Animal:
         task_decoding_statistics : dict
             A dictionary containing the decoding statistics between models based on the wanted model names.
         """
-        info = self.get_unique_model_information(
-            wanted_information=["model"],
+
+        task_decoding_statistics = self.model_cross_decode(
+            models_source=self.sessions,
             manifolds_pipeline=manifolds_pipeline,
             model_naming_filter_include=model_naming_filter_include,
             model_naming_filter_exclude=model_naming_filter_exclude,
-        )
-        unique_models = info["model"]
-
-        if add_random:
-            first_unique_model = next(iter(unique_models.values()))
-            unique_models["random"] = first_unique_model.make_random()
-
-        xticks = []
-        for task_name, task_model in unique_models.items():
-            # stimulus_type = self.tasks[task_name].behavior_metadata["stimulus_type"]
-            task_name_type = f"{task_name.split('_')[-1]}"
-            xticks.append(task_name_type)
-            max_position_absolute_model_data = []
-            for task_modle_name2, task_models2 in unique_models.items():
-                stimulus_type2 = task_modle_name2.split("_")[-1]
-                stimulus_decoding_name = f"{task_name_type} to {stimulus_type2}"
-                xticks.append(stimulus_decoding_name)
-
-                if "relative" in task_modle_name2:
-                    print("WARNING: Numbers are relavtive")
-                    global_logger.warning(
-                        f"Detected relative in model name {task_modle_name2}. Converting relative performance to absolute using max possible value possible."
-                    )
-                    behavior_type = task_modle_name2.split("_")[1]
-                    absolute_data = self.sessions[task_name].behavior.get_multi_data(
-                        sources=behavior_type
-                    )[0]
-                    # convert percentage to cm
-                    max_position_absolute_model_data.append(np.max(absolute_data))
-                else:
-                    max_position_absolute_model_data.append(1)
-
-        global_logger.info(
-            f"""Start calculating decoding statistics for all sessions, tasks and models found from {manifolds_pipeline} pipeline using naming filter including {model_naming_filter_include} and excluding {model_naming_filter_exclude}"""
-        )
-
-        task_decoding_statistics = cross_decoding(
-            ref_models=unique_models,
-            # models=models,
+            add_random=add_random,
             n_neighbors=n_neighbors,
-            multiply_by=max_position_absolute_model_data,
-            xticks=xticks,
             additional_title=f" - {self.id}",
             plot=plot,
         )
@@ -951,7 +1027,7 @@ class Session:
                 task_name=task_name,
                 session_dir=self.dir,
                 # data_dir=self.data_dir,
-                model_dir=self.model_dir,  # FIXME: comment this line, if models should be saved inside task folders
+                model_dir=self.model_dir,
                 metadata=metadata,
             )
             if not model_settings:
@@ -1580,7 +1656,7 @@ class Task:
         shuffle: bool = False,
         movement_state: str = "all",
         split_ratio: float = 1,
-        model_name: str = None,
+        name_comment: str = None,
         neural_data: np.ndarray = None,
         behavior_data: np.ndarray = None,
         transformation: str = None,
@@ -1610,8 +1686,24 @@ class Task:
             The available movement_states are: "all", "moving", "stationary"
         split_ratio : float, optional
             The ratio to data used for training the model, the rest is used for the testing sets. (default is 1).
-        model_name : str, optional
+        name_comment : str, optional
             The name of the model (default is None). The name is modified by other parameters to create a more unique name.
+            Reserved words that should not be used:
+                Models:
+                    - CEBRA:
+                        - model types:
+                            - time
+                            - behavior
+                            - hybrid
+                        - iter-<some number>
+                - movement states:
+                    - moving
+                    - stationary
+                - transformations:
+                    - binned
+                    - relative
+                    - shuffled
+                - random
         neural_data : np.ndarray, optional
             The neural data to use for training the model (default is None). If None, the neural data is loaded from the task.
             The shape of the neural data should be (n_samples, n_features).
@@ -1661,12 +1753,14 @@ class Task:
         global_logger.info(
             f"Training model {model_type} for task {self.id} using pipeline {manifolds_pipeline}"
         )
+
         model = self.models.train_model(
             neural_data=neural_data,
             behavior_data=behavior_data,
+            behavior_data_types=behavior_data_types,
             idx_to_keep=idx_to_keep,
             model_type=model_type,
-            model_name=model_name,
+            name_comment=name_comment,
             movement_state=movement_state,
             shuffle=shuffle,
             transformation=transformation,
@@ -1675,6 +1769,10 @@ class Task:
             pipeline=manifolds_pipeline,
             create_embeddings=create_embeddings,
             regenerate=regenerate,
+            metadata={
+                "neural": self.neural_metadata,
+                "behavior": self.behavior_metadata,
+            },
         )
         return model
 
@@ -2094,17 +2192,6 @@ class Task:
             pass
 
         return task_structural_indices
-
-    def plot_multiple_consistency_scores(
-        self,
-        animals,
-        wanted_stimulus_types,
-        wanted_embeddings,
-        exclude_properties=None,
-        figsize=(7, 7),
-    ):
-        # TODO: implement consistency task plot
-        pass
 
     # Place Cells
     def get_rate_time_map(

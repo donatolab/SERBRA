@@ -1463,29 +1463,29 @@ def normalize_01(vector, axis):
     normalized_vector = (vector - min_val) / (max_val - min_val)
     return normalized_vector
 
+
 def create_list_of_lists(data: Union[str, List[str], List[List[str]]]):
     """
     Create a list of lists from a string or a list of strings.
-    
+
     Args:
     ------
     - data (Union[str, List[str], List[List[str]]): Input data to convert to a list of lists.
-    
+
     Returns:
     ------
     - data (List[List[str]]): List of lists.
     """
     if not isinstance(data, list):
         data = [data]
-    elif isinstance(data, list) and all(
-            isinstance(prop, str) for prop in data
-        ):
-            data = [data] 
+    elif isinstance(data, list) and all(isinstance(prop, str) for prop in data):
+        data = [data]
     return data
+
 
 # strings
 def filter_strings_by_properties(
-    strings: List[str], 
+    strings: List[str],
     include_properties: Union[List[List[str]], List[str], str] = None,
     exclude_properties: Union[List[List[str]], List[str], str] = None,
 ) -> List[str]:
@@ -1584,6 +1584,12 @@ def clean_filename(fname):
 
 
 # array
+def list_vars_in_list(list1, list2):
+    """
+    Check if all variables in list1 are in list2.
+    """
+    return all(var in list2 for var in list1)
+
 def encode_categorical(data, categories=None, return_category_map=False):
     """
     Encode categorical data into numerical values.
@@ -1686,8 +1692,6 @@ def values_to_groups(
 
 def is_integer(array: np.ndarray) -> bool:
     """Check if a NumPy array has an integer data type.
-
-    Args:
         array (np.ndarray): Input array.
 
     Returns:
@@ -1807,7 +1811,10 @@ def split_array_by_zscore(array, zscore, threshold=2.5):
     below_threshold = np.where(zscore < threshold)[0]
     return array[above_threshold], array[below_threshold]
 
-def find_min_max_values(data: Union[List, np.ndarray, List[np.ndarray]], axis: int = 0) -> Tuple[np.ndarray, np.ndarray]:
+
+def find_min_max_values(
+    data: Union[List, np.ndarray, List[np.ndarray]], axis: int = 0
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute the minimum and maximum values along a specified axis for a list of arrays or a single array.
 
@@ -1825,13 +1832,16 @@ def find_min_max_values(data: Union[List, np.ndarray, List[np.ndarray]], axis: i
     """
     if not data:
         raise ValueError("Input data cannot be empty.")
-    
+
     data = make_list_ifnot(data)
     # Check if the axis is valid for the first array in the data
     if axis >= data[0].ndim:
         global_logger.error(
-            f"Axis {axis} is invalid for input data with {data[0].ndim} dimensions.")
-        raise ValueError(f"Axis {axis} is invalid for input data with {data[0].ndim} dimensions.")
+            f"Axis {axis} is invalid for input data with {data[0].ndim} dimensions."
+        )
+        raise ValueError(
+            f"Axis {axis} is invalid for input data with {data[0].ndim} dimensions."
+        )
     # Determine the shape of the output arrays based on the specified axis
     output_shape = list(data[0].shape)
     del output_shape[axis]  # Remove the axis dimension
@@ -1845,12 +1855,13 @@ def find_min_max_values(data: Union[List, np.ndarray, List[np.ndarray]], axis: i
         # Calculate the min and max along the columns (axis=0)
         current_min = np.min(model_labels, axis=axis)
         current_max = np.max(model_labels, axis=axis)
-        
+
         # Update min_val_labels and max_val_labels element-wise
         min_val_labels = np.minimum(min_val_labels, current_min)
         max_val_labels = np.maximum(max_val_labels, current_max)
 
     return min_val_labels, max_val_labels
+
 
 def npy(
     fname: str,
@@ -2209,6 +2220,7 @@ def dict_value_keylist(dict, keylist):
         dict = dict[key]
     return dict
 
+
 def create_unique_dict_key(dictionary, key):
     """
     Create a unique key for a dictionary by appending a number to the key.
@@ -2226,6 +2238,7 @@ def create_unique_dict_key(dictionary, key):
         unique_key = f"{key}_{count}"
         count += 1
     return unique_key
+
 
 def is_dict_of_dicts(dict):
     return all(type(value) == type(dict) for value in dict.values())
@@ -2250,6 +2263,21 @@ def add_descriptive_metadata(text, metadata=None, keys=None, comment=None):
         )
     text += f"{' '+str(comment) if comment else ''}"
     return text
+
+
+def equal_dicts(dict1, dict2):
+    """
+    Check if two dictionaries are equal.
+    """
+    equal = True
+    for mkey, mvalue in dict1.items():
+        for fmkey, fmvalue in dict2.items():
+            if mkey == fmkey and mvalue != fmvalue:
+                global_logger.error(
+                    f"Parameter {mkey} with value {mvalue} does not match to {fmvalue}"
+                )
+                equal = False
+    return equal
 
 
 def group_by_binned_data(
