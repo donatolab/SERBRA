@@ -506,6 +506,18 @@ class Models:
                     else ref_model
                 )
 
+                .....................
+                            # multiply by normalization factor
+            if multiply_by == 1:
+                multiply_by = [1] * len(ref_model_decoding_statistics)
+            
+            for (dec_name, values), norm_factor in zip(
+                ref_model_decoding_statistics.items(), multiply_by
+            ):
+                values["rmse"]["mean"] *= norm_factor
+                values["rmse"]["variance"] *= norm_factor
+                .......................................
+
                 ref_model_decoding_statistics["to " + model_name] = (
                     adapted_model.define_decoding_statistics(
                         neural_data_train_to_embedd=neural_data_train_to_embedd,
@@ -514,17 +526,9 @@ class Models:
                         labels_test=labels_test,
                         n_neighbors=n_neighbors,
                         labels_describe_space=labels_describe_space,
+                        multiply_by=..... get correct multiply_by value
                     )
                 )
-
-            # multiply by normalization factor
-            if multiply_by == 1:
-                multiply_by = [1] * len(ref_model_decoding_statistics)
-            for (dec_name, values), norm_factor in zip(
-                ref_model_decoding_statistics.items(), multiply_by
-            ):
-                values["rmse"]["mean"] *= norm_factor
-                values["rmse"]["variance"] *= norm_factor
 
             cross_model_decoding_statistics[ref_model_name] = (
                 ref_model_decoding_statistics
@@ -1406,6 +1410,7 @@ class CebraOwn(CEBRA):
         n_neighbors: int = None,
         regenerate: bool = False,
         labels_describe_space: bool = False,
+        multiply_by: float = 1.0,
     ):
         """
         Decodes the data using the model.
@@ -1450,7 +1455,9 @@ class CebraOwn(CEBRA):
             if self.get_data(train_or_test="test") is None:
                 self.set_data(
                     data=self.create_embedding(
-                        to_transform_data=get_data(train_or_test="test", type="neural")
+                        to_transform_data=self.get_data(
+                            train_or_test="test", type="neural"
+                        )
                     ),
                     train_or_test="test",
                 )
@@ -1481,6 +1488,7 @@ class CebraOwn(CEBRA):
                     labels_test=labels_test,
                     n_neighbors=n_neighbors,
                     labels_describe_space=labels_describe_space,
+                    multiply_by=multiply_by,
                 )
         return self.decoding_statistics
 
@@ -1869,6 +1877,7 @@ def decode(
     n_folds: int = 5,
     detailed_metrics: bool = False,
     include_cv_stats: bool = False,
+    multiply_by: float = 1.0,
 ) -> Dict[str, Dict[str, Union[float, Dict]]]:
     """
     Decodes neural embeddings using k-Nearest Neighbors with automatic k selection.
@@ -1896,6 +1905,8 @@ def decode(
         Whether to return detailed per-class metrics (default: False)
     include_cv_stats : bool, optional
         Whether to include cross-validation statistics (default: False)
+    multiply_by : float, optional
+        Factor to multiply the results by to normalize if original values have been transformed before (default: 1.0)
 
     Returns
     -------
@@ -1986,6 +1997,7 @@ def decode(
                 test_predictions,
                 cv_results if include_cv_stats else None,
                 labels_describe_space,
+                multiply_by=multiply_by,
             )
         )
     else:
@@ -2007,14 +2019,23 @@ def _compute_regression_metrics(
     test_predictions: np.ndarray,
     cv_results: Optional[list] = None,
     labels_describe_space: bool = False,
+    multiply_by: float = 1.0,
 ) -> Dict[str, Union[float, Dict[str, Union[float, Dict]]]]:
-    """Compute regression metrics with optional cross-validation results."""
+    """Compute regression metrics with optional cross-validation results.
+    
+    Parameters
+    ----------
+    multiply_by : float, optional
+        Factor to multiply the results by to normalize if original values have been transformed before (default: 1.0)
+    """
     # Test set metrics
-    absolute_errors = np.abs(labels_test - test_predictions)
+    err = np.abs(labels_test - test_predictions)
+    err["rmse"]["mean"] *= multiply_by
+    err["rmse"]["variance"] *= multiply_by
     if labels_describe_space:
-        absolute_errors = np.linalg.norm(absolute_errors, axis=1)
-    rmse = np.mean(absolute_errors)
-    error_variance = np.var(absolute_errors)
+        err = np.linalg.norm(err, axis=1)
+    rmse = np.mean(err)
+    error_variance = np.var(err)
     r2 = r2_score(labels_test, test_predictions)
 
     results = {
@@ -2024,7 +2045,7 @@ def _compute_regression_metrics(
 
     # Include CV stats if requested
     if cv_results is not None:
-        cv_rmse = [np.mean(np.abs(r["true"] - r["pred"])) for r in cv_results]
+        cv_rmse = [np.mean(np.abs(r["true"] - r["pred"])) * multiply_by for r in cv_results]
         cv_r2 = [r2_score(r["true"], r["pred"]) for r in cv_results]
         results["cv_metrics"] = {
             "rmse": {"mean": float(np.mean(cv_rmse)), "std": float(np.std(cv_rmse))},

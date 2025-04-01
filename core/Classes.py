@@ -388,15 +388,79 @@ class Multi:
 class MetaClass:
     """Metaclass for any type of Animal related object."""
 
+    def get_by_id(self, id):
+        split_id = id.split("_")
+        if len(split_id) < 1 or len(split_id) > 3:
+            raise ValueError(
+                f"ID {id} is not valid. Must be in the format animal_id_session_id_task_id based on the yaml file names e.g. DON-007021_20211022_FS1"
+            )
+        animal_id = split_id[0] if len(split_id) > 0 else None
+        session_id = split_id[1] if len(split_id) > 1 else None
+        task_id = split_id[2] if len(split_id) > 2 else None
+        if "animals" in self.__dict__:
+            animal = self.animals[animal_id] if animal_id else None
+            session = animal.sessions[session_id] if session_id else None
+            task = session.tasks[task_id] if task_id else None
+        if "sessions" in self.__dict__:
+            animal = self
+            session = animal.sessions[session_id] if session_id else None
+            task = session.tasks[task_id] if task_id else None
+        if "tasks" in self.__dict__:
+            animal = None
+            session = self
+            task = session.tasks[task_id] if task_id else None
+        return animal, session, task
+
+    def handle_relative_model_values(
+        self, task_model: CebraOwn
+    ) -> Union[int, np.ndarray[float]]:
+        """
+
+        Args:
+            task_model (CebraOwn):
+
+        Raises:
+            ValueError: If more than one behavior data was used for training the model.
+
+        Returns:
+            Union[int, np.ndarray[float]]:
+            The maximum absolute values of the model if it is a relative model, otherwise 1.
+        """
+
+        if "relative" in task_model.name:
+            global_logger.warning(
+                f"Detected relative in model name {task_model.name}. Converting relative performance to absolute using max possible value possible."
+            )
+            if len(task_model.behavior_data_types) > 1:
+                raise ValueError(
+                    f"More than one behavior data was used for training the model {task_model.name}. Please provide a single behavior data type."
+                )
+            else:
+                task_behavior_data_type = task_model.behavior_data_types[0]
+            max_absolute_values = self.get_model_max_absolute_label_value(
+                task_model, behavior_data_type=task_behavior_data_type
+            )
+            return max_absolute_values
+        else:
+            return 1
+
+    def get_model_max_absolute_label_value(
+        self, model: CebraOwn, behavior_data_type: str
+    ) -> np.ndarray[float]:
+        _, _, task = self.get_by_id(model.get_metadata("behavior", "task_id"))
+        absolute_data, _ = task.behavior.get_multi_data(sources=behavior_data_type)
+        # convert percentage to cm
+        max_absolute_values = np.max(absolute_data, axis=0)
+        return max_absolute_values
+
     def model_cross_decode(
         self,
-        models_source: Union[Animal, Session, Task],
         manifolds_pipeline: str = "cebra",
         model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
         model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
         add_random: Optional[bool] = False,
         n_neighbors: Optional[int] = None,
-        additional_title: Optional[str] = None,
+        additional_title: Optional[str] = "",
         plot=True,
     ):
         """
@@ -447,9 +511,14 @@ class MetaClass:
             ]
             stimulus_type = task_model.get_metadata("behavior", "stimulus_type")
             task_plot_name1 = f"{task_name_type}_{stimulus_type}"
+            task_plot_name1 = "random" if task_name == "random" else task_plot_name1
             xticks.append(task_name_type)
             max_position_absolute_model_data = []
-            for task_modle_name2, task_model2 in unique_models.items():
+            max_position_absolute_model_data.append(
+                self.handle_relative_model_values(task_model)
+            )
+
+            for task_model_name2, task_model2 in unique_models.items():
                 second_model_labels = list_vars_in_list(
                     task_model2.behavior_data_types, Dataset.labels_describe_space
                 )
@@ -465,28 +534,20 @@ class MetaClass:
                 )[-1]
                 stimulus_type2 = task_model2.get_metadata("behavior", "stimulus_type")
                 task_plot_name2 = f"{task_name_type2}_{stimulus_type2}"
+                task_plot_name2 = (
+                    "random" if task_model_name2 == "random" else task_plot_name2
+                )
                 stimulus_decoding_name = f"{task_plot_name1} to {task_plot_name2}"
                 xticks.append(stimulus_decoding_name)
 
-                if "relative" in task_modle_name2:
-                    global_logger.warning(
-                        f"Detected relative in model name {task_modle_name2}. Converting relative performance to absolute using max possible value possible."
-                    )
-                    absolute_data = models_source[task_name].behavior.get_multi_data(
-                        sources=task_modle_name2.behavior_type
-                    )[0]
-
-                    # convert percentage to cm
-                    max_position_absolute_model_data.append(
-                        np.max(absolute_data, axis=1)
-                    )
-                else:
-                    max_position_absolute_model_data.append(1)
+                max_position_absolute_model_data.append(
+                    self.handle_relative_model_values(task_model2)
+                )
 
         global_logger.info(
             f"""Start calculating decoding statistics for all sessions, tasks and models found from {manifolds_pipeline} pipeline using naming filter including {model_naming_filter_include} and excluding {model_naming_filter_exclude}"""
         )
-
+        additional_title = f" - {self.id}" + additional_title
         task_decoding_statistics = Models.cross_decoding(
             ref_models=unique_models,
             # models=models,
@@ -879,51 +940,6 @@ class Animal(MetaClass):
                 plot_iterations=False,
                 as_pdf=as_pdf,
             )
-
-    def session_model_cross_decode(
-        self,
-        manifolds_pipeline: str = "cebra",
-        model_naming_filter_include: Union[List[List[str]], List[str], str] = None,
-        model_naming_filter_exclude: Union[List[List[str]], List[str], str] = None,
-        add_random: Optional[bool] = False,
-        n_neighbors: Optional[int] = None,
-        plot=True,
-    ):
-        """
-        Calculates the decoding performance between models from all tasks based on the wanted model names.
-
-        Parameters
-        ----------
-        manifolds_pipeline : str, optional
-            The name of the manifolds pipeline to use for decoding (default is "cebra").
-        model_naming_filter_include : list, optional
-            A list of lists containing the model naming parts to include (default is None).
-            If None, all models will be included.
-        model_naming_filter_exclude : list, optional
-            A list of lists containing the model naming parts to exclude (default is None).
-            If None, no models will be excluded.
-        add_random : bool, optional
-            If True, a random model will be added to the decoding (default is False).
-        n_neighbors : int, optional
-            The number of neighbors to use for the KNN algorithm (default is 36).
-
-        Returns
-        -------
-        task_decoding_statistics : dict
-            A dictionary containing the decoding statistics between models based on the wanted model names.
-        """
-
-        task_decoding_statistics = self.model_cross_decode(
-            models_source=self.sessions,
-            manifolds_pipeline=manifolds_pipeline,
-            model_naming_filter_include=model_naming_filter_include,
-            model_naming_filter_exclude=model_naming_filter_exclude,
-            add_random=add_random,
-            n_neighbors=n_neighbors,
-            additional_title=f" - {self.id}",
-            plot=plot,
-        )
-        return task_decoding_statistics
 
     def structural_indices(
         self,
@@ -1833,18 +1849,6 @@ class Task:
             to_2d=to_2d,
         )
 
-        _, train_labels_dict = self.extract_wanted_embedding_and_labels(
-            cls=self,
-            model_naming_filter_include=model_naming_filter_include,
-            model_naming_filter_exclude=model_naming_filter_exclude,
-            embeddings=embeddings,
-            train_or_test=train_or_test,
-            manifolds_pipeline=manifolds_pipeline,
-            to_transform_data=to_transform_data,
-            labels=labels,
-            to_2d=to_2d,
-        )
-
         viz = Vizualizer(self.data_dir.parent.parent)
         title = (
             f"{manifolds_pipeline.upper()} embeddings {self.id}" if not title else title
@@ -1857,7 +1861,6 @@ class Task:
         )
 
         projection = "2d" if to_2d else "3d"
-
         # plot embeddings if behavior_data_type is in embedding_title
         for behavior_data_type in behavior_data_types:
             # get ticks
@@ -1866,19 +1869,19 @@ class Task:
                 colorbar_ticks = dataset_object.plot_attributes["yticks"]
             else:
                 colorbar_ticks = given_colorbar_ticks
-            labels_dict = {"name": behavior_data_type, "labels": []}
+            labels_dict_plot = {"name": behavior_data_type, "labels": []}
             embeddings_to_plot = {}
             for embedding_title, labels in labels_dict.items():
                 if behavior_data_type not in embedding_title:
                     continue
-                labels_dict["labels"].append(labels)
+                labels_dict_plot["labels"].append(labels)
                 min_val_labels = np.min(labels)
                 max_val_labels = np.max(labels)
                 embeddings_to_plot[embedding_title] = embeddings[embedding_title]
 
             viz.plot_multiple_embeddings(
                 embeddings_to_plot,
-                labels=labels_dict,
+                labels=labels_dict_plot,
                 min_val=min_val_labels,
                 max_val=max_val_labels,
                 ticks=colorbar_ticks,
@@ -2047,23 +2050,28 @@ class Task:
                 manifolds_pipeline="cebra",
             )
 
-        if not isinstance(embeddings, dict):
+        if not isinstance(embeddings, dict) or labels is None:
             models_class, models = cls.models.get_pipeline_models(
                 manifolds_pipeline=manifolds_pipeline,
                 model_naming_filter_include=model_naming_filter_include,
                 model_naming_filter_exclude=model_naming_filter_exclude,
             )
-            embeddings = {}
-            labels_dict = {}
-            for model_name, model in models.items():
-                embeddings[model_name] = (
-                    model.get_data()
-                    if not use_raw
-                    else model.get_data(train_or_test=train_or_test, type="neural")
-                )
-                labels_dict[model_name] = model.get_data(
-                    train_or_test=train_or_test, type="behavior"
-                )
+
+            if not isinstance(embeddings, dict):
+                embeddings = {}
+                for model_name, model in models.items():
+                    embeddings[model_name] = (
+                        model.get_data()
+                        if not use_raw
+                        else model.get_data(train_or_test=train_or_test, type="neural")
+                    )
+
+            if labels is None:
+                labels_dict = {}
+                for model_name, model in models.items():
+                    labels_dict[model_name] = model.get_data(
+                        train_or_test=train_or_test, type="behavior"
+                    )
 
         # get embedding lables
         if labels is not None:
