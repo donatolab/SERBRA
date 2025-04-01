@@ -1125,6 +1125,7 @@ class Data_Position(BehaviorDataset):
         self.max_bin = None
         self.raw_position = None
         self.lap_starts = None
+        self.env_dim
 
     def refine_metadata(self):
         if self.metadata["environment_dimensions"] is None:

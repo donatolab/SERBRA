@@ -411,10 +411,11 @@ class MetaClass:
             task = session.tasks[task_id] if task_id else None
         return animal, session, task
 
-    def handle_relative_model_values(
+    def handle_relative_model_scaling(
         self, task_model: CebraOwn
     ) -> Union[int, np.ndarray[float]]:
         """
+        Get the relative model value scale for the given task model.
 
         Args:
             task_model (CebraOwn):
@@ -424,7 +425,7 @@ class MetaClass:
 
         Returns:
             Union[int, np.ndarray[float]]:
-            The maximum absolute values of the model if it is a relative model, otherwise 1.
+            The relative model value scale. If the model name contains "relative", it returns the maximum absolute values.
         """
 
         if "relative" in task_model.name:
@@ -437,21 +438,22 @@ class MetaClass:
                 )
             else:
                 task_behavior_data_type = task_model.behavior_data_types[0]
-            max_absolute_values = self.get_model_max_absolute_label_value(
+            max_absolute_values = self.get_relative_model_val_scale(
                 task_model, behavior_data_type=task_behavior_data_type
             )
             return max_absolute_values
         else:
             return 1
 
-    def get_model_max_absolute_label_value(
+    def get_relative_model_val_scale(
         self, model: CebraOwn, behavior_data_type: str
     ) -> np.ndarray[float]:
         _, _, task = self.get_by_id(model.get_metadata("behavior", "task_id"))
         absolute_data, _ = task.behavior.get_multi_data(sources=behavior_data_type)
-        # convert percentage to cm
-        max_absolute_values = np.max(absolute_data, axis=0)
-        return max_absolute_values
+        # convert percentage to absolute range
+        borders = Environment.define_border_by_pos(absolute_data)
+        val_range = np.diff(borders).flatten()
+        return val_range
 
     def model_cross_decode(
         self,
@@ -479,7 +481,12 @@ class MetaClass:
         add_random : bool, optional
             If True, a random model will be added to the decoding (default is False).
         n_neighbors : int, optional
-            The number of neighbors to use for the KNN algorithm (default is 36).
+            The number of neighbors to use for the KNN algorithm (default is None). 
+            if None, the number of neighbors will be determined by k-fold cross-validation in the decoding function.
+        additional_title : str, optional
+            A string to add to the title of the plot (default is None).
+        plot : bool, optional
+            If True, the plot will be shown (default is True).
 
         Returns
         -------
@@ -500,6 +507,7 @@ class MetaClass:
 
         xticks = []
         labels_describe_space = False
+        behavior_scaling = {}
         for task_name, task_model in unique_models.items():
             # check if all vars in list are in another list
             labels_describe_space = list_vars_in_list(
@@ -513,10 +521,9 @@ class MetaClass:
             task_plot_name1 = f"{task_name_type}_{stimulus_type}"
             task_plot_name1 = "random" if task_name == "random" else task_plot_name1
             xticks.append(task_name_type)
-            max_position_absolute_model_data = []
-            max_position_absolute_model_data.append(
-                self.handle_relative_model_values(task_model)
-            )
+
+            # get the relative behavior norms for the model
+            behavior_scaling[task_name] = self.handle_relative_model_scaling(task_model)
 
             for task_model_name2, task_model2 in unique_models.items():
                 second_model_labels = list_vars_in_list(
@@ -540,10 +547,6 @@ class MetaClass:
                 stimulus_decoding_name = f"{task_plot_name1} to {task_plot_name2}"
                 xticks.append(stimulus_decoding_name)
 
-                max_position_absolute_model_data.append(
-                    self.handle_relative_model_values(task_model2)
-                )
-
         global_logger.info(
             f"""Start calculating decoding statistics for all sessions, tasks and models found from {manifolds_pipeline} pipeline using naming filter including {model_naming_filter_include} and excluding {model_naming_filter_exclude}"""
         )
@@ -552,7 +555,7 @@ class MetaClass:
             ref_models=unique_models,
             # models=models,
             n_neighbors=n_neighbors,
-            multiply_by=max_position_absolute_model_data,
+            multiply_by=behavior_scaling,
             labels_describe_space=labels_describe_space,
             xticks=xticks,
             additional_title=additional_title,

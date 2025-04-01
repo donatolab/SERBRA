@@ -408,7 +408,7 @@ class Models:
         ref_models: Union[CebraOwn, List[CebraOwn], Dict[str, CebraOwn]],
         models: Union[CebraOwn, List[CebraOwn], Dict[str, CebraOwn]] = None,
         labels_describe_space=False,
-        multiply_by: Optional[Union[int, float]] = 1,
+        multiply_by: Optional[Union[int, float, Dict[str, Union[int, float]]]] = 1,
         title="Decoding perfomance between Models",
         additional_title: str = "",
         xticks: Optional[List[str]] = None,
@@ -430,16 +430,20 @@ class Models:
         models : Union[Model, List[Model]], optional
             The models with data to adapt to the reference models (default is None).
             If not provided, the reference models will be used.
-        multiply_by : Optional[Union[int, float]], optional
+        labels_describe_space : bool, optional
+            If labels are describing space (default is False).
+            If space is described the Frobenius norm is used to calculate the distance between decoded positional values.
+        multiply_by : Union[int, float, Dict[str, Union[int, float]]], optional
             The factor to multiply the decoding results by to normalize the results. (default is 1).
-            Shape must match the number of models, not the number of comparisons.
+            The keys of the dictionary must match the keys of the models.
         xticks : Optional[List[str]], optional
             The labels for the x-axis (default is None). If not provided, the model names will be used.
             xticks must match the number of comparisons.
         adapt : bool, optional
             Whether to adapt the model (default is True). Currently only CEBRA models can be adapted.
         n_neighbors : int, optional
-            The number of neighbors to use for decoding (default is 36).
+            The number of neighbors to use for the KNN algorithm (default is None). 
+            if None, the number of neighbors will be determined by k-fold cross-validation in the decoding function.
         plot : bool, optional
             Whether to plot the decoding results (default is True).
 
@@ -483,10 +487,16 @@ class Models:
         cross_model_decoding_statistics = {}
         for ref_model_name, ref_model in iter_dict_with_progress(ref_models):
             global_logger.info(f"------------ Decoding statistics for {ref_model_name}")
+            multiply_by_values = (
+                multiply_by[ref_model_name]
+                if isinstance(multiply_by, dict)
+                else multiply_by
+            )
             ref_model_dec_stats = ref_model.define_decoding_statistics(
                 regenerate=True,
                 n_neighbors=n_neighbors,
                 labels_describe_space=labels_describe_space,
+                multiply_by=multiply_by_values,
             )
             ref_model_decoding_statistics = {ref_model_name: ref_model_dec_stats}
 
@@ -506,18 +516,11 @@ class Models:
                     else ref_model
                 )
 
-                .....................
-                            # multiply by normalization factor
-            if multiply_by == 1:
-                multiply_by = [1] * len(ref_model_decoding_statistics)
-            
-            for (dec_name, values), norm_factor in zip(
-                ref_model_decoding_statistics.items(), multiply_by
-            ):
-                values["rmse"]["mean"] *= norm_factor
-                values["rmse"]["variance"] *= norm_factor
-                .......................................
-
+                multiply_by_values = (
+                    multiply_by[model_name]
+                    if isinstance(multiply_by, dict)
+                    else multiply_by
+                )
                 ref_model_decoding_statistics["to " + model_name] = (
                     adapted_model.define_decoding_statistics(
                         neural_data_train_to_embedd=neural_data_train_to_embedd,
@@ -526,7 +529,7 @@ class Models:
                         labels_test=labels_test,
                         n_neighbors=n_neighbors,
                         labels_describe_space=labels_describe_space,
-                        multiply_by=..... get correct multiply_by value
+                        multiply_by=multiply_by_values,
                     )
                 )
 
@@ -1425,8 +1428,16 @@ class CebraOwn(CEBRA):
             The behavior data to use for training the model (default is None). If not provided, the training data from the model will be used.
         labels_test : np.ndarray, optional
             The behavior data to use for testing the model (default is None). If not provided, the testing data from the model will be used.
+        n_neighbors : int, optional
+            The number of neighbors to use for the KNN algorithm (default is None). 
+            if None, the number of neighbors will be determined by k-fold cross-validation in the decoding function.
         regenerate : bool, optional
             Whether to regenerate the decoding statistics (default is False).
+        labels_describe_space : bool, optional
+            If labels are describing space (default is False).            
+            If space is described the Frobenius norm is used to calculate the distance between decoded positional values.
+        multiply_by : float, optional
+            A multiplier to apply to the decoding statistics (default is 1.0). This is used to scale the decoding statistics.
 
         Returns
         -------
@@ -1905,8 +1916,11 @@ def decode(
         Whether to return detailed per-class metrics (default: False)
     include_cv_stats : bool, optional
         Whether to include cross-validation statistics (default: False)
+    labels_describe_space : bool, optional
+        If labels are describing space (default is False).
+        If space is described the Frobenius norm is used to calculate the distance between decoded positional values.
     multiply_by : float, optional
-        Factor to multiply the results by to normalize if original values have been transformed before (default: 1.0)
+        A multiplier to apply to the decoding statistics (default is 1.0). This is used to scale the decoding statistics.
 
     Returns
     -------
@@ -2022,7 +2036,7 @@ def _compute_regression_metrics(
     multiply_by: float = 1.0,
 ) -> Dict[str, Union[float, Dict[str, Union[float, Dict]]]]:
     """Compute regression metrics with optional cross-validation results.
-    
+
     Parameters
     ----------
     multiply_by : float, optional
@@ -2030,8 +2044,7 @@ def _compute_regression_metrics(
     """
     # Test set metrics
     err = np.abs(labels_test - test_predictions)
-    err["rmse"]["mean"] *= multiply_by
-    err["rmse"]["variance"] *= multiply_by
+    err *= multiply_by
     if labels_describe_space:
         err = np.linalg.norm(err, axis=1)
     rmse = np.mean(err)
@@ -2045,7 +2058,9 @@ def _compute_regression_metrics(
 
     # Include CV stats if requested
     if cv_results is not None:
-        cv_rmse = [np.mean(np.abs(r["true"] - r["pred"])) * multiply_by for r in cv_results]
+        cv_rmse = [
+            np.mean(np.abs(r["true"] - r["pred"])) * multiply_by for r in cv_results
+        ]
         cv_r2 = [r2_score(r["true"], r["pred"]) for r in cv_results]
         results["cv_metrics"] = {
             "rmse": {"mean": float(np.mean(cv_rmse)), "std": float(np.std(cv_rmse))},
