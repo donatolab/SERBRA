@@ -246,7 +246,7 @@ The following metadata variables are used to describe the neural data recorded d
 | Variable     | Default |  Description                      | Type    | Example    | Input Options              |
 |--------------|--| -----------------------------------------------|---------|------------|----------------------------|
 | `method`     | | The method used to record the neural data     | String  | `2P`       | `2P`, `1P`                 |
-| `area`       | | The brain area where the neural data was recorded | String | `CA3`   | `CA3`, `CA1`       |
+| `area`       | | The brain area where the neural data was recorded | String | `CA3`   | `CA3`, `CA1`, `MEC`       |
 | `setup`      | | The setup used for neural recording           | String  | `femtonics` | `femtonics`, `thorlabs`, `inscopix`   |
 | `preprocessing` | | The preprocessing pipeline used for neural data | String | `suite2p` | `suite2p`, `opexebo`    |
 | `processing` | | The processing pipeline used for neural data  | String  | `cabincorr` | `cabincorr`  |
@@ -278,14 +278,22 @@ This section describes the metadata variables used to describe the behavior data
 | Variable     | Default |  Description                      | Type    | Example    | Input Options              |
 |--------------|--| -----------------------------------------------|---------|------------|----------------------------|
 | `setup`      |  | Setup used for behavior recordings            | String  | `treadmill` | `treadmill`, `wheel`          |
-| `binning_size` | 0.01 | Size of binning used for spatial data in meter  | Float   | 0.01       | Size in meters |
 | `environment_dimensions` |  | Dimensions of the environment         | Float   | 1.8        | Size in meters             |
+| `preprocessing` | Preprocessing pipeline for behavior data    | String  | `rotary_encoder` | `rotary_encoder` |
+
+###### Optional Metadata Variables
+| Variable     | Default |  Description                      | Type    | Example    | Input Options              |
+| `binning_size` | 0.01 | Size of binning used for spatial data in meter  | Float   | 0.01       | Size in meters |
+| `radius`     |  | Radius of the wheel or treadmill used        | Float   | 0.05       | Size in meters (e.g., 0.05, 0.1) |
+| `clicks_per_rotation` |  | Number of encoder clicks per wheel rotation | Integer | 500        | Defaults to 500            |
 
 
 #### 2D Environment
 | Variable     | Default |  Description                      | Type    | Example    | Input Options              |
 |--------------|--|------------------------------------------|---------|------------|----------------------------|
 | `setup`      |  | Setup used for behavior recordings            | String  | `openfield` | `openfield`          |
+| `preprocessing` | Preprocessing pipeline for behavior data    | String  | `cam` | `cam` |
+| `pixel_per_meter` | Number of pixels per meter in the video    | Float   | `1547.8`       | float value |
 
 
 # Needs to be done
@@ -297,19 +305,6 @@ This section describes the metadata variables used to describe the behavior data
 | `stimulus_sequence` |  | Sequence of stimulus presentations        | List    | `[1, 2, 3, 4, 5, 6]` | List of integers |
 | `stimulus_dimensions` |  | Dimensions of each stimulus              | List    | `[0.3, 0.3, 0.3, 0.3, 0.3, 0.3]` | List of floats in meters |
 | `stimulus_by` |  | Determines how stimulus is presented       | String  | `location` | `location`, `time`         |
-
-
-...... how to create code for this????
-| Variable     | Default |  Description                      | Type    | Example    | Input Options              |
-|--------------|--| -----------------------------------------------|---------|------------|----------------------------|
-| `preprocessing` | Preprocessing pipeline for behavior data    | String  | `rotary_encoder` | `rotary_encoder`, `wheel`, `cam` |
-| `pixel_per_meter` | Number of pixels per meter in the video    | Float   | 1000       | Defaults to 1000           |
-| `preprocessing` | Preprocessing pipeline for behavior data   | String  | see | `cam`, `tracking` |
-| `radius`     |  | Radius of the wheel or treadmill used        | Float   | 0.05       | Size in meters (e.g., 0.05, 0.1) |
-| `clicks_per_rotation` |  | Number of encoder clicks per wheel rotation | Integer | 500        | Defaults to 500            |
-
-
-
 
 ### Cam Metadata
 The following metadata variables are used to describe the camera data recorded during the task. The metadata should be saved inside the task metadata dictionary in the session metadata file at the root directory of the session folder. e.g. `.../DON-013199/20230419/20230419.yaml`. More specifically, the camera metadata should be saved inside a dictionary with the key `cam`. The `cam` variable is explained in the
