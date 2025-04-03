@@ -31,6 +31,24 @@ pip install -r requirements-dev.txt
 # Folder Structure
 The folder structure is important for the pipeline to work. The following names used are eamples and the files are still accepted if they have different names as long as they have **specific information in the file names**. The Important information is marked using **[square brackets]**, which should not really be in the file names. The structure is as follows:
 
+## General Folder Structure and Naming Rules
+```bash
+───DON-019608
+    │   
+    ├───20240126
+    │   │   
+    │   ├───FS1 (task data)
+    │   │   │
+    │   │   ├───001P-I (1P Inscopix data)
+    │   │   ├───002P-F (2P Femtonics data)
+    │   │   ├───002P-T (2P Thorlabs data)
+    │   │   │
+    │   │   ├───TR-BSL (Open field data)
+    │   │   ├───TRD-2P (2P Treadmill data)
+    │   │   │
+    │   │   ├───CAM data missing
+```
+
 ## Inscopix Data
 ```bash
 ───DON-019608
