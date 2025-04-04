@@ -150,6 +150,178 @@ def get_directories(directory, regex_search=""):
     return directories
 
 
+def init_path_checks(path: Union[str, Path], check: str = None) -> Path:
+    """
+    Initialize and validate a path based on specified criteria.
+    
+    Parameters
+    ----------
+    path : Union[str, Path]
+        The path to initialize and check. Can be a string or Path object.
+    check : str, optional
+        Type of check to perform on the path. Options are:
+        - "dir": Validate that the path exists and is a directory
+        - "file": Validate that the path exists and is a file
+        - None: Only validate that the path exists
+        
+    Returns
+    -------
+    Path
+        A validated Path object.
+        
+    Raises
+    ------
+    FileNotFoundError
+        If the path does not exist or if check is "file" and path is not a file.
+    NotADirectoryError
+        If check is "dir" and path is not a directory.
+        
+    Examples
+    --------
+    >>> init_path_checks(".", check="dir")  # Current directory
+    PosixPath('.')
+    >>> init_path_checks("/non/existent/path")
+    FileNotFoundError: Path /non/existent/path does not exist.
+    """
+    path = Path(path).resolve()
+    
+    if not path.exists():
+        raise FileNotFoundError(f"Path {path} does not exist.")
+    
+    if check == "dir" and not path.is_dir():
+        raise NotADirectoryError(f"Path {path} is not a directory.")
+    
+    if check == "file" and not path.is_file():
+        raise FileNotFoundError(f"Path {path} is not a file.")
+    
+    return path
+
+def regex_search(
+    items: List[Path],
+    include_regex: Union[str, List[str]] = ".*",
+    exclude_regex: Union[str, List[str]] = None,
+) -> List[Path]:
+    """
+    Filter a list of Path objects based on regex patterns.
+    
+    Parameters
+    ----------
+    items : List[Path]
+        The list of Path objects to filter.
+    include_regex : Union[str, List[str]], optional
+        Regular expression pattern(s) for items to include.
+        Can be a single string pattern or a list of patterns.
+        Default is ".*" (include everything).
+    exclude_regex : Union[str, List[str]], optional
+        Regular expression pattern(s) for items to exclude.
+        Can be a single string pattern or a list of patterns.
+        Default is None (exclude nothing).
+        
+    Returns
+    -------
+    List[Path]
+        A filtered list of Path objects matching the specified regex criteria.
+        
+    Examples
+    --------
+    >>> items = list(Path(".").glob("*"))
+    >>> python_files = regex_search(items, include_regex=r".*\.py$")
+    """
+    include_regex = make_list_ifnot(include_regex)
+    exclude_regex = make_list_ifnot(exclude_regex) or []  # Handle None case properly
+    
+    # Create a list of compiled regex patterns
+    include_patterns = [re.compile(pattern) for pattern in include_regex if pattern is not None]
+    exclude_patterns = [re.compile(pattern) for pattern in exclude_regex if pattern is not None]
+    
+    # Filter items based on include and exclude patterns
+    filtered_items = []
+    for item in items:
+        item_name = item.name
+        
+        # Empty include_patterns should include everything
+        include_match = not include_patterns or any(pattern.search(item_name) for pattern in include_patterns)
+        # Empty exclude_patterns should exclude nothing
+        exclude_match = any(pattern.search(item_name) for pattern in exclude_patterns) if exclude_patterns else False
+        
+        if include_match and not exclude_match:
+            filtered_items.append(item)
+            
+    return filtered_items
+
+def search_filedir(
+    path: Union[str, Path],
+    include_regex: Union[str, List[str]] = ".*",
+    exclude_regex: Union[str, List[str]] = None,
+    type: str = None,
+) -> List[Path]:
+    """
+    Search for files or directories in a given path based on regex patterns.
+    
+    This function searches through the contents of a directory and filters items based on
+    regular expression patterns for inclusion and exclusion. Additionally, filtering by
+    item type (file or directory) is supported.
+    
+    Parameters
+    ----------
+    path : Union[str, Path]
+        The directory path to search in. Can be a string or Path object.
+    include_regex : Union[str, List[str]], optional
+        Regular expression pattern(s) for files/directories to include.
+        Can be a single string pattern or a list of patterns.
+        Default is ".*" (include everything).
+    exclude_regex : Union[str, List[str]], optional
+        Regular expression pattern(s) for files/directories to exclude.
+        Can be a single string pattern or a list of patterns.
+        Default is None (exclude nothing).
+    type : str, optional
+        The type of items to include in the search results.
+        Must be one of: None (both files and directories), "file" (files only),
+        or "dir" (directories only). Default is None.
+    
+    Returns
+    -------
+    List[Path]
+        A list of Path objects matching the specified criteria.
+    
+    Raises
+    ------
+    ValueError
+        If the 'type' parameter is not one of: None, "file", or "dir".
+    NotADirectoryError
+        If the specified path is not a directory.
+    FileNotFoundError
+        If the specified path does not exist.
+    
+    Examples
+    --------
+    >>> # Find all Python files in current directory
+    >>> python_files = search_filedir(".", include_regex=r".*\.py$", type="file")
+    >>> # Find all directories except those starting with "."
+    >>> visible_dirs = search_filedir(".", exclude_regex=r"^\.", type="dir")
+    >>> # Find all text and markdown files
+    >>> text_files = search_filedir(".", include_regex=[r".*\.txt$", r".*\.md$"], type="file")
+    """
+    path = init_path_checks(path, check="dir")
+    
+    # Get the list of files or directories in the path based on type
+    if type is None:
+        items = list(path.glob("*"))
+    elif type == "file":
+        items = [item for item in path.glob("*") if item.is_file()]
+    elif type == "dir":
+        items = [item for item in path.glob("*") if item.is_dir()]
+    else:
+        raise ValueError("type must be either None, 'file', or 'dir'.")
+    
+    # Apply regex filtering to the items
+    filtered_items = regex_search(
+        items, include_regex=include_regex, exclude_regex=exclude_regex
+    )
+    
+    return filtered_items
+
+
 def fname_match_search(name, ending="", regex_search=""):
     return len(re.findall(regex_search, name)) > 0 and name.endswith(ending)
 
@@ -178,23 +350,6 @@ def get_files(directory, ending="", regex_search=""):
     #    global_logger.warning(f"Directory does not exist: {directory}")
     #    print(f"Directory does not exist: {directory}")
     return files_list
-
-
-def search_file(directory, filename):
-    """
-    This function searches for a file with a given filename within a specified directory and its subdirectories.
-
-    :param directory: The directory in which to search for the file.
-    :type directory: str
-    :param filename: The name of the file to search for.
-    :type filename: str
-    :return: The full path of the file if found, otherwise returns the string "Not found".
-    :rtype: str
-    """
-    for root, dirs, files in os.walk(directory):
-        if filename in files:
-            return Path(root).joinpath(filename)
-    return None
 
 
 def make_list_ifnot(var):
@@ -1590,6 +1745,7 @@ def list_vars_in_list(list1, list2):
     """
     return all(var in list2 for var in list1)
 
+
 def encode_categorical(data, categories=None, return_category_map=False):
     """
     Encode categorical data into numerical values.
@@ -2654,6 +2810,28 @@ def num_to_date(date_string):
         date_string = str(date_string)
     date = datetime.strptime(date_string, "%Y%m%d")
     return date
+
+
+def extract_date_from_filename(filename: str) -> str:
+    """Extract the date from the filename.
+
+    Parameters
+    ----------
+        filename (str): The filename to extract the date from.
+
+    Returns
+    -------
+        str: The extracted date in YYYYMMDD format.
+    """
+    match = re.search(r"\d{8}", filename)
+    if match:
+        date = num_to_date(match.group(0))
+        if date:
+            return match.group(0)
+        else:
+            raise ValueError(f"Invalid date format in filename {filename}.")
+    else:
+        raise ValueError(f"No date found in filename {filename}.")
 
 
 def range_to_seconds(end: int, fps: float, start: int = 0):

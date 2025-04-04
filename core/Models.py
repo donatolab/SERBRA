@@ -1891,11 +1891,16 @@ def decode(
     multiply_by: float = 1.0,
     test_outlier_removal: bool = True,
     regression_outlier_removal_threshold: float = 0.004,
-    min_train_class_samples: int = 100,
-    min_test_class_samples: int = 10,
+    min_train_class_samples: int = 200,
+    min_test_class_samples: int = 30,
 ) -> Dict[str, Dict[str, Union[float, Dict]]]:
     """
     Decodes neural embeddings using k-Nearest Neighbors with automatic k selection.
+
+    Before decoding, the function checks if the input data is valid and ensures that the training and test sets are compatible.
+    Labels/Classes are checked to ensure that only those with sufficient training samples are used for testing.
+    This function performs k-fold cross-validation to determine the optimal number of neighbors (k) for the kNN model.
+    It then fits the kNN model with the optimal k and evaluates its performance on the test set.
 
     Parameters
     ----------
@@ -1931,9 +1936,9 @@ def decode(
         Threshold for outlier removal (default: 0.004). This is used to determine if a test sample is too far from the training samples.
         If the distance to the nearest training sample is greater than this threshold, the test sample is removed.
     min_train_class_samples : int, optional
-        Minimum number of training samples per class (default: 100). This is used to determine if a class has enough training samples.
+        Minimum number of training samples per class (default: 200). This is used to determine if a class has enough training samples.
     min_test_class_samples : int, optional
-        Minimum number of test samples per class (default: 10). This is used to determine if a class has enough test samples.
+        Minimum number of test samples per class (default: 30). This is used to determine if a class has enough test samples.
 
     Returns
     -------
