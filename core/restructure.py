@@ -46,9 +46,9 @@ photon_types = {
 analysis_outputs = ["Bayesian_decoder", "Opexebo_cell_analysis", "models", "figures"]
 
 neural_output_folder_names = [
-    photon_types[photon_type] + rec_output[rec_output]
-    for photon_type in photon_types
-    for rec_output in rec_output
+    photon_type + rec_output
+    for photon_type in photon_types.values()
+    for rec_output in rec_outputs.values()
 ]
 behavior_output_folder_names = [
     behavior_naming_structure[behavior] for behavior in behavior_naming_structure
@@ -226,7 +226,7 @@ def restructure_animal_dirs(
     location_related: str,
 ) -> None:
     neural_rec_output_folder = photon_types[photon_type] + rec_outputs[rec_output]
-    behavior_rec_output_folder = naming_structure[behavior_rec_type]
+    behavior_rec_output_folder = cam_naming_structure[behavior_rec_type]
     # get list of folders in the directory based on animal naming structure
     folders = search_filedir(
         path=path,
@@ -260,7 +260,7 @@ def restruct_nathalie_animals_dir(path: Union[str, Path]) -> None:
         path=init_path_checks(path, check="dir"),
         photon_type="1p",
         rec_output="inscopix",
-        behavior_rec_type=cam_naming_structure["openfield"],
+        behavior_rec_type="openfield",
         neural_related=neural_related,
         location_related=location_related,
     )
