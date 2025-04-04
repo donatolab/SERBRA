@@ -442,7 +442,7 @@ class Models:
         adapt : bool, optional
             Whether to adapt the model (default is True). Currently only CEBRA models can be adapted.
         n_neighbors : int, optional
-            The number of neighbors to use for the KNN algorithm (default is None). 
+            The number of neighbors to use for the KNN algorithm (default is None).
             if None, the number of neighbors will be determined by k-fold cross-validation in the decoding function.
         plot : bool, optional
             Whether to plot the decoding results (default is True).
@@ -1429,12 +1429,12 @@ class CebraOwn(CEBRA):
         labels_test : np.ndarray, optional
             The behavior data to use for testing the model (default is None). If not provided, the testing data from the model will be used.
         n_neighbors : int, optional
-            The number of neighbors to use for the KNN algorithm (default is None). 
+            The number of neighbors to use for the KNN algorithm (default is None).
             if None, the number of neighbors will be determined by k-fold cross-validation in the decoding function.
         regenerate : bool, optional
             Whether to regenerate the decoding statistics (default is False).
         labels_describe_space : bool, optional
-            If labels are describing space (default is False).            
+            If labels are describing space (default is False).
             If space is described the Frobenius norm is used to calculate the distance between decoded positional values.
         multiply_by : float, optional
             A multiplier to apply to the decoding statistics (default is 1.0). This is used to scale the decoding statistics.
@@ -1889,6 +1889,10 @@ def decode(
     detailed_metrics: bool = False,
     include_cv_stats: bool = False,
     multiply_by: float = 1.0,
+    test_outlier_removal: bool = True,
+    regression_outlier_removal_threshold: float = 0.004,
+    min_train_class_samples: int = 100,
+    min_test_class_samples: int = 10,
 ) -> Dict[str, Dict[str, Union[float, Dict]]]:
     """
     Decodes neural embeddings using k-Nearest Neighbors with automatic k selection.
@@ -1921,6 +1925,15 @@ def decode(
         If space is described the Frobenius norm is used to calculate the distance between decoded positional values.
     multiply_by : float, optional
         A multiplier to apply to the decoding statistics (default is 1.0). This is used to scale the decoding statistics.
+    test_outlier_removal : bool, optional
+        Whether to remove outliers from the test set (default: True)
+    regression_outlier_removal_threshold : float, optional
+        Threshold for outlier removal (default: 0.004). This is used to determine if a test sample is too far from the training samples.
+        If the distance to the nearest training sample is greater than this threshold, the test sample is removed.
+    min_train_class_samples : int, optional
+        Minimum number of training samples per class (default: 100). This is used to determine if a class has enough training samples.
+    min_test_class_samples : int, optional
+        Minimum number of test samples per class (default: 10). This is used to determine if a class has enough test samples.
 
     Returns
     -------
@@ -1939,8 +1952,53 @@ def decode(
     labels_test = np.atleast_2d(labels_test)
 
     # Determine if regression or classification
-    is_regression = is_floating(labels_train)
+    is_regression = is_floating(labels_train) if not labels_describe_space else True
     knn_class = KNeighborsRegressor if is_regression else KNeighborsClassifier
+
+    # Ensure only labels sufficiently available in training set are used for testing
+    if test_outlier_removal:
+        idx_remove = []
+        if is_regression:
+            # check if the test data is within range of the training data
+            mins = np.min(labels_train, axis=0)
+            maxs = np.max(labels_train, axis=0)
+            ranges = maxs - mins
+            if labels_describe_space:
+                area = np.prod(ranges)
+                min_acceptable_value = np.sqrt(
+                    area * regression_outlier_removal_threshold
+                )
+            else:
+                min_acceptable_value = ranges * regression_outlier_removal_threshold
+            for loc in labels_test:
+                if labels_describe_space:
+                    dist = np.linalg.norm(loc - labels_train, axis=1)
+                cl = np.min(dist)
+                if cl > min_acceptable_value:
+                    global_logger.info(
+                        "Test sample removed from training set because too far from available training points",
+                        cl,
+                    )
+                    idx_remove.append(k)
+        else:
+            # check if the test data class has sufficiently available training data samples
+            for cl, num_test_samples in np.unique(labels_test, treturn_counts=True):
+                num_train_samples = np.sum(labels_train == cl)
+                if (
+                    num_train_samples < min_train_class_samples
+                    or num_test_samples < min_test_class_samples
+                ):
+                    idx_remove.extend(np.where(labels_test == cl)[0])
+                    global_logger.info(
+                        f"Test sample removed from training set because class {cl} has too few samples. Training samples: {num_train_samples}, Test samples: {num_test_samples}. At least {min_train_class_samples} training samples and {min_test_class_samples} test samples are needed."
+                    )
+
+        if len(idx_remove) > 0:
+            global_logger.info(
+                f"Removing {len(idx_remove)} test samples from training set"
+            )
+            embedding_test = np.delete(embedding_test, idx_remove, axis=0)
+            labels_test = np.delete(labels_test, idx_remove, axis=0)
 
     # Define range of k values to test if n_neighbors is None
     if n_neighbors is None:
