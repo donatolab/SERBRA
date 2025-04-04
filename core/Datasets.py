@@ -229,9 +229,7 @@ class Dataset:
         self.plot_attributes["save_path"] = (
             self.plot_attributes["save_path"]
             or save_path
-            or self.root_dir.parent.joinpath(
-                "figures", self.path.stem + ".png"
-            )
+            or self.root_dir.parent.joinpath("figures", self.path.stem + ".png")
         )
 
     def plot(
@@ -312,7 +310,7 @@ class Dataset:
     @staticmethod
     def split(data, split_ratio=0.8):
         global_logger.info(
-            f"Splitting data into {split_ratio:.0%}% training and {1-split_ratio:.0%} testing."
+            f"Splitting data into {split_ratio:.0%} training and {1-split_ratio:.0%} testing."
         )
         split_index = int(len(data) * split_ratio)
         data_train = data[:split_index]
@@ -647,27 +645,29 @@ class NeuralDataset(Dataset):
         filtered_neural_data = self.filter_by_idx(data, idx_to_keep=idx_to_keep)
         return filtered_neural_data
 
-    def get_process_data(self, type:str="processed", fit_to_shape:Union[None, Tuple[int, int]]=None):
+    def get_process_data(
+        self, type: str = "processed", fit_to_shape: Union[None, Tuple[int, int]] = None
+    ):
         """
         Get the data of the task.
-        
+
         The data is processed and has 1 dimension larger to create the format of [time, features].
-        
+
         Parameters
         ----------
         type : str, optional
-            The type of data to get (default is "processed"). Other options could be available, depending on the function of setup.preprocess.process.data 
+            The type of data to get (default is "processed"). Other options could be available, depending on the function of setup.preprocess.process.data
             Options are:
                 - "processed": the processed data
                 - "unprocessed": the unprocessed data
-        
+
         fit_to_shape : tuple, optional
             The shape to fit the data to. Default is None, which does not change the shape of the data.
-            
+
         Returns
         -------
             data : np.ndarray
-                The data of the task with 1 dimension larger than the number of features. 
+                The data of the task with 1 dimension larger than the number of features.
         """
         data = self.setup.preprocess.process.data(type=type)
         data = force_1_dim_larger(data)
@@ -1125,7 +1125,6 @@ class Data_Position(BehaviorDataset):
         self.max_bin = None
         self.raw_position = None
         self.lap_starts = None
-        self.env_dim
 
     def refine_metadata(self):
         if self.metadata["environment_dimensions"] is None:
@@ -1168,7 +1167,7 @@ class Data_Position(BehaviorDataset):
                 self.plot_attributes["figsize"] = (12, 10)
 
     def plot_data(self):
-        
+
         if self.data.shape[1] == 1:
             marker = "^" if self.lap_starts is not None else None
             Vizualizer.data_plot_1D(
@@ -1459,7 +1458,9 @@ class Data_Distance(BehaviorDataset):
 
     def process_raw_data(self, smooth=True, save=True):
         track_positions = self.raw_data_object.data
-        self.data = Environment.get_cumdist_from_position(track_positions, imaging_fps=self.metadata["imaging_fps"])
+        self.data = Environment.get_cumdist_from_position(
+            track_positions, imaging_fps=self.metadata["imaging_fps"]
+        )
         return self.data
 
 
@@ -1755,7 +1756,7 @@ class Data_Photon(NeuralDataset):
         return setup
 
 
-class Data_Probe(Dataset): #Maybe NeuralDataset
+class Data_Probe(Dataset):  # Maybe NeuralDataset
     def __init__(self, path=None, raw_data_object=None, metadata=None):
         super().__init__(
             key="probe", path=path, raw_data_object=raw_data_object, metadata=metadata
@@ -1891,10 +1892,12 @@ class Datasets_Neural(Datasets):
             raise ValueError(f"Imaging type {data_source} not supported.")
         return imaging_type
 
-    def get_object(self, data_source:Union[None, str]=None) -> Union[Data_Photon, Data_Probe]:
+    def get_object(
+        self, data_source: Union[None, str] = None
+    ) -> Union[Data_Photon, Data_Probe]:
         """
-        Get the data object based on the data source. 
-        
+        Get the data object based on the data source.
+
         WARNING: The implementation only handles on type of neural imaging method, so multiple data sources are not supported yet.
 
         Args:
@@ -1904,20 +1907,26 @@ class Datasets_Neural(Datasets):
         Returns:
             data_object (Data_Photon or Data_Probe): The data object based on the data source
         """
-        imaging_type = self.imaging_type if data_source is None else self.define_imaging_type(data_source)
+        imaging_type = (
+            self.imaging_type
+            if data_source is None
+            else self.define_imaging_type(data_source)
+        )
         data_object = getattr(self, imaging_type)
         return data_object
-    
-    def get_process_data(self, data_source:Union[None, str]=None, type:str="processed") -> np.ndarray:
+
+    def get_process_data(
+        self, data_source: Union[None, str] = None, type: str = "processed"
+    ) -> np.ndarray:
         """
         Get the data from process object based on the data source.
-        
+
         WARNING: The implementation only handles on type of neural imaging method, so multiple data sources are not supported yet.
-        
+
         Args:
             data_source (str, optional): One data source with a name from the list self.photon_imaging_methods or self.probe_imaging_methods
                 to get the data object from. If None, the already defined imaging type is used.
-                
+
         Returns:
             data (np.ndarray): The processed data
         """
