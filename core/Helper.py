@@ -2830,8 +2830,6 @@ def extract_date_from_filename(filename: str) -> str:
             return match.group(0)
         else:
             raise ValueError(f"Invalid date format in filename {filename}.")
-    else:
-        raise ValueError(f"No date found in filename {filename}.")
 
 
 def range_to_seconds(end: int, fps: float, start: int = 0):
