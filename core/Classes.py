@@ -12,6 +12,7 @@ from Helper import *
 from Visualizer import *
 from Models import Models, PlaceCellDetectors, decode, CebraOwn
 from Datasets import Datasets_Neural, Datasets_Behavior, Dataset
+from restructure import naming_structure
 
 # calculations
 import numpy as np
@@ -53,23 +54,36 @@ def load_all_animals(
     - animals_dict (dict): A dictionary containing animal IDs as keys and corresponding Animal objects as values.
     """
     root_dir = Path(root_dir)
-    present_animal_ids = get_directories(root_dir, regex_search="DON-[A-Za-z0-9-_]*")
+
+    present_animal_folders = search_filedir(
+        path=root_dir,
+        include_regex=naming_structure["animal"],
+        type="dir",
+    )
     animals_dict = {}
     if not model_settings:
         model_settings = kwargs
 
     # Search for animal_ids
-    for animal_id in present_animal_ids:
+    for animal_folder in present_animal_folders:
+        animal_id = animal_folder.name
         if animal_id in wanted_animal_ids or "all" in wanted_animal_ids:
             animal = Animal(
                 animal_id=animal_id, root_dir=root_dir, model_settings=model_settings
             )
-            animal.add_sessions(
-                wanted_dates=wanted_dates,
-                behavior_datas=behavior_datas,
-                regenerate=regenerate,
-                regenerate_plots=regenerate_plots,
-            )
+            try:
+                animal.add_sessions(
+                    wanted_dates=wanted_dates,
+                    behavior_datas=behavior_datas,
+                    regenerate=regenerate,
+                    regenerate_plots=regenerate_plots,
+                )
+            except Exception as e:
+                global_logger.error(
+                    f"Error loading animal {animal_id} in {animal_folder}: {e}"
+                )
+                print(f"Error loading animal {animal_id} in {animal_folder}: {e}")
+                continue
         animals_dict[animal_id] = animal
     animals_dict = sort_dict(animals_dict)
     return animals_dict
@@ -481,7 +495,7 @@ class MetaClass:
         add_random : bool, optional
             If True, a random model will be added to the decoding (default is False).
         n_neighbors : int, optional
-            The number of neighbors to use for the KNN algorithm (default is None). 
+            The number of neighbors to use for the KNN algorithm (default is None).
             if None, the number of neighbors will be determined by k-fold cross-validation in the decoding function.
         additional_title : str, optional
             A string to add to the title of the plot (default is None).
@@ -637,10 +651,14 @@ class Animal(MetaClass):
         # Search for Sessions
         sessions_root_path = self.root_dir.joinpath(self.id)
         # search for directories with in date format
-        present_session_dates = get_directories(
-            sessions_root_path, regex_search="[0-9]{8}"
+        present_session_date_folders = search_filedir(
+            path=sessions_root_path,
+            include_regex=naming_structure["date"],
+            exclude_regex=None,
+            type="dir",
         )
-        for date in present_session_dates:
+        for date_folder in present_session_date_folders:
+            date = date_folder.name
             if date in wanted_dates or "all" in wanted_dates:
                 self.add_session(
                     date,
@@ -1584,8 +1602,15 @@ class Task:
 
     def define_data_dir(self, session_dir):
         data_dir = session_dir
-        if self.name in get_directories(data_dir):
-            data_dir = data_dir.joinpath(self.name)
+        folders = search_filedir(
+            data_dir,
+            type="dir",
+        )
+        for folder in folders:
+            if self.name in folder.name:
+                data_dir = data_dir.joinpath(self.name)
+        # if self.name in get_directories(data_dir):
+        #    data_dir = data_dir.joinpath(self.name)
         return data_dir
 
     def load_metadata(self, metadata: dict = {}):

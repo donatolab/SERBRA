@@ -67,10 +67,9 @@ class Output:
             for template in naming_templates:
                 fname = template.format(**self.identifier)
 
-                matching_files = get_files(
-                    full_folder_path,
-                    ending=Path(fname).suffix,
-                    regex_search=Path(fname).stem,
+                matching_files = search_filedir(
+                    path=full_folder_path,
+                    include_regex=fname,
                 )
                 if matching_files:
                     fname = matching_files[0]
@@ -108,11 +107,8 @@ class Output:
         fit_file_name = file_name.format(**self.identifier)
         if fit_file_name not in transposed_output_paths.keys():
             for existing_file_name, path in transposed_output_paths.items():
-                file_name_match = fname_match_search(
-                    existing_file_name,
-                    ending=Path(fit_file_name).suffix,
-                    regex_search=Path(fit_file_name).stem,
-                )
+                file_name_match = regex_search(existing_file_name,
+                                               include_regex=fit_file_name)
                 if file_name_match:
                     fpath = transposed_output_paths[existing_file_name].joinpath(
                         existing_file_name
@@ -1408,7 +1404,7 @@ class Environment(Behavior_Processing):
 
         distance = np.diff(position, axis=0)
         # remove big negative distance jumps when position is reset
-        global_logger.info(f"Max position: {max(position)}. Removing big negative distance jumps. Position reset is expected.")
+        global_logger.info(f"Max position: {np.max(position, axis=0)}. Removing big negative distance jumps. Position reset is expected.")
         distance_threshold = - np.max(position, axis=0) * 0.75
         distance[distance < distance_threshold] = 0
         cumulative_distance = np.cumsum(np.abs(distance), axis=0)

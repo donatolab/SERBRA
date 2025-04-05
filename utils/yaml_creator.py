@@ -15,7 +15,7 @@ from Helper import *
 
 manually_eddited_animals_yaml_fname = "animal_summary.yaml"
 
-
+############################### YAML from Excel based on Steffens excel structure ##########################################
 def row_to_list(sheet, row):
     result = []
     # Iterate over cells in the specified row
@@ -452,11 +452,6 @@ def create_folders_for_animals(animals, directory=None, save_yamls=True):
             with open(fpath, "w") as file:
                 yaml.dump(only_animal_metadata, file)
 
-def update_excel_by_yaml(excel_animals, yaml_animals):
-    pass
-    # FIXME: continue
-
-
 def main(directory=None):
     root_dir = directory if directory else ""
     fname = os.path.join("Intrinsic_CA3_database-September_7,_10_08_AM.xlsx")
@@ -483,7 +478,14 @@ def main(directory=None):
     with open(os.path.join(root_dir, "animals.yaml"), "w") as file:
         yaml.dump(animals, file)
 
-
 if __name__ == "__main__":
-    root_dir = "/scicore/projects/donafl00-calcium/Users/Sergej/Steffen_Experiments"
-    main()
+    #root_dir = "/scicore/projects/donafl00-calcium/Users/Sergej/Steffen_Experiments"
+    #main()
+    pass
+    
+############################### END YAML from Excel based on Steffens excel structure ######################
+
+############ Fast creation of YAML files based on Folder structure and known metadata #######################
+
+
+

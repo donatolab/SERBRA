@@ -395,7 +395,9 @@ class Vizualizer:
         # Convert coordinates to a numpy array if it's not already
         # Convert to cm for better visualization in plot
         coordinates = np.array(position_data) * 100
-        border_limits = border_limits * 100 if border_limits is not None else None
+        border_limits = (
+            np.array(border_limits) * 100 if border_limits is not None else None
+        )
 
         # Extract x and y coordinates
         x_coords = coordinates[:, 0]
@@ -441,9 +443,9 @@ class Vizualizer:
         if border_limits is not None:
             # Add border lines
             plt.axvline(x=0, color="r", linestyle="--", alpha=0.5)
-            plt.axvline(x=border_limits[0][1], color="r", linestyle="--", alpha=0.5)
+            plt.axvline(x=border_limits[0], color="r", linestyle="--", alpha=0.5)
             plt.axhline(y=0, color="r", linestyle="--", alpha=0.5)
-            plt.axhline(y=border_limits[1][1], color="r", linestyle="--", alpha=0.5)
+            plt.axhline(y=border_limits[1], color="r", linestyle="--", alpha=0.5)
 
         x_data_range = max(coordinates[:, 0]) - min(coordinates[:, 0])
         y_data_range = max(coordinates[:, 1]) - min(coordinates[:, 1])

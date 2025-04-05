@@ -1,8 +1,6 @@
-from typing import Union, List, Dict, Tuple, Optional
+from typing import Union, Dict
 from pathlib import Path
-import re
 import numpy as np
-import datetime as dt
 from tqdm import tqdm
 from Helper import (
     init_path_checks,
@@ -59,17 +57,6 @@ forbidden_names = (
 )
 
 
-def file_in_path(dir: Union[str, Path], fname: str = None, regex: str = None) -> Path:
-    dir = Path(dir)
-    if fname:
-        path = dir / fname
-    elif regex:
-        path = next(dir.glob(regex), dir)
-    else:
-        raise ValueError("Either fname or regex must be provided.")
-    return init_path_checks(path, check="file")
-
-
 def move_file_to_folder(fname: Union[str, Path], folder: Union[str, Path]) -> None:
     fname = Path(fname)
     folder = Path(folder)
@@ -122,7 +109,7 @@ def restructure_task_dir(
     # get the list of files in the task directory
     files = search_filedir(
         path=task_dir,
-        #exclude_regex=forbidden_names,
+        # exclude_regex=forbidden_names,
         type="file",
     )
     if len(files) == 0:
@@ -131,15 +118,14 @@ def restructure_task_dir(
     task_name = task_dir.name
     date = task_dir.parent.name
     animal_id = task_dir.parent.parent.name
-    
+
     # move neural recording files to the neural output folder
     for folder_name, category in task_data_locations.items():
         folder_path = task_dir / folder_name
         folder_path.mkdir(parents=True, exist_ok=True)
-        formated_category = category.format(animal_id=animal_id, 
-                                            date=date, 
-                                            behavior_setup=folder_name,
-                                            task=task_name)
+        formated_category = category.format(
+            animal_id=animal_id, date=date, behavior_setup=folder_name, task=task_name
+        )
         files_to_move = regex_search(files, formated_category)
         for file in files_to_move:
             move_file_to_folder(file, folder_path)

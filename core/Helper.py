@@ -125,35 +125,10 @@ def yield_animal_session_task(animals_dict):
             yield animal, session, task
 
 
-def get_directories(directory, regex_search=""):
-    """
-    This function returns a list of directories from the specified directory that match the regular expression search pattern.
-
-    Parameters:
-    directory (str): The directory path where to look for directories.
-    regex_search (str, optional): The regular expression pattern to match. Default is an empty string, which means all directories are included.
-
-    Returns:
-    list: A list of directory names that match the regular expression search pattern.
-    """
-    directory = Path(directory)
-    directories = None
-    if directory.exists():
-        directories = []
-        for name in os.listdir(directory):
-            if directory.joinpath(name).is_dir():
-                if fname_match_search(name, regex_search=regex_search):
-                    directories.append(name)
-    else:
-        global_logger.warning(f"Directory does not exist: {directory}")
-        print(f"Directory does not exist: {directory}")
-    return directories
-
-
 def init_path_checks(path: Union[str, Path], check: str = None) -> Path:
     """
     Initialize and validate a path based on specified criteria.
-    
+
     Parameters
     ----------
     path : Union[str, Path]
@@ -163,19 +138,19 @@ def init_path_checks(path: Union[str, Path], check: str = None) -> Path:
         - "dir": Validate that the path exists and is a directory
         - "file": Validate that the path exists and is a file
         - None: Only validate that the path exists
-        
+
     Returns
     -------
     Path
         A validated Path object.
-        
+
     Raises
     ------
     FileNotFoundError
         If the path does not exist or if check is "file" and path is not a file.
     NotADirectoryError
         If check is "dir" and path is not a directory.
-        
+
     Examples
     --------
     >>> init_path_checks(".", check="dir")  # Current directory
@@ -184,30 +159,32 @@ def init_path_checks(path: Union[str, Path], check: str = None) -> Path:
     FileNotFoundError: Path /non/existent/path does not exist.
     """
     path = Path(path).resolve()
-    
+
     if not path.exists():
         raise FileNotFoundError(f"Path {path} does not exist.")
-    
+
     if check == "dir" and not path.is_dir():
         raise NotADirectoryError(f"Path {path} is not a directory.")
-    
+
     if check == "file" and not path.is_file():
         raise FileNotFoundError(f"Path {path} is not a file.")
-    
+
     return path
 
+
 def regex_search(
-    items: List[Path],
+    items: Union[str, Path, List[Path]],
     include_regex: Union[str, List[str]] = ".*",
     exclude_regex: Union[str, List[str]] = None,
-) -> List[Path]:
+) -> Union[bool, List[Path]]:
     """
-    Filter a list of Path objects based on regex patterns.
-    
+    Filter Path object(s) based on regex patterns.
+
     Parameters
     ----------
-    items : List[Path]
-        The list of Path objects to filter.
+    items : Union[Path, List[Path]]
+        Either a single Path object or a list of Path objects to filter.
+        If a single Path is provided, the function returns a boolean indicating if it matches.
     include_regex : Union[str, List[str]], optional
         Regular expression pattern(s) for items to include.
         Can be a single string pattern or a list of patterns.
@@ -216,38 +193,64 @@ def regex_search(
         Regular expression pattern(s) for items to exclude.
         Can be a single string pattern or a list of patterns.
         Default is None (exclude nothing).
-        
+
     Returns
     -------
-    List[Path]
-        A filtered list of Path objects matching the specified regex criteria.
-        
+    Union[bool, List[Path]]
+        If a single Path was provided:
+            - Returns True if the Path matches the criteria
+            - Returns False otherwise
+        If a list of Paths was provided:
+            - Returns a filtered list of Path objects matching the specified regex criteria
+
     Examples
     --------
     >>> items = list(Path(".").glob("*"))
     >>> python_files = regex_search(items, include_regex=r".*\.py$")
+
+    >>> single_file = Path("example.py")
+    >>> is_python = regex_search(single_file, include_regex=r".*\.py$")
     """
+    single_item = False
+    if not isinstance(items, list):
+        single_item = True
+        items = [Path(items)]
     include_regex = make_list_ifnot(include_regex)
     exclude_regex = make_list_ifnot(exclude_regex) or []  # Handle None case properly
-    
+
     # Create a list of compiled regex patterns
-    include_patterns = [re.compile(pattern) for pattern in include_regex if pattern is not None]
-    exclude_patterns = [re.compile(pattern) for pattern in exclude_regex if pattern is not None]
-    
+    include_patterns = [
+        re.compile(pattern) for pattern in include_regex if pattern is not None
+    ]
+    exclude_patterns = [
+        re.compile(pattern) for pattern in exclude_regex if pattern is not None
+    ]
+
     # Filter items based on include and exclude patterns
     filtered_items = []
     for item in items:
         item_name = item.name
-        
+
         # Empty include_patterns should include everything
-        include_match = not include_patterns or any(pattern.search(item_name) for pattern in include_patterns)
+        include_match = not include_patterns or any(
+            pattern.search(item_name) for pattern in include_patterns
+        )
         # Empty exclude_patterns should exclude nothing
-        exclude_match = any(pattern.search(item_name) for pattern in exclude_patterns) if exclude_patterns else False
-        
+        exclude_match = (
+            any(pattern.search(item_name) for pattern in exclude_patterns)
+            if exclude_patterns
+            else False
+        )
+
         if include_match and not exclude_match:
             filtered_items.append(item)
-            
-    return filtered_items
+
+    if single_item:
+        match = True if len(filtered_items) > 0 else False
+    else:
+        match = filtered_items
+    return match
+
 
 def search_filedir(
     path: Union[str, Path],
@@ -257,11 +260,11 @@ def search_filedir(
 ) -> List[Path]:
     """
     Search for files or directories in a given path based on regex patterns.
-    
+
     This function searches through the contents of a directory and filters items based on
     regular expression patterns for inclusion and exclusion. Additionally, filtering by
     item type (file or directory) is supported.
-    
+
     Parameters
     ----------
     path : Union[str, Path]
@@ -278,12 +281,12 @@ def search_filedir(
         The type of items to include in the search results.
         Must be one of: None (both files and directories), "file" (files only),
         or "dir" (directories only). Default is None.
-    
+
     Returns
     -------
     List[Path]
         A list of Path objects matching the specified criteria.
-    
+
     Raises
     ------
     ValueError
@@ -292,7 +295,7 @@ def search_filedir(
         If the specified path is not a directory.
     FileNotFoundError
         If the specified path does not exist.
-    
+
     Examples
     --------
     >>> # Find all Python files in current directory
@@ -303,7 +306,7 @@ def search_filedir(
     >>> text_files = search_filedir(".", include_regex=[r".*\.txt$", r".*\.md$"], type="file")
     """
     path = init_path_checks(path, check="dir")
-    
+
     # Get the list of files or directories in the path based on type
     if type is None:
         items = list(path.glob("*"))
@@ -313,43 +316,13 @@ def search_filedir(
         items = [item for item in path.glob("*") if item.is_dir()]
     else:
         raise ValueError("type must be either None, 'file', or 'dir'.")
-    
+
     # Apply regex filtering to the items
     filtered_items = regex_search(
         items, include_regex=include_regex, exclude_regex=exclude_regex
     )
-    
+
     return filtered_items
-
-
-def fname_match_search(name, ending="", regex_search=""):
-    return len(re.findall(regex_search, name)) > 0 and name.endswith(ending)
-
-
-def get_files(directory, ending="", regex_search=""):
-    """
-    This function returns a list of files from the specified directory that match the regular expression search pattern and have the specified file ending.
-
-    Parameters:
-    directory (str): The directory path where to look for files.
-    ending (str, optional): The file ending to match. Default is '', which means all file endings are included.
-    regex_search (str, optional): The regular expression pattern to match. Default is an empty string, which means all files are included.
-
-    Returns:
-    list: A list of file names that match the regular expression search pattern and have the specified file ending.
-    """
-    directory = Path(directory)
-    files_list = None
-    if directory.exists():
-        files_list = []
-        for name in os.listdir(directory):
-            if directory.joinpath(name).is_file():
-                if fname_match_search(name, ending, regex_search):
-                    files_list.append(name)
-    # else:
-    #    global_logger.warning(f"Directory does not exist: {directory}")
-    #    print(f"Directory does not exist: {directory}")
-    return files_list
 
 
 def make_list_ifnot(var):

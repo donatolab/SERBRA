@@ -77,6 +77,7 @@ class Dataset:
         self.raw_data_object = raw_data_object
         self.metadata = metadata
         self.fps = None if "fps" not in self.metadata.keys() else self.metadata["fps"]
+        self.fps = float(self.fps) if self.fps else None
         check_needed_keys(metadata, Dataset.needed_keys)
         self.setup = self.get_setup(self.metadata["setup"])
         self.plot_attributes = Vizualizer.default_plot_attributes()
@@ -435,6 +436,9 @@ class BehaviorDataset(Dataset):
             self.metadata["imaging_fps"]
             if "imaging_fps" in self.metadata.keys()
             else self.metadata["fps"]
+        )
+        self.plot_attributes["fps"] = (
+            float(self.plot_attributes["fps"]) if self.plot_attributes["fps"] else None
         )
         # default binning size is 1cm
         self.binning_size = None
